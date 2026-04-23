@@ -4,6 +4,7 @@ import {
   PlusIcon, UsersIcon, EnvelopeIcon, PhoneIcon,
   MagnifyingGlassIcon, CalendarDaysIcon,
   PencilSquareIcon, TrashIcon, PhotoIcon,
+  MapPinIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { fileToDataUrl } from '../lib/image-upload';
@@ -13,7 +14,6 @@ import { useOfficeStore } from '../store/office-store';
 import { useT } from '../hooks/use-t';
 import { cn } from '../components/ui/utils';
 import { CardSkeleton } from '../components/shared/page-skeleton';
-import { FilterChip } from '../components/ui/filter-chip';
 import { Field } from '../components/ui/field';
 import { useConfirm } from '../hooks/use-confirm';
 import { Can } from '../components/shared/can';
@@ -21,14 +21,12 @@ import { usePermission } from '../hooks/use-permission';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import type { AbsenceReason } from '../types';
 
-import { PageHeader } from '../components/shared/page-header';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Switch } from '../components/ui/switch';
 import type { Staff, StaffRole, DayOfWeek } from '../types';
 import type { TranslationKey } from '../i18n';
@@ -115,8 +113,14 @@ export function StaffPage() {
   const [scheduleDraft, setScheduleDraft] = useState<ScheduleDraft>(emptySchedule);
 
   const officeId = useOfficeStore(s => s.currentOfficeId);
+  const offices = useOfficeStore(s => s.offices);
+  const currentOffice = useMemo(() => offices.find(o => o.id === officeId), [offices, officeId]);
   const { role } = usePermission();
   const canEditSchedule = role === 'owner' || role === 'manager';
+  // Top-level view: manual state gives us full control over the underline
+  // tab-bar styling (Editorial family pattern) without fighting Radix Tabs.
+  const [tab, setTab] = useState<'directory' | 'schedule'>('directory');
+
   const { data: staff = [], isLoading } = useQuery({ queryKey: ['staff', officeId], queryFn: () => staffApi.getAll(officeId) });
   const { data: shifts = [] } = useQuery({ queryKey: ['shifts'], queryFn: () => shiftsApi.getAll() });
   const { data: absences = [] } = useQuery({ queryKey: ['absences'], queryFn: () => absencesApi.getAll() });
@@ -328,57 +332,139 @@ export function StaffPage() {
   const activeCount = staff.filter(s => s.isActive).length;
   const inactiveCount = staff.length - activeCount;
 
+  const FILTER_TABS: { id: 'all' | 'active' | 'inactive'; label: string; count: number }[] = [
+    { id: 'all',      label: t('staff.filterAll'),      count: staff.length },
+    { id: 'active',   label: t('staff.filterActive'),   count: activeCount },
+    { id: 'inactive', label: t('staff.filterInactive'), count: inactiveCount },
+  ];
+
   return (
     <div className="space-y-5">
-      <PageHeader
-        title={t('staff.title')}
-        description={t('staff.description')}
-        action={
+      {/* ─── Editorial hero ──────────────────────────────
+          Crew Board direction: the headcount IS the title,
+          matching the Client Ledger pattern on /clients.
+          Eyebrow carries the active/inactive split so the
+          owner reads the operational signal at a glance. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <span>{t('staff.title')}</span>
+            {currentOffice && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
+                  <MapPinIcon className="h-3 w-3" />
+                  {currentOffice.name}
+                </span>
+              </>
+            )}
+            <span className="text-muted-foreground/40">·</span>
+            <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span className="tabular-nums">{activeCount} {t('staff.filterActive').toLowerCase()}</span>
+            </span>
+            {inactiveCount > 0 && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="normal-case tracking-normal tabular-nums">
+                  {inactiveCount} {t('staff.filterInactive').toLowerCase()}
+                </span>
+              </>
+            )}
+          </div>
+          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums">
+            {staff.length.toLocaleString()}{' '}
+            <span className="text-muted-foreground/70 font-semibold">
+              {staff.length === 1 ? 'member' : 'staff'}
+            </span>
+          </h1>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <Can action="staff.manage">
             <Button size="sm" onClick={openCreate}>
-              <PlusIcon className="mr-1.5 h-4 w-4" />
+              <PlusIcon className="mr-1 h-4 w-4" />
               {t('staff.add')}
             </Button>
           </Can>
-        }
-      />
+        </div>
+      </div>
 
-      <Tabs defaultValue="directory">
-        <TabsList>
-          <TabsTrigger value="directory">{t('staff.directory')}</TabsTrigger>
-          <TabsTrigger value="schedule">{t('staff.schedule')}</TabsTrigger>
-        </TabsList>
+      {/* ─── Top-level tab bar (underline) ────────────────
+          Directory vs Schedule are different VIEWS of the
+          team data. Matches the Bookings/Clients filter
+          rhythm — hairline rule with an active underline. */}
+      <div className="flex items-end gap-1 border-b border-border">
+        {([
+          { id: 'directory', label: t('staff.directory') },
+          { id: 'schedule',  label: t('staff.schedule') },
+        ] as const).map(t2 => {
+          const active = tab === t2.id;
+          return (
+            <button
+              key={t2.id}
+              type="button"
+              onClick={() => setTab(t2.id)}
+              aria-pressed={active}
+              className={cn(
+                'relative px-3 py-2.5 text-sm font-medium transition-colors',
+                active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t2.label}
+              {active && (
+                <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" aria-hidden />
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-        {/* ─── Directory ─────────────────────────── */}
-        <TabsContent value="directory" className="space-y-4 mt-4">
-          {/* Filter chips — counts baked in, same pattern as services */}
-          <div className="flex flex-wrap items-center gap-2">
-            <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
-              {t('staff.filterAll')}
-              <span className="ml-1.5 text-xs opacity-70 tabular-nums">{staff.length}</span>
-            </FilterChip>
-            <FilterChip active={filter === 'active'} onClick={() => setFilter('active')}>
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              {t('staff.filterActive')}
-              <span className="ml-1.5 text-xs opacity-70 tabular-nums">{activeCount}</span>
-            </FilterChip>
-            <FilterChip active={filter === 'inactive'} onClick={() => setFilter('inactive')}>
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
-              {t('staff.filterInactive')}
-              <span className="ml-1.5 text-xs opacity-70 tabular-nums">{inactiveCount}</span>
-            </FilterChip>
+      {tab === 'directory' ? (
+        <>
+          {/* ─── Operator bar — sub-filter tabs + search ─── */}
+          <div className="rounded-xl border border-border bg-card">
+            <div className="flex items-end gap-1 overflow-x-auto border-b border-border px-2">
+              {FILTER_TABS.map(f => {
+                const active = filter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setFilter(f.id)}
+                    aria-pressed={active}
+                    className={cn(
+                      'relative inline-flex items-center gap-2 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors',
+                      active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <span>{f.label}</span>
+                    <span className={cn(
+                      'inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
+                      active ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground',
+                    )}>
+                      {f.count}
+                    </span>
+                    {active && (
+                      <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" aria-hidden />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="p-2.5">
+              <div className="relative">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder={t('clients.searchPlaceholder')}
+                  className="pl-9 h-9 bg-background"
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="relative max-w-md">
-            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={t('clients.searchPlaceholder')}
-              className="pl-9 h-10"
-            />
-          </div>
-
+          {/* ─── Directory grid (rebuilt cards) ─────────── */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {isLoading ? (
               Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
@@ -391,40 +477,37 @@ export function StaffPage() {
               filtered.map(member => {
                 const c = accentFor(member.id);
                 const memberShifts = shifts.filter(s => s.staffId === member.id);
+                const workingDays = memberShifts.length;
                 return (
                   <div
                     key={member.id}
-                    className="group rounded-xl border border-border bg-card p-5 transition-all hover:border-foreground/15 hover:shadow-sm"
+                    className="group flex flex-col rounded-xl border border-border bg-card p-5 transition-colors hover:border-foreground/15"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <Avatar className={cn('h-11 w-11 ring-2 ring-offset-2 ring-offset-card', c.ring)}>
-                          {member.avatarUrl && <AvatarImage src={member.avatarUrl} alt={member.firstName} />}
-                          <AvatarFallback className={cn('text-xs font-bold', c.bg, c.text)}>
-                            {member.firstName[0]}{member.lastName[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-foreground truncate">
-                            {member.firstName} {member.lastName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{roleLabel[member.role]}</p>
+                    {/* Identity — plain avatar (no ring halo), eyebrow with
+                        subtle active dot, role + name. */}
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-12 w-12 shrink-0">
+                        {member.avatarUrl && <AvatarImage src={member.avatarUrl} alt={member.firstName} />}
+                        <AvatarFallback className={cn('text-sm font-bold', c.bg, c.text)}>
+                          {member.firstName[0]}{member.lastName[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          <span
+                            className={cn('h-1.5 w-1.5 rounded-full shrink-0', member.isActive ? 'bg-emerald-500' : 'bg-muted-foreground/40')}
+                            aria-label={member.isActive ? t('staff.active') : t('staff.inactive')}
+                          />
+                          {roleLabel[member.role]}
                         </div>
+                        <p className="mt-0.5 font-semibold text-foreground truncate leading-tight">
+                          {member.firstName} {member.lastName}
+                        </p>
                       </div>
-
-                      <span
-                        className={cn(
-                          'shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-                          member.isActive
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            : 'bg-muted text-muted-foreground',
-                        )}
-                      >
-                        {member.isActive ? t('staff.active') : t('staff.inactive')}
-                      </span>
                     </div>
 
-                    <div className="mt-3 space-y-1.5 text-xs">
+                    {/* Contact — tight line group */}
+                    <div className="mt-3 space-y-1 text-xs">
                       <p className="flex items-center gap-2 text-muted-foreground">
                         <EnvelopeIcon className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{member.email}</span>
@@ -435,36 +518,43 @@ export function StaffPage() {
                       </p>
                     </div>
 
-                    {/* Week dot-indicator */}
-                    <div className="mt-3 flex items-center gap-1">
+                    {/* Week strip — dots fill for working days, hollow for off.
+                        Cleaner visual vocabulary than the old tinted squares. */}
+                    <div className="mt-4 flex items-center gap-1.5">
                       {DAYS.map(d => {
                         const has = memberShifts.some(s => s.dayOfWeek === d);
                         return (
                           <div
                             key={d}
                             title={t(`days.${d}` as TranslationKey)}
-                            className={cn(
-                              'flex h-5 flex-1 items-center justify-center rounded-sm text-[9px] font-semibold uppercase tracking-wider',
-                              has ? `${c.bg} ${c.text}` : 'bg-muted text-muted-foreground/40',
-                            )}
+                            className="flex flex-1 flex-col items-center gap-1"
                           >
-                            {t(`days.short.${DAY_SHORT_KEY[d]}` as TranslationKey).slice(0, 2)}
+                            <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground tabular-nums">
+                              {t(`days.short.${DAY_SHORT_KEY[d]}` as TranslationKey).slice(0, 1)}
+                            </span>
+                            <span
+                              className={cn(
+                                'h-1.5 w-1.5 rounded-full',
+                                has ? c.dot : 'border border-border bg-transparent',
+                              )}
+                              aria-hidden
+                            />
                           </div>
                         );
                       })}
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-border pt-3">
-                      {memberShifts.length > 0 ? (
-                        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                          <CalendarDaysIcon className="h-3.5 w-3.5" />
-                          Working {memberShifts.length} {memberShifts.length === 1 ? 'day' : 'days'}
-                        </span>
-                      ) : <span />}
+                    {/* Actions footer — hairline divider, working-days count
+                        on the left, management controls on the right. */}
+                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-border -mx-5 px-5 pt-3">
+                      <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <CalendarDaysIcon className="h-3.5 w-3.5" />
+                        <span className="tabular-nums">{workingDays}</span> {workingDays === 1 ? 'day' : 'days'}
+                      </span>
 
                       <Can action="staff.manage">
-                        <div className="flex items-center gap-2">
-                          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                        <div className="flex items-center gap-1">
+                          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer">
                             <Switch
                               aria-label="Toggle active"
                               checked={member.isActive}
@@ -472,13 +562,12 @@ export function StaffPage() {
                                 updateMutation.mutate({ id: member.id, data: { isActive: !member.isActive } })
                               }
                             />
-                            Active
                           </label>
                           <button
                             onClick={() => openEdit(member)}
                             aria-label="Edit staff member"
                             title="Edit"
-                            className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300 dark:hover:border-blue-800/60"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                           >
                             <PencilSquareIcon className="h-4 w-4" />
                           </button>
@@ -487,7 +576,7 @@ export function StaffPage() {
                             disabled={deleteMutation.isPending}
                             aria-label="Delete staff member"
                             title="Delete"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-rose-50 hover:text-rose-600 hover:border-rose-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300 dark:hover:border-rose-800/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-300 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <TrashIcon className="h-4 w-4" />
                           </button>
@@ -499,111 +588,119 @@ export function StaffPage() {
               })
             )}
           </div>
-        </TabsContent>
-
-        {/* ─── Schedule ──────────────────────────── */}
-        <TabsContent value="schedule" className="mt-4">
-          {staff.filter(s => s.isActive).length === 0 ? (
-            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card py-14 text-center">
-              <CalendarDaysIcon className="h-8 w-8 text-muted-foreground/60" />
-              <p className="text-sm text-muted-foreground">
-                {staff.length === 0
-                  ? t('staff.none')
-                  : 'No active staff to schedule. Activate a team member first.'}
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-border bg-card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40">
-                      <th className="sticky left-0 z-10 bg-muted/40 backdrop-blur px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground min-w-[180px]">
-                        {t('staff.member')}
+        </>
+      ) : (
+        /* ─── Schedule ───────────────────────────────────
+            Hairline header (no muted tint), editorial
+            eyebrow columns for days. ScheduleCell kept
+            as-is — its popover + pill logic works well. */
+        staff.filter(s => s.isActive).length === 0 ? (
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card py-14 text-center">
+            <CalendarDaysIcon className="h-8 w-8 text-muted-foreground/60" />
+            <p className="text-sm text-muted-foreground">
+              {staff.length === 0
+                ? t('staff.none')
+                : 'No active staff to schedule. Activate a team member first.'}
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="sticky left-0 z-10 bg-card px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground min-w-[180px]">
+                      {t('staff.member')}
+                    </th>
+                    {DAYS.map(day => (
+                      <th
+                        key={day}
+                        className="px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground tabular-nums"
+                      >
+                        {t(`days.short.${DAY_SHORT_KEY[day]}` as TranslationKey)}
                       </th>
-                      {DAYS.map(day => (
-                        <th
-                          key={day}
-                          className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-                        >
-                          {t(`days.short.${DAY_SHORT_KEY[day]}` as TranslationKey)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {staff.filter(s => s.isActive).map(member => {
-                      const c = accentFor(member.id);
-                      const memberShifts = shifts.filter(s => s.staffId === member.id);
-                      return (
-                        <tr key={member.id} className="transition-colors hover:bg-accent/30 group">
-                          <td className="sticky left-0 z-10 bg-card group-hover:bg-accent/30 px-5 py-3 min-w-[180px]">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <Avatar className={cn('h-9 w-9 ring-2 ring-offset-2 ring-offset-card', c.ring)}>
-                                {member.avatarUrl && <AvatarImage src={member.avatarUrl} alt={member.firstName} />}
-                                <AvatarFallback className={cn('text-[10px] font-bold', c.bg, c.text)}>
-                                  {member.firstName[0]}{member.lastName[0]}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="min-w-0">
-                                <p className="font-medium text-foreground truncate">
-                                  {member.firstName} {member.lastName}
-                                </p>
-                                <p className="text-xs text-muted-foreground">{roleLabel[member.role]}</p>
-                              </div>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {staff.filter(s => s.isActive).map(member => {
+                    const c = accentFor(member.id);
+                    const memberShifts = shifts.filter(s => s.staffId === member.id);
+                    return (
+                      <tr key={member.id} className="transition-colors hover:bg-accent/30 group">
+                        <td className="sticky left-0 z-10 bg-card group-hover:bg-accent/30 px-5 py-3 min-w-[180px]">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <Avatar className="h-9 w-9 shrink-0">
+                              {member.avatarUrl && <AvatarImage src={member.avatarUrl} alt={member.firstName} />}
+                              <AvatarFallback className={cn('text-[10px] font-bold', c.bg, c.text)}>
+                                {member.firstName[0]}{member.lastName[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground truncate">
+                                {member.firstName} {member.lastName}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">{roleLabel[member.role]}</p>
                             </div>
-                          </td>
-                          {DAYS.map(day => {
-                            const shift = memberShifts.find(s => s.dayOfWeek === day);
-                            const absence = absences.find(a => a.staffId === member.id && a.dayOfWeek === day);
-                            return (
-                              <td key={day} className="px-3 py-3 whitespace-nowrap">
-                                <ScheduleCell
-                                  staffId={member.id}
-                                  day={day}
-                                  shift={shift}
-                                  absence={absence?.reason}
-                                  accent={c}
-                                  canEdit={canEditSchedule}
-                                  onSave={(startTime, endTime) => upsertShiftMut.mutate({ staffId: member.id, dayOfWeek: day, startTime, endTime })}
-                                  onClear={() => removeShiftMut.mutate({ staffId: member.id, dayOfWeek: day })}
-                                  offLabel={t('staff.off')}
-                                />
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+                        </td>
+                        {DAYS.map(day => {
+                          const shift = memberShifts.find(s => s.dayOfWeek === day);
+                          const absence = absences.find(a => a.staffId === member.id && a.dayOfWeek === day);
+                          return (
+                            <td key={day} className="px-3 py-3 whitespace-nowrap">
+                              <ScheduleCell
+                                staffId={member.id}
+                                day={day}
+                                shift={shift}
+                                absence={absence?.reason}
+                                accent={c}
+                                canEdit={canEditSchedule}
+                                onSave={(startTime, endTime) => upsertShiftMut.mutate({ staffId: member.id, dayOfWeek: day, startTime, endTime })}
+                                onClear={() => removeShiftMut.mutate({ staffId: member.id, dayOfWeek: day })}
+                                offLabel={t('staff.off')}
+                              />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          )}
-        </TabsContent>
-      </Tabs>
+          </div>
+        )
+      )}
 
-      {/* Create / Edit dialog */}
+      {/* Create / Edit dialog — editorial chrome: the title
+          is scaled up, photo + active toggle flatten into
+          hairline rows instead of muted panels. */}
       <Dialog open={isFormOpen} onOpenChange={open => { if (!open) closeForm(); }}>
         <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit staff member' : t('staff.addNew')}</DialogTitle>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              {editingId ? 'Edit' : 'New'}
+            </p>
+            <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight">
+              {editingId ? 'Staff member' : t('staff.addNew')}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* ── Photo ─ upload + preview ───────────────
-                Uses the same canvas-downscale pipeline as Accounts so the
-                stored data-URL stays ≤ ~120 KB per staff member. */}
-            <div className="flex items-center gap-4 rounded-lg border border-border bg-muted/30 p-3">
+            {/* Photo — flat hairline row, preview on left,
+                controls on right. Canvas-downscale pipeline
+                keeps the stored data-URL ≤ ~120 KB. */}
+            <div className="flex items-center gap-4 py-1">
               <div className="relative shrink-0">
                 {form.avatarUrl ? (
                   <img
                     src={form.avatarUrl}
                     alt="Staff avatar preview"
-                    className="h-16 w-16 rounded-full object-cover ring-2 ring-border"
+                    className="h-16 w-16 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 text-lg font-bold text-white ring-2 ring-border">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 text-lg font-bold text-white">
                     {(form.firstName[0] ?? '') + (form.lastName[0] ?? '') || '?'}
                   </div>
                 )}
@@ -638,7 +735,7 @@ export function StaffPage() {
                     </Button>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-[11px] text-muted-foreground">
                   Optional. Auto-resized to 512px.
                 </p>
               </div>
@@ -687,7 +784,7 @@ export function StaffPage() {
               </Select>
             </Field>
 
-            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-3">
+            <div className="flex items-center justify-between border-t border-b border-border py-3">
               <Label className="text-sm text-foreground">{t('staff.activeStatus')}</Label>
               <Switch
                 checked={form.isActive}
@@ -702,8 +799,10 @@ export function StaffPage() {
             <div>
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <Label className="text-sm font-semibold text-foreground">Default week</Label>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Default week
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground/80">
                     Adjust later on the Schedule tab.
                   </p>
                 </div>
