@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clientsApi, appointmentsApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
-import { PageHeader } from '../components/shared/page-header';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -13,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import {
   MagnifyingGlassIcon, PlusIcon, UserIcon, CalendarIcon, ArrowsUpDownIcon,
   ListBulletIcon, Squares2X2Icon, PencilSquareIcon, EnvelopeIcon, PhoneIcon,
-  TrashIcon, StarIcon, CurrencyEuroIcon, ClockIcon, ArrowUturnLeftIcon,
+  TrashIcon, ArrowUturnLeftIcon,
+  MapPinIcon,
 } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
@@ -90,6 +90,8 @@ export function ClientsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('visits-desc');
 
   const officeId = useOfficeStore(s => s.currentOfficeId);
+  const offices = useOfficeStore(s => s.offices);
+  const currentOffice = useMemo(() => offices.find(o => o.id === officeId), [offices, officeId]);
 
   const { data: clients = [], isLoading: clientsLoading } = useQuery({
     queryKey: ['clients', officeId],
@@ -266,112 +268,166 @@ export function ClientsPage() {
     setIsEditing(false);
   };
 
+  const exportClients = () => exportCsv(
+    `clients-${format(new Date(), 'yyyy-MM-dd')}`,
+    filteredSorted,
+    [
+      { key: 'firstName', header: 'First name' },
+      { key: 'lastName', header: 'Last name' },
+      { key: 'email', header: 'Email' },
+      { key: 'phone', header: 'Phone' },
+      { key: (c) => c.totalVisits ?? 0, header: 'Total visits' },
+      { key: (c) => c.lastVisitAt ? format(parseISO(c.lastVisitAt), 'yyyy-MM-dd') : '', header: 'Last visit' },
+      { key: (c) => clientStats.spend(c.id), header: 'Lifetime spend' },
+      { key: 'notes', header: 'Notes' },
+    ],
+  );
+
+  const FILTER_TABS: { id: Filter; label: string; count: number }[] = [
+    { id: 'all',       label: 'All',       count: clients.length   },
+    { id: 'returning', label: 'Returning', count: returningCount    },
+    { id: 'new',       label: 'New',       count: newCount          },
+    ...(vipCount > 0 ? [{ id: 'vip' as Filter, label: 'VIP', count: vipCount }] : []),
+  ];
+
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Clients"
-        description="Manage your client database"
-        action={
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => exportCsv(`clients-${format(new Date(), 'yyyy-MM-dd')}`, filteredSorted, [
-                { key: 'firstName', header: 'First name' },
-                { key: 'lastName', header: 'Last name' },
-                { key: 'email', header: 'Email' },
-                { key: 'phone', header: 'Phone' },
-                { key: (c) => c.totalVisits ?? 0, header: 'Total visits' },
-                { key: (c) => c.lastVisitAt ? format(parseISO(c.lastVisitAt), 'yyyy-MM-dd') : '', header: 'Last visit' },
-                { key: (c) => clientStats.spend(c.id), header: 'Lifetime spend' },
-                { key: 'notes', header: 'Notes' },
-              ])}
-              disabled={filteredSorted.length === 0}
-            >
-              <ArrowDownTrayIcon className="mr-1.5 h-4 w-4" />
-              Export CSV
-            </Button>
-            <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
-              <PlusIcon className="mr-1.5 h-4 w-4" />
-              Add Client
-            </Button>
+      {/* ─── Editorial hero ──────────────────────────────
+          Client Ledger: the count IS the headline (Analytics
+          uses € revenue the same way). Eyebrow carries the
+          operational signal — Office · returning · VIP. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <span>Clients</span>
+            {currentOffice && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
+                  <MapPinIcon className="h-3 w-3" />
+                  {currentOffice.name}
+                </span>
+              </>
+            )}
+            <span className="text-muted-foreground/40">·</span>
+            <span className="normal-case tracking-normal tabular-nums">{returningCount} returning</span>
+            {vipCount > 0 && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
+                  <StarIconSolid className="h-3 w-3 text-amber-400" />
+                  <span className="tabular-nums">{vipCount} VIP</span>
+                </span>
+              </>
+            )}
           </div>
-        }
-      />
-
-      {/* Filter chips */}
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
-          All
-          <span className="ml-1.5 text-xs opacity-70 tabular-nums">{clients.length}</span>
-        </FilterChip>
-        <FilterChip active={filter === 'returning'} onClick={() => setFilter('returning')}>
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          Returning
-          <span className="ml-1.5 text-xs opacity-70 tabular-nums">{returningCount}</span>
-        </FilterChip>
-        <FilterChip active={filter === 'new'} onClick={() => setFilter('new')}>
-          <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-          New
-          <span className="ml-1.5 text-xs opacity-70 tabular-nums">{newCount}</span>
-        </FilterChip>
-        {vipCount > 0 && (
-          <FilterChip active={filter === 'vip'} onClick={() => setFilter('vip')}>
-            <StarIconSolid className="h-3 w-3 text-amber-400" />
-            VIP
-            <span className="ml-1.5 text-xs opacity-70 tabular-nums">{vipCount}</span>
-          </FilterChip>
-        )}
+          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums">
+            {clients.length.toLocaleString()} <span className="text-muted-foreground/70 font-semibold">{clients.length === 1 ? 'client' : 'clients'}</span>
+          </h1>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportClients}
+            disabled={filteredSorted.length === 0}
+            aria-label="Export CSV"
+          >
+            <ArrowDownTrayIcon className="h-4 w-4" />
+          </Button>
+          <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
+            <PlusIcon className="mr-1 h-4 w-4" />
+            Add client
+          </Button>
+        </div>
       </div>
 
-      {/* Search + sort + view mode */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search by name, email, or phone…"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="pl-9 h-10"
-          />
+      {/* ─── Operator bar ────────────────────────────────
+          One tight band replaces the old filter row + controls
+          row. Tab-with-underline filters on the left (Bookings
+          pattern), search in the middle, sort + view toggle
+          on the right. */}
+      <div className="rounded-xl border border-border bg-card">
+        {/* Tab bar with underline — filter by segment */}
+        <div className="flex items-end gap-1 overflow-x-auto border-b border-border px-2">
+          {FILTER_TABS.map(tab => {
+            const active = filter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFilter(tab.id)}
+                aria-pressed={active}
+                className={cn(
+                  'relative inline-flex items-center gap-2 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors',
+                  active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {tab.id === 'vip' && <StarIconSolid className="h-3 w-3 text-amber-400" />}
+                <span>{tab.label}</span>
+                <span className={cn(
+                  'inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
+                  active ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground',
+                )}>
+                  {tab.count}
+                </span>
+                {active && (
+                  <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" aria-hidden />
+                )}
+              </button>
+            );
+          })}
         </div>
 
-        <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
-          <SelectTrigger className="sm:w-52 h-10">
-            <ArrowsUpDownIcon className="h-4 w-4 text-muted-foreground mr-1.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
-              <SelectItem key={k} value={k}>{SORT_LABELS[k]}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Search + sort + view mode — operator controls */}
+        <div className="flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search by name, email, or phone…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9 h-9 bg-background"
+            />
+          </div>
 
-        <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5 shrink-0">
-          <button
-            onClick={() => setViewMode('list')}
-            aria-pressed={viewMode === 'list'}
-            aria-label="List view"
-            className={cn(
-              'inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-              viewMode === 'list' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <ListBulletIcon className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setViewMode('grid')}
-            aria-pressed={viewMode === 'grid'}
-            aria-label="Grid view"
-            className={cn(
-              'inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-              viewMode === 'grid' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Squares2X2Icon className="h-4 w-4" />
-          </button>
+          <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+            <SelectTrigger className="sm:w-48 h-9">
+              <ArrowsUpDownIcon className="h-3.5 w-3.5 text-muted-foreground mr-1.5" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
+                <SelectItem key={k} value={k}>{SORT_LABELS[k]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="inline-flex items-center rounded-md border border-border p-0.5 shrink-0 h-9">
+            <button
+              onClick={() => setViewMode('list')}
+              aria-pressed={viewMode === 'list'}
+              aria-label="List view"
+              className={cn(
+                'inline-flex items-center justify-center rounded px-2 py-1 transition-colors',
+                viewMode === 'list' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <ListBulletIcon className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              aria-pressed={viewMode === 'grid'}
+              aria-label="Grid view"
+              className={cn(
+                'inline-flex items-center justify-center rounded px-2 py-1 transition-colors',
+                viewMode === 'grid' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Squares2X2Icon className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -563,93 +619,84 @@ export function ClientsPage() {
             return (
               <>
                 {/* ─── Identity header ─────────────────────────────────
-                    Full-width bar with larger avatar (h-20) and prominent
-                    name. Quick actions align right on wider viewport so
-                    the header reads as one horizontal rhythm. */}
+                    Editorial treatment: the person's NAME is the title,
+                    scaled like a magazine headline. Eyebrow above gives
+                    operator context (recency · gender · VIP). Smaller
+                    avatar reads as a mark, not a profile photo. */}
                 <DialogHeader className="px-7 pt-7 pb-5 space-y-0 border-b border-border">
                   <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-                    <div className="flex items-center gap-4 min-w-0">
+                    <div className="flex items-start gap-4 min-w-0">
                       <div className={cn(
-                        'relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-2xl font-bold text-white shadow-sm',
+                        'relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-lg font-bold text-white',
                         gradientFor(selectedClient.id),
                       )}>
                         {selectedClient.firstName[0]}{selectedClient.lastName[0]}
                         {isVip && (
-                          <span className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-card">
-                            <StarIconSolid className="h-3.5 w-3.5" />
+                          <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-card">
+                            <StarIconSolid className="h-3 w-3" />
                           </span>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <DialogTitle className="text-2xl font-bold text-foreground truncate leading-tight">
-                          {selectedClient.firstName} {selectedClient.lastName}
-                        </DialogTitle>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <span className={cn(
-                            'inline-flex items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-medium',
-                            rStyle.text,
-                          )}>
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          <span className={cn('inline-flex items-center gap-1 normal-case tracking-normal font-medium', rStyle.text)}>
                             <span className={cn('h-1.5 w-1.5 rounded-full', rStyle.dot)} />
                             {rStyle.label}
                           </span>
-                          {selectedClient.gender && <GenderChip gender={selectedClient.gender} />}
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-muted-foreground/40">·</span>
+                          <span className="normal-case tracking-normal tabular-nums">
                             {daysAgoLabel(selectedClient.lastVisitAt)}
                           </span>
+                          {selectedClient.gender && (
+                            <>
+                              <span className="text-muted-foreground/40">·</span>
+                              <span className="normal-case tracking-normal font-medium">
+                                {GENDER_STYLE[selectedClient.gender].label}
+                              </span>
+                            </>
+                          )}
                           {isVip && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
-                              <StarIconSolid className="h-2.5 w-2.5" />
-                              VIP
-                            </span>
+                            <>
+                              <span className="text-muted-foreground/40">·</span>
+                              <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium text-amber-700 dark:text-amber-400">
+                                <StarIconSolid className="h-3 w-3" />
+                                VIP
+                              </span>
+                            </>
                           )}
                         </div>
+                        <DialogTitle className="mt-1.5 text-2xl sm:text-3xl font-bold text-foreground truncate leading-tight tracking-tight">
+                          {selectedClient.firstName} {selectedClient.lastName}
+                        </DialogTitle>
                       </div>
                     </div>
 
                     {/* Quick actions */}
                     <div className="flex shrink-0 gap-2">
-                      <Button size="sm" onClick={bookForClient} className="gap-1.5">
-                        <CalendarIcon className="h-4 w-4" />
+                      <Button size="sm" onClick={bookForClient}>
+                        <CalendarIcon className="mr-1 h-4 w-4" />
                         Book
                       </Button>
-                      <Button asChild size="sm" variant="outline" className="gap-1.5">
+                      <Button asChild size="sm" variant="outline" aria-label="Call">
                         <a href={`tel:${selectedClient.phone}`}>
                           <PhoneIcon className="h-4 w-4" />
-                          Call
                         </a>
                       </Button>
-                      <Button asChild size="sm" variant="outline" className="gap-1.5">
+                      <Button asChild size="sm" variant="outline" aria-label="Email">
                         <a href={`mailto:${selectedClient.email}`}>
                           <EnvelopeIcon className="h-4 w-4" />
-                          Email
                         </a>
                       </Button>
                     </div>
                   </div>
                 </DialogHeader>
 
-                {/* Full-width stat band — sits between header and tabs.
-                    Icon + label + value reads across in a single row. */}
-                <div className="grid grid-cols-3 border-b border-border bg-muted/30">
-                  <IconStat
-                    icon={CalendarIcon}
-                    label="Visits"
-                    value={String(selectedClient.totalVisits ?? 0)}
-                  />
-                  <div className="relative">
-                    <IconStat
-                      icon={CurrencyEuroIcon}
-                      label="Spend"
-                      value={spend > 0 ? `€${spend.toLocaleString()}` : '—'}
-                    />
-                    <div className="absolute inset-y-3 left-0 w-px bg-border" aria-hidden />
-                    <div className="absolute inset-y-3 right-0 w-px bg-border" aria-hidden />
-                  </div>
-                  <IconStat
-                    icon={ClockIcon}
-                    label="Last visit"
-                    value={daysAgoLabel(selectedClient.lastVisitAt)}
-                  />
+                {/* Hairline-divided stat band — same rhythm as Calendar
+                    summary. Typography carries it; no muted surfaces. */}
+                <div className="grid grid-cols-3 divide-x divide-border border-b border-border">
+                  <LedgerStat label="Visits"    value={String(selectedClient.totalVisits ?? 0)} />
+                  <LedgerStat label="Spend"     value={spend > 0 ? `€${spend.toLocaleString()}` : '—'} />
+                  <LedgerStat label="Last seen" value={daysAgoLabel(selectedClient.lastVisitAt)} />
                 </div>
 
                 <Tabs value={detailsTab} onValueChange={(v) => setDetailsTab(v as typeof detailsTab)} className="px-7 py-6">
@@ -829,6 +876,10 @@ export function ClientsPage() {
 }
 
 // ─── ClientCard (grid view) ──────────────────────────────────
+// Editorial rebuild: no gradient decoration at the top (that read
+// like a social profile card). Avatar sits upper-left, name top,
+// a hairline-divided stat row below. Same visual language as the
+// staff column headers on Calendar and the Overview schedule rows.
 function ClientCard({
   client, spend, isVip, onClick,
 }: {
@@ -844,47 +895,50 @@ function ClientCard({
   return (
     <button
       onClick={onClick}
-      className="group relative rounded-xl border border-border bg-card overflow-hidden text-left transition-all hover:shadow-lg hover:border-foreground/20 hover:-translate-y-0.5"
+      className="group relative flex flex-col rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-foreground/20 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {/* Gradient band at top */}
-      <div className={cn('h-12 bg-gradient-to-br', grad)} />
-
-      {/* Avatar overlapping band */}
-      <div className="px-4 -mt-6">
-        <div className={cn('relative inline-flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white ring-4 ring-card', grad)}>
+      {/* Identity — avatar + name + recency mark on one line */}
+      <div className="flex items-start gap-3">
+        <div className={cn(
+          'relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white',
+          grad,
+        )}>
           {client.firstName[0]}{client.lastName[0]}
           {isVip && (
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-card">
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-card">
               <StarIconSolid className="h-2.5 w-2.5" />
             </span>
           )}
         </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="font-semibold text-foreground truncate">
+              {client.firstName} {client.lastName}
+            </p>
+            {client.gender && <GenderDot gender={client.gender} />}
+          </div>
+          <p className="text-xs text-muted-foreground truncate tabular-nums mt-0.5">{client.phone}</p>
+        </div>
       </div>
 
-      {/* Info */}
-      <div className="px-4 pb-4 pt-2">
-        <p className="font-semibold text-foreground text-sm truncate">
-          {client.firstName} {client.lastName}
-        </p>
-        <p className="text-xs text-muted-foreground truncate tabular-nums">{client.phone}</p>
-
-        <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
-          <div className="flex items-center gap-3 min-w-0 text-xs">
-            <span className="text-foreground font-semibold tabular-nums">{client.totalVisits ?? 0}</span>
-            <span className="text-muted-foreground">visits</span>
-            {spend > 0 && (
-              <>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="text-foreground font-semibold tabular-nums">€{spend.toLocaleString()}</span>
-              </>
-            )}
-          </div>
+      {/* Hairline-divided stat row */}
+      <div className="mt-4 grid grid-cols-3 divide-x divide-border border-t border-border -mx-4 -mb-4">
+        <div className="px-3 py-2.5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Visits</p>
+          <p className="mt-0.5 text-sm font-bold text-foreground tabular-nums leading-none">{client.totalVisits ?? 0}</p>
         </div>
-
-        <div className="mt-2 flex items-center gap-1.5 text-[11px]">
-          <span className={cn('h-1.5 w-1.5 rounded-full', rStyle.dot)} />
-          <span className={cn('font-medium', rStyle.text)}>{rStyle.label}</span>
-          <span className="text-muted-foreground ml-auto tabular-nums">{daysAgoLabel(client.lastVisitAt)}</span>
+        <div className="px-3 py-2.5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Spend</p>
+          <p className="mt-0.5 text-sm font-bold text-foreground tabular-nums leading-none truncate">
+            {spend > 0 ? `€${spend.toLocaleString()}` : <span className="text-muted-foreground/50">—</span>}
+          </p>
+        </div>
+        <div className="px-3 py-2.5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Seen</p>
+          <p className="mt-0.5 text-sm font-bold tabular-nums leading-none flex items-center gap-1">
+            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', rStyle.dot)} />
+            <span className="text-foreground">{daysAgoLabel(client.lastVisitAt)}</span>
+          </p>
         </div>
       </div>
     </button>
@@ -948,27 +1002,14 @@ function ClientHistory({ appointments }: { appointments: AppointmentWithDetails[
 }
 
 // ─── Local primitives ────────────────────────────────────────
-function StatLine({ label, value }: { label: string; value: string }) {
+// Editorial ledger cell — uppercase eyebrow, large tabular value,
+// no icon decoration. Three of these make the detail modal's stat
+// band. Same rhythm as Calendar's hairline-divided summary.
+function LedgerStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex-1 min-w-0 text-center">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-1 text-base font-bold tabular-nums text-foreground truncate">{value}</p>
-    </div>
-  );
-}
-
-function IconStat({
-  icon: Icon, label, value,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex-1 min-w-0 text-center px-1 py-4">
-      <Icon className="mx-auto h-4 w-4 text-muted-foreground" />
-      <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-sm font-bold tabular-nums text-foreground truncate">{value}</p>
+    <div className="px-5 py-4">
+      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.18em]">{label}</p>
+      <p className="mt-1 text-xl font-bold text-foreground tabular-nums leading-none truncate">{value}</p>
     </div>
   );
 }
@@ -996,20 +1037,7 @@ const GENDER_STYLE: Record<NonNullable<Client['gender']>, { icon: string; text: 
   other:  { icon: '⚬', text: 'bg-violet-500/15 text-violet-600 dark:text-violet-400', dot: 'text-violet-600 dark:text-violet-400', label: 'Other' },
 };
 
-function GenderChip({ gender }: { gender: NonNullable<Client['gender']> }) {
-  const s = GENDER_STYLE[gender];
-  return (
-    <span className={cn(
-      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
-      s.text,
-    )}>
-      <span className="text-sm leading-none">{s.icon}</span>
-      {s.label}
-    </span>
-  );
-}
-
-// Compact inline version — just the glyph, used in tight list rows.
+// Compact inline glyph — used in tight list rows and the grid card.
 function GenderDot({ gender }: { gender: NonNullable<Client['gender']> }) {
   const s = GENDER_STYLE[gender];
   return (
@@ -1026,7 +1054,7 @@ function GenderDot({ gender }: { gender: NonNullable<Client['gender']> }) {
 function ColHeader({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <span className={cn(
-      'text-[11px] font-semibold uppercase tracking-wider text-muted-foreground',
+      'text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground',
       className,
     )}>
       {children}
@@ -1060,25 +1088,4 @@ function IconAction({
   );
 }
 
-function StatMini({
-  icon: Icon, label, value, small,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  small?: boolean;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-3">
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        <Icon className="h-3 w-3" />
-        {label}
-      </div>
-      <p className={cn(
-        'mt-1 font-bold tabular-nums text-foreground',
-        small ? 'text-sm' : 'text-xl leading-tight',
-      )}>{value}</p>
-    </div>
-  );
-}
 
