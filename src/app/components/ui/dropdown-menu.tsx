@@ -2,7 +2,15 @@
 
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+
+function CircleIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
+      <circle cx="12" cy="12" r="10" />
+    </svg>
+  );
+}
 
 import { cn } from "./utils";
 

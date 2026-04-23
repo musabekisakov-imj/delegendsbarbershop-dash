@@ -32,10 +32,22 @@ export const useAuthStore = create<AuthState>((set) => ({
   initialize: () => {
     const token = localStorage.getItem('barberpro_auth_token');
     const userStr = localStorage.getItem('barberpro_auth_user');
-    
-    if (token && userStr) {
+    if (!token || !userStr) return;
+
+    // Be defensive: if the persisted user is malformed or missing a valid role,
+    // clear auth and force a fresh login instead of white-screening downstream.
+    const VALID_ROLES = ['owner', 'manager', 'barber', 'receptionist'];
+    try {
       const user = JSON.parse(userStr);
+      if (!user?.id || !user?.email || !VALID_ROLES.includes(user.role)) {
+        localStorage.removeItem('barberpro_auth_token');
+        localStorage.removeItem('barberpro_auth_user');
+        return;
+      }
       set({ user, token, isAuthenticated: true });
+    } catch {
+      localStorage.removeItem('barberpro_auth_token');
+      localStorage.removeItem('barberpro_auth_user');
     }
   }
 }));

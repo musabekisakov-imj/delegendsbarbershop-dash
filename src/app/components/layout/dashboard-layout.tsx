@@ -1,47 +1,51 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useNavigate } from 'react-router';
+import { Outlet, useNavigate, useLocation } from 'react-router';
 import { useAuthStore } from '../../store/auth-store';
-import { Sidebar } from './sidebar';
-import { Topbar } from './topbar';
-import { MobileNav } from './mobile-nav';
+import { Header } from './header';
+import { useKeyboardShortcuts } from '../../hooks/use-keyboard-shortcuts';
+import { ShortcutsSheet } from '../shared/shortcuts-sheet';
 
+/**
+ * Client review, item 1: "No sidebar but changed to header bar"
+ * Client review, item 2: "Only one side scroll"
+ *
+ * This layout is deliberately minimal:
+ *   - A sticky <Header> with brand + utilities + nav all in one bar
+ *   - A single <main> that is the page-scroll container — no nested overflow
+ *   - The document body itself is *not* scroll-locked, so the browser's own
+ *     scrollbar is the only scroll in view (one scroll, not two)
+ */
 export function DashboardLayout() {
   const navigate = useNavigate();
-  const { isAuthenticated, initialize } = useAuthStore();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const location = useLocation();
+  // Auth is hydrated once in main.tsx before React mounts — no effect here.
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  useKeyboardShortcuts({ onShowHelp: () => setShortcutsOpen(true) });
 
   useEffect(() => {
-    initialize();
-  }, [initialize]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login');
-    }
+    if (!isAuthenticated) navigate('/login');
   }, [isAuthenticated, navigate]);
 
-  if (!isAuthenticated) {
-    return null;
-  }
+  if (!isAuthenticated) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      {/* Desktop Sidebar */}
-      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
-      
-      {/* Main Content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-        
-        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
-          <div className="px-4 py-6 md:px-6 lg:px-8">
-            <Outlet />
-          </div>
-        </main>
-      </div>
-      
-      {/* Mobile Bottom Navigation */}
-      <MobileNav />
+    <div className="min-h-screen bg-background">
+      <Header />
+
+      {/* Single scroll container — the page itself scrolls.
+          No max-width cap here: dashboards (calendar, bookings grid, analytics)
+          benefit from full viewport width. Reading-heavy pages can self-cap
+          with an inner `max-w-*` if they want to. `key={pathname}` re-mounts
+          the subtree on route change so the page-enter fade animation fires. */}
+      <main>
+        <div key={location.pathname} className="page-enter px-4 py-6 md:px-6 lg:px-8">
+          <Outlet />
+        </div>
+      </main>
+
+      <ShortcutsSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 }

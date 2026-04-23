@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { PageHeader } from '../components/shared/page-header';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion';
-import { EnvelopeIcon, PhoneIcon } from '@heroicons/react/24/outline';
+import { Input } from '../components/ui/input';
+import { EnvelopeIcon, PhoneIcon, MagnifyingGlassIcon, CalendarIcon, UserGroupIcon, Cog6ToothIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
 
 const faqData = {
   appointments: [
@@ -60,94 +62,186 @@ const faqData = {
 };
 
 export function HelpPage() {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Flatten all FAQs for searching
+  const allFAQs = [
+    ...faqData.appointments.map(faq => ({ ...faq, category: 'Appointments', icon: CalendarIcon })),
+    ...faqData.clients.map(faq => ({ ...faq, category: 'Clients', icon: UserGroupIcon })),
+    ...faqData.settings.map(faq => ({ ...faq, category: 'Settings & Configuration', icon: Cog6ToothIcon })),
+  ];
+
+  const filteredFAQs = searchQuery
+    ? allFAQs.filter(faq =>
+        faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        faq.answer.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : null;
+
   return (
-    <div className="space-y-6">
+    // Refactoring UI: FAQ copy stays readable only at ~45-75 chars per line.
+    // max-w-5xl caps the line length while still feeling roomy.
+    <div className="space-y-6 max-w-5xl">
       <PageHeader
+        size="subtle"
         title="Help & Support"
         description="Frequently asked questions and support information"
       />
 
-      {/* FAQ Sections */}
-      <div className="space-y-6">
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <h3 className="mb-4 text-lg font-semibold text-gray-900">Appointments</h3>
-          <Accordion type="single" collapsible className="w-full">
-            {faqData.appointments.map((faq, index) => (
-              <AccordionItem key={index} value={`appointments-${index}`}>
-                <AccordionTrigger className="text-left">{faq.question}</AccordionTrigger>
-                <AccordionContent className="text-gray-600">
-                  {faq.answer}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
-
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <h3 className="mb-4 text-lg font-semibold text-gray-900">Clients</h3>
-          <Accordion type="single" collapsible className="w-full">
-            {faqData.clients.map((faq, index) => (
-              <AccordionItem key={index} value={`clients-${index}`}>
-                <AccordionTrigger className="text-left">{faq.question}</AccordionTrigger>
-                <AccordionContent className="text-gray-600">
-                  {faq.answer}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
-
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <h3 className="mb-4 text-lg font-semibold text-gray-900">Settings & Configuration</h3>
-          <Accordion type="single" collapsible className="w-full">
-            {faqData.settings.map((faq, index) => (
-              <AccordionItem key={index} value={`settings-${index}`}>
-                <AccordionTrigger className="text-left">{faq.question}</AccordionTrigger>
-                <AccordionContent className="text-gray-600">
-                  {faq.answer}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
+      {/* Search */}
+      <div className="relative">
+        <MagnifyingGlassIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="text"
+          placeholder="Search help articles..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-12 h-12 bg-card border-border focus:border-blue-400 dark:border-blue-700/70 focus:ring-blue-400"
+        />
       </div>
 
+      {/* Search Results or FAQ Sections */}
+      {filteredFAQs ? (
+        <div className="space-y-3">
+          {filteredFAQs.length === 0 ? (
+            <div className="rounded-xl border-2 border-dashed border-border bg-muted/40 p-12 text-center">
+              <QuestionMarkCircleIcon className="mx-auto h-12 w-12 text-muted-foreground/50 mb-3" />
+              <h3 className="font-semibold text-foreground mb-2">No results found</h3>
+              <p className="text-sm text-muted-foreground">Try a different search term</p>
+            </div>
+          ) : (
+            filteredFAQs.map((faq, index) => {
+              const Icon = faq.icon;
+              return (
+                <div key={index} className="rounded-xl border border-border bg-card p-5 hover:shadow-md transition-shadow">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted flex-shrink-0">
+                      <Icon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-1 rounded">
+                          {faq.category}
+                        </span>
+                      </div>
+                      <h4 className="font-semibold text-foreground mb-2">{faq.question}</h4>
+                      <p className="text-sm text-muted-foreground">{faq.answer}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Appointments Section */}
+          <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+                <CalendarIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <h3 className="text-base font-bold text-foreground">Appointments</h3>
+            </div>
+            <Accordion type="single" collapsible className="w-full">
+              {faqData.appointments.map((faq, index) => (
+                <AccordionItem key={index} value={`appointments-${index}`} className="border-border">
+                  <AccordionTrigger className="text-left hover:no-underline py-4">
+                    <span className="font-medium text-foreground">{faq.question}</span>
+                  </AccordionTrigger>
+                  <AccordionContent className="text-muted-foreground pb-4">
+                    {faq.answer}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+
+          {/* Clients Section */}
+          <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10">
+                <UserGroupIcon className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+              </div>
+              <h3 className="text-base font-bold text-foreground">Clients</h3>
+            </div>
+            <Accordion type="single" collapsible className="w-full">
+              {faqData.clients.map((faq, index) => (
+                <AccordionItem key={index} value={`clients-${index}`} className="border-border">
+                  <AccordionTrigger className="text-left hover:no-underline py-4">
+                    <span className="font-medium text-foreground">{faq.question}</span>
+                  </AccordionTrigger>
+                  <AccordionContent className="text-muted-foreground pb-4">
+                    {faq.answer}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+
+          {/* Settings Section */}
+          <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                <Cog6ToothIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <h3 className="text-base font-bold text-foreground">Settings & Configuration</h3>
+            </div>
+            <Accordion type="single" collapsible className="w-full">
+              {faqData.settings.map((faq, index) => (
+                <AccordionItem key={index} value={`settings-${index}`} className="border-border">
+                  <AccordionTrigger className="text-left hover:no-underline py-4">
+                    <span className="font-medium text-foreground">{faq.question}</span>
+                  </AccordionTrigger>
+                  <AccordionContent className="text-muted-foreground pb-4">
+                    {faq.answer}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+        </div>
+      )}
+
       {/* Contact Support */}
-      <div className="rounded-xl border border-blue-200 bg-blue-50 p-6">
-        <h3 className="mb-4 text-lg font-semibold text-blue-900">Need More Help?</h3>
-        <p className="mb-4 text-sm text-blue-800">
+      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+        <div className="h-1 bookings-accent-stripe" aria-hidden />
+        <div className="p-6">
+        <h3 className="text-base font-bold text-foreground mb-1">Need more help?</h3>
+        <p className="text-sm text-muted-foreground mb-5">
           If you couldn't find the answer you're looking for, our support team is here to help.
         </p>
-        
+
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex items-start gap-3 rounded-lg bg-white p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
-              <EnvelopeIcon className="h-5 w-5 text-blue-600" />
+          <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 flex-shrink-0">
+              <EnvelopeIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </div>
-            <div>
-              <p className="font-medium text-gray-900">Email Support</p>
-              <p className="text-sm text-gray-600">support@barberpro.com</p>
-              <p className="text-xs text-gray-500">Response within 24 hours</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">Email support</p>
+              <p className="text-sm text-muted-foreground truncate">support@barberpro.com</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Response within 24 hours</p>
             </div>
           </div>
 
-          <div className="flex items-start gap-3 rounded-lg bg-white p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
-              <PhoneIcon className="h-5 w-5 text-blue-600" />
+          <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10 flex-shrink-0">
+              <PhoneIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <div>
-              <p className="font-medium text-gray-900">Phone Support</p>
-              <p className="text-sm text-gray-600">+1 (555) 123-4567</p>
-              <p className="text-xs text-gray-500">Mon-Fri, 9am-6pm EST</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">Phone support</p>
+              <p className="text-sm text-muted-foreground tabular-nums">+1 (555) 123-4567</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Mon–Fri · 9am–6pm EST</p>
             </div>
           </div>
+        </div>
         </div>
       </div>
 
       {/* Version Info */}
-      <div className="rounded-lg bg-gray-50 p-4 text-center">
-        <p className="text-sm text-gray-600">
-          BarberPro Dashboard v2.0 — April 2026
+      <div className="rounded-xl bg-muted/40 border border-border p-5 text-center">
+        <p className="text-sm text-muted-foreground">
+          BarberPro Dashboard <span className="font-semibold">v2.0</span> — April 2026
         </p>
       </div>
     </div>

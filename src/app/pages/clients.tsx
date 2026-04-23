@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clientsApi, appointmentsApi } from '../lib/api';
+import { useOfficeStore } from '../store/office-store';
 import { PageHeader } from '../components/shared/page-header';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -8,49 +9,108 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../components/ui/sheet';
-import { MagnifyingGlassIcon, PlusIcon, UserIcon } from '@heroicons/react/24/outline';
-import { format, parseISO } from 'date-fns';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import {
+  MagnifyingGlassIcon, PlusIcon, UserIcon, CalendarIcon, ArrowsUpDownIcon,
+  ListBulletIcon, Squares2X2Icon, PencilSquareIcon, EnvelopeIcon, PhoneIcon,
+  TrashIcon, StarIcon, CurrencyEuroIcon, ClockIcon, ArrowUturnLeftIcon,
+} from '@heroicons/react/24/outline';
+import { useNavigate } from 'react-router';
+import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
+import { format, parseISO, differenceInDays } from 'date-fns';
 import { toast } from 'sonner';
-import type { Client } from '../types';
+import { cn } from '../components/ui/utils';
+import { useT } from '../hooks/use-t';
+import { CardSkeleton, TableSkeleton } from '../components/shared/page-skeleton';
+import { EmptyState } from '../components/shared/empty-state';
+import { gradientFor } from '../lib/tokens';
+import { FilterChip } from '../components/ui/filter-chip';
+import { Field, Readonly } from '../components/ui/field';
+import { ClientForm } from '../components/clients/client-form';
+import { exportCsv } from '../lib/csv';
+import { useConfirm } from '../hooks/use-confirm';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import type { ClientFormValues } from '../lib/schemas';
+import type { Client, AppointmentWithDetails } from '../types';
+
+type ViewMode = 'list' | 'grid';
+type Filter = 'all' | 'returning' | 'new' | 'vip';
+type SortKey = 'visits-desc' | 'visits-asc' | 'name-asc' | 'recent' | 'spend-desc';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  'visits-desc': 'Most visits',
+  'visits-asc': 'Fewest visits',
+  'name-asc': 'Name · A → Z',
+  'recent': 'Recently seen',
+  'spend-desc': 'Highest spend',
+};
+
+// Avatar gradients + hash function imported from tokens.ts so the same client
+// paints the same color on every page (Bookings, Clients, New booking).
+
+// Recency buckets — matches how a shop thinks about cadence
+type Recency = 'fresh' | 'warm' | 'cold' | 'new';
+const recencyOf = (lastVisitAt: string | null): Recency => {
+  if (!lastVisitAt) return 'new';
+  const days = differenceInDays(new Date(), parseISO(lastVisitAt));
+  if (days <= 14) return 'fresh';
+  if (days <= 60) return 'warm';
+  return 'cold';
+};
+
+const RECENCY_STYLE: Record<Recency, { dot: string; label: string; text: string }> = {
+  fresh: { dot: 'bg-emerald-500', label: 'Recent', text: 'text-emerald-600 dark:text-emerald-400' },
+  warm: { dot: 'bg-amber-500', label: 'A while ago', text: 'text-amber-600 dark:text-amber-400' },
+  cold: { dot: 'bg-rose-500', label: 'Overdue', text: 'text-rose-600 dark:text-rose-400' },
+  new: { dot: 'bg-blue-500', label: 'New', text: 'text-blue-600 dark:text-blue-400' },
+};
+
+const daysAgoLabel = (lastVisitAt: string | null): string => {
+  if (!lastVisitAt) return 'Never';
+  const days = differenceInDays(new Date(), parseISO(lastVisitAt));
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+};
 
 export function ClientsPage() {
   const queryClient = useQueryClient();
+  const t = useT();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [detailsTab, setDetailsTab] = useState<'overview' | 'history' | 'edit'>('overview');
   const [isEditing, setIsEditing] = useState(false);
-  
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    notes: ''
-  });
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('visits-desc');
 
-  const { data: clients = [] } = useQuery({
-    queryKey: ['clients'],
-    queryFn: () => clientsApi.getAll()
+  const officeId = useOfficeStore(s => s.currentOfficeId);
+
+  const { data: clients = [], isLoading: clientsLoading } = useQuery({
+    queryKey: ['clients', officeId],
+    queryFn: () => clientsApi.getAll(officeId),
   });
 
   const { data: appointments = [] } = useQuery({
-    queryKey: ['appointments'],
-    queryFn: () => appointmentsApi.getAllWithDetails()
+    queryKey: ['appointments', officeId],
+    queryFn: () => appointmentsApi.getAllWithDetails(officeId),
   });
+  const isLoading = clientsLoading;
 
   const createMutation = useMutation({
     mutationFn: (data: Omit<Client, 'id' | 'createdAt' | 'totalVisits' | 'lastVisitAt'>) =>
       clientsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
-      toast.success('Client created');
+      toast.success(t('toast.clientCreated'));
       setIsCreateModalOpen(false);
-      resetForm();
     },
-    onError: () => {
-      toast.error('Failed to create client');
-    }
+    onError: () => toast.error(t('toast.clientCreateError')),
   });
 
   const updateMutation = useMutation({
@@ -58,355 +118,967 @@ export function ClientsPage() {
       clientsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
-      toast.success('Client updated');
+      toast.success(t('toast.clientUpdated'));
       setIsEditing(false);
     },
-    onError: () => {
-      toast.error('Failed to update client');
-    }
+    onError: () => toast.error(t('toast.clientUpdateError')),
   });
 
-  const resetForm = () => {
-    setFormData({ firstName: '', lastName: '', email: '', phone: '', notes: '' });
+  const clientsKey = ['clients', officeId] as const;
+
+  // Optimistic delete — client disappears from list instantly, rolls back on error.
+  // Toast includes an Undo action that re-creates the client from the snapshot.
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => clientsApi.delete(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: clientsKey });
+      const previous = queryClient.getQueryData<Client[]>(clientsKey);
+      const deletedClient = previous?.find((c) => c.id === id);
+      queryClient.setQueryData(clientsKey, (old: Client[] | undefined) =>
+        (old ?? []).filter(c => c.id !== id)
+      );
+      return { previous, deletedClient };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(clientsKey, context.previous);
+      toast.error(t('toast.clientDeleteError'));
+    },
+    onSuccess: (_data, id, context) => {
+      setSelectedClientId(null);
+      toast.success(t('toast.clientDeleted'), {
+        action: context?.deletedClient
+          ? {
+              label: 'Undo',
+              // Soft delete: clients.delete set `deletedAt`; clients.restore
+              // clears it. Keeps the same id → any orphaned appointment
+              // references resolve again after undo.
+              onClick: () => {
+                clientsApi.restore(id)
+                  .then(() => queryClient.invalidateQueries({ queryKey: clientsKey }));
+              },
+            }
+          : undefined,
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: clientsKey });
+    },
+  });
+
+  const handleDelete = async (id: string, name: string) => {
+    const ok = await confirm({
+      title: `Delete ${name}?`,
+      description: 'Past appointments will remain in history. This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (ok) deleteMutation.mutate(id);
   };
 
-  const handleCreate = () => {
-    if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone) {
-      toast.error('Please fill all required fields');
-      return;
-    }
-    createMutation.mutate(formData);
+  const handleCreate = (values: ClientFormValues) => {
+    createMutation.mutate({ ...values, officeIds: [officeId] });
   };
 
-  const handleUpdate = (clientId: string) => {
-    if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone) {
-      toast.error('Please fill all required fields');
-      return;
-    }
-    updateMutation.mutate({ id: clientId, data: formData });
+  const handleUpdate = (clientId: string, values: ClientFormValues) => {
+    updateMutation.mutate({ id: clientId, data: values });
   };
 
-  const filteredClients = clients.filter(client =>
-    searchQuery === '' ||
-    client.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.phone.includes(searchQuery)
-  );
+  // Per-client spend & favorite service — computed once from completed appointments
+  const clientStats = useMemo(() => {
+    const spendMap = new Map<string, number>();
+    const serviceCountMap = new Map<string, Map<string, number>>();
+    appointments.forEach(a => {
+      if (a.status !== 'completed') return;
+      spendMap.set(a.clientId, (spendMap.get(a.clientId) ?? 0) + (a.service?.price ?? 0));
+      const byService = serviceCountMap.get(a.clientId) ?? new Map();
+      byService.set(a.service.name, (byService.get(a.service.name) ?? 0) + 1);
+      serviceCountMap.set(a.clientId, byService);
+    });
+
+    const favorite = (clientId: string): string | undefined => {
+      const byService = serviceCountMap.get(clientId);
+      if (!byService) return;
+      let best: string | undefined;
+      let bestN = 0;
+      byService.forEach((n, name) => { if (n > bestN) { bestN = n; best = name; } });
+      return best;
+    };
+
+    return {
+      spend: (id: string) => spendMap.get(id) ?? 0,
+      favorite,
+    };
+  }, [appointments]);
+
+  // VIP threshold: top 20% by spend among clients with any spend
+  const vipSet = useMemo(() => {
+    const spends = clients.map(c => clientStats.spend(c.id)).filter(s => s > 0).sort((a, b) => b - a);
+    if (spends.length === 0) return new Set<string>();
+    const cutoffIdx = Math.max(0, Math.floor(spends.length * 0.2) - 1);
+    const cutoff = spends[cutoffIdx] ?? 0;
+    if (cutoff <= 0) return new Set<string>();
+    return new Set(clients.filter(c => clientStats.spend(c.id) >= cutoff).map(c => c.id));
+  }, [clients, clientStats]);
+
+  const returningCount = clients.filter(c => (c.totalVisits ?? 0) > 0).length;
+  const newCount = clients.length - returningCount;
+  const vipCount = vipSet.size;
+
+  const filteredSorted = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = clients.filter(c => {
+      if (filter === 'returning' && (c.totalVisits ?? 0) === 0) return false;
+      if (filter === 'new' && (c.totalVisits ?? 0) > 0) return false;
+      if (filter === 'vip' && !vipSet.has(c.id)) return false;
+      if (!q) return true;
+      return (
+        c.firstName.toLowerCase().includes(q) ||
+        c.lastName.toLowerCase().includes(q) ||
+        c.email.toLowerCase().includes(q) ||
+        c.phone.includes(searchQuery)
+      );
+    });
+
+    return [...filtered].sort((a, b) => {
+      switch (sortKey) {
+        case 'visits-desc': return (b.totalVisits ?? 0) - (a.totalVisits ?? 0);
+        case 'visits-asc': return (a.totalVisits ?? 0) - (b.totalVisits ?? 0);
+        case 'name-asc': return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+        case 'recent': {
+          const at = a.lastVisitAt ? parseISO(a.lastVisitAt).getTime() : 0;
+          const bt = b.lastVisitAt ? parseISO(b.lastVisitAt).getTime() : 0;
+          return bt - at;
+        }
+        case 'spend-desc': return clientStats.spend(b.id) - clientStats.spend(a.id);
+      }
+    });
+  }, [clients, searchQuery, filter, sortKey, vipSet, clientStats]);
 
   const selectedClient = clients.find(c => c.id === selectedClientId);
   const clientAppointments = selectedClient
-    ? appointments.filter(apt => apt.clientId === selectedClient.id)
+    ? appointments
+        .filter(apt => apt.clientId === selectedClient.id)
         .sort((a, b) => parseISO(b.startTime).getTime() - parseISO(a.startTime).getTime())
     : [];
 
   const openClientDetail = (client: Client) => {
     setSelectedClientId(client.id);
-    setFormData({
-      firstName: client.firstName,
-      lastName: client.lastName,
-      email: client.email,
-      phone: client.phone,
-      notes: client.notes
-    });
     setIsEditing(false);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="Clients"
         description="Manage your client database"
         action={
-          <Button onClick={() => setIsCreateModalOpen(true)}>
-            <PlusIcon className="mr-2 h-4 w-4" />
-            Add Client
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportCsv(`clients-${format(new Date(), 'yyyy-MM-dd')}`, filteredSorted, [
+                { key: 'firstName', header: 'First name' },
+                { key: 'lastName', header: 'Last name' },
+                { key: 'email', header: 'Email' },
+                { key: 'phone', header: 'Phone' },
+                { key: (c) => c.totalVisits ?? 0, header: 'Total visits' },
+                { key: (c) => c.lastVisitAt ? format(parseISO(c.lastVisitAt), 'yyyy-MM-dd') : '', header: 'Last visit' },
+                { key: (c) => clientStats.spend(c.id), header: 'Lifetime spend' },
+                { key: 'notes', header: 'Notes' },
+              ])}
+              disabled={filteredSorted.length === 0}
+            >
+              <ArrowDownTrayIcon className="mr-1.5 h-4 w-4" />
+              Export CSV
+            </Button>
+            <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
+              <PlusIcon className="mr-1.5 h-4 w-4" />
+              Add Client
+            </Button>
+          </div>
         }
       />
 
-      {/* Search */}
-      <div className="relative">
-        <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-        <Input
-          type="text"
-          placeholder="Search clients by name, email, or phone..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
-      </div>
-
-      {/* Clients Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filteredClients.length === 0 ? (
-          <div className="col-span-full rounded-xl border border-gray-200 bg-white p-12 text-center">
-            <p className="text-sm text-gray-500">No clients found</p>
-          </div>
-        ) : (
-          filteredClients.map(client => (
-            <button
-              key={client.id}
-              onClick={() => openClientDetail(client)}
-              className="flex items-start gap-4 rounded-xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-blue-300 hover:bg-blue-50"
-            >
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-medium text-blue-700">
-                {client.firstName[0]}{client.lastName[0]}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900">
-                  {client.firstName} {client.lastName}
-                </p>
-                <p className="text-sm text-gray-600">{client.email}</p>
-                <p className="text-sm text-gray-600">{client.phone}</p>
-                <p className="mt-2 text-xs text-gray-500">
-                  {client.totalVisits} visits
-                  {client.lastVisitAt && ` • Last: ${format(parseISO(client.lastVisitAt), 'MMM dd')}`}
-                </p>
-              </div>
-            </button>
-          ))
+      {/* Filter chips */}
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
+          All
+          <span className="ml-1.5 text-xs opacity-70 tabular-nums">{clients.length}</span>
+        </FilterChip>
+        <FilterChip active={filter === 'returning'} onClick={() => setFilter('returning')}>
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          Returning
+          <span className="ml-1.5 text-xs opacity-70 tabular-nums">{returningCount}</span>
+        </FilterChip>
+        <FilterChip active={filter === 'new'} onClick={() => setFilter('new')}>
+          <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+          New
+          <span className="ml-1.5 text-xs opacity-70 tabular-nums">{newCount}</span>
+        </FilterChip>
+        {vipCount > 0 && (
+          <FilterChip active={filter === 'vip'} onClick={() => setFilter('vip')}>
+            <StarIconSolid className="h-3 w-3 text-amber-400" />
+            VIP
+            <span className="ml-1.5 text-xs opacity-70 tabular-nums">{vipCount}</span>
+          </FilterChip>
         )}
       </div>
 
-      {/* Client Detail Sheet */}
-      <Sheet open={selectedClientId !== null} onOpenChange={() => setSelectedClientId(null)}>
-        <SheetContent className="w-full sm:max-w-lg">
-          {selectedClient && (
-            <>
-              <SheetHeader>
-                <SheetTitle>Client Details</SheetTitle>
-              </SheetHeader>
+      {/* Search + sort + view mode */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search by name, email, or phone…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-9 h-10"
+          />
+        </div>
 
-              <Tabs defaultValue="overview" className="mt-6">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="history">History</TabsTrigger>
-                  <TabsTrigger value="preferences">Preferences</TabsTrigger>
-                </TabsList>
+        <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+          <SelectTrigger className="sm:w-52 h-10">
+            <ArrowsUpDownIcon className="h-4 w-4 text-muted-foreground mr-1.5" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
+              <SelectItem key={k} value={k}>{SORT_LABELS[k]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-                <TabsContent value="overview" className="space-y-4">
-                  <div className="flex items-center gap-4 rounded-lg bg-gray-50 p-4">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-lg font-medium text-blue-700">
-                      {selectedClient.firstName[0]}{selectedClient.lastName[0]}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">
-                        {selectedClient.firstName} {selectedClient.lastName}
-                      </h3>
-                      <p className="text-sm text-gray-600">{selectedClient.email}</p>
-                      <p className="text-sm text-gray-600">{selectedClient.phone}</p>
-                    </div>
-                  </div>
+        <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5 shrink-0">
+          <button
+            onClick={() => setViewMode('list')}
+            aria-pressed={viewMode === 'list'}
+            aria-label="List view"
+            className={cn(
+              'inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+              viewMode === 'list' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <ListBulletIcon className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setViewMode('grid')}
+            aria-pressed={viewMode === 'grid'}
+            aria-label="Grid view"
+            className={cn(
+              'inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+              viewMode === 'grid' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Squares2X2Icon className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="rounded-lg border border-gray-200 p-4">
-                      <p className="text-sm text-gray-600">Total Visits</p>
-                      <p className="mt-1 text-2xl font-bold text-gray-900">{selectedClient.totalVisits}</p>
+      {/* Loading skeleton */}
+      {isLoading ? (
+        viewMode === 'list' ? (
+          <TableSkeleton rows={6} />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => <CardSkeleton key={i} />)}
+          </div>
+        )
+      ) : filteredSorted.length === 0 ? (
+        <EmptyState
+          icon={UserIcon}
+          variant={searchQuery || filter !== 'all' ? 'plain' : 'dashed'}
+          title="No clients found"
+          description={
+            searchQuery
+              ? 'Try a different search term.'
+              : filter !== 'all'
+                ? 'Try switching filter.'
+                : 'Add your first client to get started.'
+          }
+          action={
+            !searchQuery && filter === 'all' ? (
+              <Button onClick={() => setIsCreateModalOpen(true)}>
+                <PlusIcon className="mr-2 h-4 w-4" />
+                Add Client
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : viewMode === 'list' ? (
+        /* ─── LIST VIEW ─────────────────────────────────────
+            Row grid: identity (1.2fr) | contact (1.3fr) | visits (auto) |
+            spend (auto) | last-seen (auto) | hover-actions (auto).
+            Sticky header, hairline dividers, hover-reveal actions. */
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          {/* Header */}
+          <div
+            className={cn(
+              'grid gap-4 border-b border-border bg-muted/40 px-5 py-2.5',
+              'grid-cols-[minmax(0,1.2fr)_1fr_3.5rem_5rem] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.3fr)_4rem_6rem_6rem] lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_4rem_6rem_6rem_3rem]',
+            )}
+          >
+            <ColHeader>Client</ColHeader>
+            <ColHeader className="hidden md:block">Contact</ColHeader>
+            <ColHeader className="text-right">Visits</ColHeader>
+            <ColHeader className="text-right hidden sm:block">Spend</ColHeader>
+            <ColHeader className="hidden md:block">Last seen</ColHeader>
+            <span className="hidden lg:block" />
+          </div>
+
+          {/* Rows */}
+          <ul className="divide-y divide-border">
+            {filteredSorted.map(client => {
+              const grad = gradientFor(client.id);
+              const recency = recencyOf(client.lastVisitAt);
+              const rStyle = RECENCY_STYLE[recency];
+              const spend = clientStats.spend(client.id);
+              const isVip = vipSet.has(client.id);
+
+              return (
+                <li
+                  key={client.id}
+                  onClick={() => openClientDetail(client)}
+                  className={cn(
+                    'group relative cursor-pointer px-5 py-3 transition-colors',
+                    'grid items-center gap-4',
+                    'grid-cols-[minmax(0,1.2fr)_1fr_3.5rem_5rem] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.3fr)_4rem_6rem_6rem] lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_4rem_6rem_6rem_3rem]',
+                    'hover:bg-muted/40 focus-within:bg-muted/40',
+                  )}
+                >
+                  {/* Identity: avatar + name + chip stack */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={cn(
+                      'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-xs font-bold text-white',
+                      grad,
+                    )}>
+                      {client.firstName[0]}{client.lastName[0]}
+                      {isVip && (
+                        <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-card">
+                          <StarIconSolid className="h-2.5 w-2.5" />
+                        </span>
+                      )}
                     </div>
-                    <div className="rounded-lg border border-gray-200 p-4">
-                      <p className="text-sm text-gray-600">Last Visit</p>
-                      <p className="mt-1 text-sm font-medium text-gray-900">
-                        {selectedClient.lastVisitAt
-                          ? format(parseISO(selectedClient.lastVisitAt), 'MMM dd, yyyy')
-                          : 'Never'}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className="font-semibold text-foreground truncate">
+                          {client.firstName} {client.lastName}
+                        </p>
+                        {client.gender && <GenderDot gender={client.gender} />}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate md:hidden tabular-nums mt-0.5">
+                        {client.phone}
                       </p>
                     </div>
                   </div>
 
-                  {selectedClient.notes && (
-                    <div className="rounded-lg bg-yellow-50 p-4">
-                      <p className="text-sm font-medium text-yellow-900">Notes</p>
-                      <p className="mt-1 text-sm text-yellow-800">{selectedClient.notes}</p>
+                  {/* Contact */}
+                  <div className="hidden md:block min-w-0">
+                    <p className="flex items-center gap-1.5 text-sm text-foreground truncate">
+                      <EnvelopeIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{client.email}</span>
+                    </p>
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums mt-0.5">
+                      <PhoneIcon className="h-3 w-3 shrink-0" />
+                      {client.phone}
+                    </p>
+                  </div>
+
+                  {/* Visits */}
+                  <div className="text-right font-semibold text-foreground tabular-nums">
+                    {client.totalVisits ?? 0}
+                  </div>
+
+                  {/* Spend */}
+                  <div className="hidden sm:block text-right font-medium tabular-nums whitespace-nowrap">
+                    {spend > 0 ? (
+                      <span className="text-foreground">€{spend.toLocaleString()}</span>
+                    ) : (
+                      <span className="text-muted-foreground/60">—</span>
+                    )}
+                  </div>
+
+                  {/* Last seen */}
+                  <div className="hidden md:flex items-center gap-1.5 text-xs whitespace-nowrap">
+                    <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', rStyle.dot)} />
+                    <span className="text-muted-foreground tabular-nums">{daysAgoLabel(client.lastVisitAt)}</span>
+                  </div>
+
+                  {/* Hover actions */}
+                  <div className="hidden lg:flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <IconAction
+                      label="Book"
+                      onClick={e => { e.stopPropagation(); navigate(`/bookings/new?clientId=${client.id}`); }}
+                    >
+                      <CalendarIcon className="h-4 w-4" />
+                    </IconAction>
+                    <IconAction
+                      label="Delete"
+                      danger
+                      onClick={e => { e.stopPropagation(); handleDelete(client.id, `${client.firstName} ${client.lastName}`); }}
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </IconAction>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : (
+        /* ─── GRID VIEW ───────────────────────────────────── */
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+          {filteredSorted.map(client => (
+            <ClientCard
+              key={client.id}
+              client={client}
+              spend={clientStats.spend(client.id)}
+              isVip={vipSet.has(client.id)}
+              onClick={() => openClientDetail(client)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Client detail — centered modal (was side sheet before client review). */}
+      <Dialog
+        open={selectedClientId !== null}
+        onOpenChange={(open) => { if (!open) { setSelectedClientId(null); setDetailsTab('overview'); } }}
+      >
+        <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-y-auto p-0">
+          {selectedClient && (() => {
+            const recency = recencyOf(selectedClient.lastVisitAt);
+            const rStyle = RECENCY_STYLE[recency];
+            const spend = clientStats.spend(selectedClient.id);
+            const favorite = clientStats.favorite(selectedClient.id);
+            const isVip = vipSet.has(selectedClient.id);
+            const historyCount = clientAppointments.length;
+            const recentVisits = clientAppointments.slice(0, 3);
+            const bookForClient = () => {
+              setSelectedClientId(null);
+              setDetailsTab('overview');
+              navigate(`/bookings/new?clientId=${selectedClient.id}`);
+            };
+
+            return (
+              <>
+                {/* ─── Identity header ─────────────────────────────────
+                    Full-width bar with larger avatar (h-20) and prominent
+                    name. Quick actions align right on wider viewport so
+                    the header reads as one horizontal rhythm. */}
+                <DialogHeader className="px-7 pt-7 pb-5 space-y-0 border-b border-border">
+                  <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className={cn(
+                        'relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-2xl font-bold text-white shadow-sm',
+                        gradientFor(selectedClient.id),
+                      )}>
+                        {selectedClient.firstName[0]}{selectedClient.lastName[0]}
+                        {isVip && (
+                          <span className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-card">
+                            <StarIconSolid className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <DialogTitle className="text-2xl font-bold text-foreground truncate leading-tight">
+                          {selectedClient.firstName} {selectedClient.lastName}
+                        </DialogTitle>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span className={cn(
+                            'inline-flex items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-medium',
+                            rStyle.text,
+                          )}>
+                            <span className={cn('h-1.5 w-1.5 rounded-full', rStyle.dot)} />
+                            {rStyle.label}
+                          </span>
+                          {selectedClient.gender && <GenderChip gender={selectedClient.gender} />}
+                          <span className="text-[11px] text-muted-foreground">
+                            {daysAgoLabel(selectedClient.lastVisitAt)}
+                          </span>
+                          {isVip && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                              <StarIconSolid className="h-2.5 w-2.5" />
+                              VIP
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </TabsContent>
 
-                <TabsContent value="history" className="space-y-3">
-                  {clientAppointments.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-gray-500">No appointment history</p>
-                  ) : (
-                    clientAppointments.map(apt => (
-                      <div key={apt.id} className="rounded-lg border border-gray-200 p-4">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="font-medium text-gray-900">{apt.service.name}</p>
-                            <p className="text-sm text-gray-600">
-                              {format(parseISO(apt.startTime), 'MMM dd, yyyy HH:mm')}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              with {apt.staff.firstName} {apt.staff.lastName}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-medium text-gray-900">${apt.service.price}</p>
-                            <p className="text-xs capitalize text-gray-500">{apt.status}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </TabsContent>
-
-                <TabsContent value="preferences" className="space-y-4">
-                  {isEditing ? (
-                    <>
-                      <div className="space-y-4">
-                        <div>
-                          <Label>First Name *</Label>
-                          <Input
-                            value={formData.firstName}
-                            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                            className="mt-1"
-                          />
-                        </div>
-                        <div>
-                          <Label>Last Name *</Label>
-                          <Input
-                            value={formData.lastName}
-                            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                            className="mt-1"
-                          />
-                        </div>
-                        <div>
-                          <Label>Email *</Label>
-                          <Input
-                            type="email"
-                            value={formData.email}
-                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                            className="mt-1"
-                          />
-                        </div>
-                        <div>
-                          <Label>Phone *</Label>
-                          <Input
-                            value={formData.phone}
-                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                            className="mt-1"
-                          />
-                        </div>
-                        <div>
-                          <Label>Notes</Label>
-                          <Textarea
-                            value={formData.notes}
-                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                            className="mt-1"
-                            rows={4}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button onClick={() => handleUpdate(selectedClient.id)} className="flex-1">
-                          Save Changes
-                        </Button>
-                        <Button variant="outline" onClick={() => setIsEditing(false)}>
-                          Cancel
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-sm font-medium text-gray-600">First Name</p>
-                          <p className="text-sm text-gray-900">{selectedClient.firstName}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-600">Last Name</p>
-                          <p className="text-sm text-gray-900">{selectedClient.lastName}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-600">Email</p>
-                          <p className="text-sm text-gray-900">{selectedClient.email}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-600">Phone</p>
-                          <p className="text-sm text-gray-900">{selectedClient.phone}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-600">Notes</p>
-                          <p className="text-sm text-gray-900">{selectedClient.notes || 'No notes'}</p>
-                        </div>
-                      </div>
-                      <Button onClick={() => setIsEditing(true)} className="w-full">
-                        Edit Client
+                    {/* Quick actions */}
+                    <div className="flex shrink-0 gap-2">
+                      <Button size="sm" onClick={bookForClient} className="gap-1.5">
+                        <CalendarIcon className="h-4 w-4" />
+                        Book
                       </Button>
-                    </>
-                  )}
-                </TabsContent>
-              </Tabs>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+                      <Button asChild size="sm" variant="outline" className="gap-1.5">
+                        <a href={`tel:${selectedClient.phone}`}>
+                          <PhoneIcon className="h-4 w-4" />
+                          Call
+                        </a>
+                      </Button>
+                      <Button asChild size="sm" variant="outline" className="gap-1.5">
+                        <a href={`mailto:${selectedClient.email}`}>
+                          <EnvelopeIcon className="h-4 w-4" />
+                          Email
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                </DialogHeader>
 
-      {/* Create Client Modal */}
+                {/* Full-width stat band — sits between header and tabs.
+                    Icon + label + value reads across in a single row. */}
+                <div className="grid grid-cols-3 border-b border-border bg-muted/30">
+                  <IconStat
+                    icon={CalendarIcon}
+                    label="Visits"
+                    value={String(selectedClient.totalVisits ?? 0)}
+                  />
+                  <div className="relative">
+                    <IconStat
+                      icon={CurrencyEuroIcon}
+                      label="Spend"
+                      value={spend > 0 ? `€${spend.toLocaleString()}` : '—'}
+                    />
+                    <div className="absolute inset-y-3 left-0 w-px bg-border" aria-hidden />
+                    <div className="absolute inset-y-3 right-0 w-px bg-border" aria-hidden />
+                  </div>
+                  <IconStat
+                    icon={ClockIcon}
+                    label="Last visit"
+                    value={daysAgoLabel(selectedClient.lastVisitAt)}
+                  />
+                </div>
+
+                <Tabs value={detailsTab} onValueChange={(v) => setDetailsTab(v as typeof detailsTab)} className="px-7 py-6">
+                  <TabsList className="grid w-full grid-cols-3 max-w-sm">
+                    <TabsTrigger value="overview">Overview</TabsTrigger>
+                    <TabsTrigger value="history" className="gap-1.5">
+                      History
+                      {historyCount > 0 && (
+                        <span className="rounded-full bg-muted px-1.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                          {historyCount}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="edit">Edit</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="overview" className="mt-6">
+                    <div className="grid gap-8 md:grid-cols-5">
+                      {/* Left — contact + favorite + notes */}
+                      <div className="md:col-span-2 space-y-5">
+                        <Section label="Contact">
+                          <a
+                            href={`mailto:${selectedClient.email}`}
+                            className="flex items-center gap-2 text-sm text-foreground hover:text-primary transition-colors"
+                          >
+                            <EnvelopeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="truncate">{selectedClient.email}</span>
+                          </a>
+                          <a
+                            href={`tel:${selectedClient.phone}`}
+                            className="mt-1.5 flex items-center gap-2 text-sm text-foreground hover:text-primary transition-colors tabular-nums"
+                          >
+                            <PhoneIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                            {selectedClient.phone}
+                          </a>
+                        </Section>
+
+                        {favorite && (
+                          <Section label="Favorite service" accent>
+                            <p className="text-sm font-medium text-foreground">{favorite}</p>
+                          </Section>
+                        )}
+
+                        {selectedClient.notes && (
+                          <Section label="Notes">
+                            <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">
+                              {selectedClient.notes}
+                            </p>
+                          </Section>
+                        )}
+                      </div>
+
+                      {/* Right — recent visits preview */}
+                      <div className="md:col-span-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Recent visits
+                          </p>
+                          {historyCount > 3 && (
+                            <button
+                              type="button"
+                              onClick={() => setDetailsTab('history')}
+                              className="text-xs font-medium text-primary hover:underline"
+                            >
+                              View all ({historyCount})
+                            </button>
+                          )}
+                        </div>
+
+                        {recentVisits.length === 0 ? (
+                          <div className="mt-3 rounded-lg border border-dashed border-border py-8 text-center">
+                            <CalendarIcon className="mx-auto h-8 w-8 text-muted-foreground/40" />
+                            <p className="mt-2 text-xs text-muted-foreground">No appointments yet</p>
+                          </div>
+                        ) : (
+                          <ul className="mt-3 divide-y divide-border rounded-lg border border-border bg-card">
+                            {recentVisits.map(apt => (
+                              <li key={apt.id} className="flex items-center gap-3 p-3">
+                                <div className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-md bg-muted/50 text-center leading-none">
+                                  <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                    {format(parseISO(apt.startTime), 'MMM')}
+                                  </span>
+                                  <span className="text-sm font-bold tabular-nums text-foreground">
+                                    {format(parseISO(apt.startTime), 'd')}
+                                  </span>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium text-foreground truncate">
+                                    {apt.service.name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    with {apt.staff.firstName} {apt.staff.lastName}
+                                  </p>
+                                </div>
+                                <span className="text-sm font-semibold tabular-nums text-foreground shrink-0">
+                                  €{apt.service.price}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="history" className="mt-6">
+                    <ClientHistory appointments={clientAppointments} />
+                  </TabsContent>
+
+                  <TabsContent value="edit" className="mt-6 space-y-4">
+                    {isEditing ? (
+                      <ClientForm
+                        defaultValues={{
+                          firstName: selectedClient.firstName,
+                          lastName: selectedClient.lastName,
+                          email: selectedClient.email,
+                          phone: selectedClient.phone,
+                          gender: selectedClient.gender,
+                          notes: selectedClient.notes,
+                        }}
+                        onSubmit={(values) => handleUpdate(selectedClient.id, values)}
+                        onCancel={() => setIsEditing(false)}
+                        submitLabel="Save changes"
+                        isSubmitting={updateMutation.isPending}
+                      />
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          <Readonly label="First name">{selectedClient.firstName}</Readonly>
+                          <Readonly label="Last name">{selectedClient.lastName}</Readonly>
+                          <Readonly label="Email">{selectedClient.email}</Readonly>
+                          <Readonly label="Phone">{selectedClient.phone}</Readonly>
+                          <Readonly label="Gender">
+                            {selectedClient.gender ? GENDER_STYLE[selectedClient.gender].label : 'Not set'}
+                          </Readonly>
+                          <Readonly label="Notes">{selectedClient.notes || 'No notes'}</Readonly>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button onClick={() => setIsEditing(true)} className="flex-1">
+                            <PencilSquareIcon className="mr-1.5 h-4 w-4" />
+                            Edit client
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            onClick={() => handleDelete(selectedClient.id, `${selectedClient.firstName} ${selectedClient.lastName}`)}
+                            disabled={deleteMutation.isPending}
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create modal — uses react-hook-form + zod via ClientForm */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add New Client</DialogTitle>
+            <DialogTitle>Add new client</DialogTitle>
           </DialogHeader>
-          
-          <div className="space-y-4">
-            <div>
-              <Label>First Name *</Label>
-              <Input
-                value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                placeholder="John"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Last Name *</Label>
-              <Input
-                value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                placeholder="Doe"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Email *</Label>
-              <Input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="john@example.com"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Phone *</Label>
-              <Input
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="+1 (555) 123-4567"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Notes</Label>
-              <Textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Any preferences or notes..."
-                className="mt-1"
-                rows={3}
-              />
-            </div>
-
-            <div className="flex gap-2 pt-4">
-              <Button onClick={handleCreate} className="flex-1">
-                Create Client
-              </Button>
-              <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
+          <ClientForm
+            onSubmit={handleCreate}
+            onCancel={() => setIsCreateModalOpen(false)}
+            submitLabel="Create client"
+            isSubmitting={createMutation.isPending}
+          />
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+
+// ─── ClientCard (grid view) ──────────────────────────────────
+function ClientCard({
+  client, spend, isVip, onClick,
+}: {
+  client: Client;
+  spend: number;
+  isVip: boolean;
+  onClick: () => void;
+}) {
+  const grad = gradientFor(client.id);
+  const recency = recencyOf(client.lastVisitAt);
+  const rStyle = RECENCY_STYLE[recency];
+
+  return (
+    <button
+      onClick={onClick}
+      className="group relative rounded-xl border border-border bg-card overflow-hidden text-left transition-all hover:shadow-lg hover:border-foreground/20 hover:-translate-y-0.5"
+    >
+      {/* Gradient band at top */}
+      <div className={cn('h-12 bg-gradient-to-br', grad)} />
+
+      {/* Avatar overlapping band */}
+      <div className="px-4 -mt-6">
+        <div className={cn('relative inline-flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white ring-4 ring-card', grad)}>
+          {client.firstName[0]}{client.lastName[0]}
+          {isVip && (
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-card">
+              <StarIconSolid className="h-2.5 w-2.5" />
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="px-4 pb-4 pt-2">
+        <p className="font-semibold text-foreground text-sm truncate">
+          {client.firstName} {client.lastName}
+        </p>
+        <p className="text-xs text-muted-foreground truncate tabular-nums">{client.phone}</p>
+
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
+          <div className="flex items-center gap-3 min-w-0 text-xs">
+            <span className="text-foreground font-semibold tabular-nums">{client.totalVisits ?? 0}</span>
+            <span className="text-muted-foreground">visits</span>
+            {spend > 0 && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="text-foreground font-semibold tabular-nums">€{spend.toLocaleString()}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-2 flex items-center gap-1.5 text-[11px]">
+          <span className={cn('h-1.5 w-1.5 rounded-full', rStyle.dot)} />
+          <span className={cn('font-medium', rStyle.text)}>{rStyle.label}</span>
+          <span className="text-muted-foreground ml-auto tabular-nums">{daysAgoLabel(client.lastVisitAt)}</span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ─── ClientHistory (sheet tab) ───────────────────────────────
+function ClientHistory({ appointments }: { appointments: AppointmentWithDetails[] }) {
+  const navigate = useNavigate();
+
+  if (appointments.length === 0) {
+    return (
+      <div className="py-12 text-center">
+        <CalendarIcon className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
+        <p className="text-sm text-muted-foreground">No appointment history</p>
+      </div>
+    );
+  }
+
+  const rebook = (apt: AppointmentWithDetails) => {
+    const params = new URLSearchParams({
+      clientId: apt.clientId,
+      serviceId: apt.serviceId,
+      staffId: apt.staffId,
+    });
+    navigate(`/bookings/new?${params.toString()}`);
+  };
+
+  return (
+    <div className="space-y-2 mt-2">
+      {appointments.map(apt => (
+        <div key={apt.id} className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-medium text-foreground truncate">{apt.service.name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                {format(parseISO(apt.startTime), 'MMM d, yyyy · HH:mm')}
+              </p>
+              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                with {apt.staff.firstName} {apt.staff.lastName}
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="font-semibold text-foreground tabular-nums">€{apt.service.price}</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">{apt.status}</p>
+            </div>
+          </div>
+          {apt.status === 'completed' && (
+            <button
+              onClick={() => rebook(apt)}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent transition-colors"
+            >
+              <ArrowUturnLeftIcon className="h-3.5 w-3.5" />
+              Book again
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Local primitives ────────────────────────────────────────
+function StatLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex-1 min-w-0 text-center">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-1 text-base font-bold tabular-nums text-foreground truncate">{value}</p>
+    </div>
+  );
+}
+
+function IconStat({
+  icon: Icon, label, value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex-1 min-w-0 text-center px-1 py-4">
+      <Icon className="mx-auto h-4 w-4 text-muted-foreground" />
+      <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-sm font-bold tabular-nums text-foreground truncate">{value}</p>
+    </div>
+  );
+}
+
+function Section({
+  label, children, accent,
+}: {
+  label: string;
+  children: React.ReactNode;
+  accent?: boolean;
+}) {
+  return (
+    <div className={cn(accent && 'border-l-2 border-primary/60 pl-3')}>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      <div className="mt-2">{children}</div>
+    </div>
+  );
+}
+
+const GENDER_STYLE: Record<NonNullable<Client['gender']>, { icon: string; text: string; dot: string; label: string }> = {
+  male:   { icon: '♂', text: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',         dot: 'text-sky-600 dark:text-sky-400',       label: 'Male' },
+  female: { icon: '♀', text: 'bg-pink-500/15 text-pink-600 dark:text-pink-400',      dot: 'text-pink-600 dark:text-pink-400',     label: 'Female' },
+  other:  { icon: '⚬', text: 'bg-violet-500/15 text-violet-600 dark:text-violet-400', dot: 'text-violet-600 dark:text-violet-400', label: 'Other' },
+};
+
+function GenderChip({ gender }: { gender: NonNullable<Client['gender']> }) {
+  const s = GENDER_STYLE[gender];
+  return (
+    <span className={cn(
+      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
+      s.text,
+    )}>
+      <span className="text-sm leading-none">{s.icon}</span>
+      {s.label}
+    </span>
+  );
+}
+
+// Compact inline version — just the glyph, used in tight list rows.
+function GenderDot({ gender }: { gender: NonNullable<Client['gender']> }) {
+  const s = GENDER_STYLE[gender];
+  return (
+    <span
+      aria-label={s.label}
+      title={s.label}
+      className={cn('text-sm leading-none shrink-0', s.dot)}
+    >
+      {s.icon}
+    </span>
+  );
+}
+
+function ColHeader({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span className={cn(
+      'text-[11px] font-semibold uppercase tracking-wider text-muted-foreground',
+      className,
+    )}>
+      {children}
+    </span>
+  );
+}
+
+function IconAction({
+  children, label, onClick, danger,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClick: (e: React.MouseEvent) => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={cn(
+        'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+        danger
+          ? 'hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-300'
+          : 'hover:bg-accent hover:text-foreground',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StatMini({
+  icon: Icon, label, value, small,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  small?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3">
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Icon className="h-3 w-3" />
+        {label}
+      </div>
+      <p className={cn(
+        'mt-1 font-bold tabular-nums text-foreground',
+        small ? 'text-sm' : 'text-xl leading-tight',
+      )}>{value}</p>
+    </div>
+  );
+}
+

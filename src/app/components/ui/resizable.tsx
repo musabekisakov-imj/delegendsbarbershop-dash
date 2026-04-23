@@ -1,7 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { GripVerticalIcon } from "lucide-react";
+function GripVerticalIcon({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
+      <circle cx="9" cy="5" r="1.5" /><circle cx="15" cy="5" r="1.5" />
+      <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+      <circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" />
+    </svg>
+  );
+}
 import * as ResizablePrimitive from "react-resizable-panels";
 
 import { cn } from "./utils";

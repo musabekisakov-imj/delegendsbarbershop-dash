@@ -1,6 +1,8 @@
 import { RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ThemeProvider, useTheme } from 'next-themes';
 import { Toaster } from './components/ui/sonner';
+import { ConfirmProvider } from './hooks/use-confirm';
 import { router } from './routes';
 
 const queryClient = new QueryClient({
@@ -13,11 +15,20 @@ const queryClient = new QueryClient({
   }
 });
 
+function ThemedToaster() {
+  const { resolvedTheme } = useTheme();
+  return <Toaster position="top-right" theme={resolvedTheme === 'dark' ? 'dark' : 'light'} />;
+}
+
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <Toaster position="top-right" />
-    </QueryClientProvider>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+      <QueryClientProvider client={queryClient}>
+        <ConfirmProvider>
+          <RouterProvider router={router} />
+          <ThemedToaster />
+        </ConfirmProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

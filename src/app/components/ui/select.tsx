@@ -6,7 +6,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-} from "lucide-react";
+} from "@heroicons/react/24/outline";
 
 import { cn } from "./utils";
 

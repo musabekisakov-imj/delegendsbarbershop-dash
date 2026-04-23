@@ -4,6 +4,32 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "./utils";
 
+/**
+ * ButtonSpinner — CSS-only conic spinner that inherits `currentColor`, so it
+ * looks right on any variant (default/destructive/outline/ghost).
+ * Uses a `mask` to cut the inner hole and a 720ms rotation for a confident
+ * pace — faster than the old 1s SVG and matches the "the app is ready" feel.
+ */
+function ButtonSpinner({ className }: { className?: string }) {
+  return (
+    <span
+      role="status"
+      aria-label="Loading"
+      className={cn(
+        'relative inline-block shrink-0 rounded-full size-4',
+        // Conic from transparent to `currentColor` so the spinner adopts the
+        // button variant's text color automatically (white on primary,
+        // dark on ghost, etc.).
+        'bg-[conic-gradient(from_0turn,transparent_0deg,currentColor_360deg)]',
+        '[mask:radial-gradient(circle,transparent_55%,#000_57%)]',
+        '[-webkit-mask:radial-gradient(circle,transparent_55%,#000_57%)]',
+        'animate-[spinner-rotate_720ms_linear_infinite]',
+        className,
+      )}
+    />
+  );
+}
+
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
@@ -39,19 +65,41 @@ function Button({
   variant,
   size,
   asChild = false,
+  loading = false,
+  disabled,
+  children,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean;
+    loading?: boolean;
   }) {
   const Comp = asChild ? Slot : "button";
+
+  // When asChild (e.g. <Button asChild><Link /></Button>), a single child is required — skip spinner
+  if (asChild) {
+    return (
+      <Comp
+        data-slot="button"
+        className={cn(buttonVariants({ variant, size, className }))}
+        {...props}
+      >
+        {children}
+      </Comp>
+    );
+  }
 
   return (
     <Comp
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
+      disabled={loading || disabled}
+      aria-busy={loading}
       {...props}
-    />
+    >
+      {loading && <ButtonSpinner />}
+      {children}
+    </Comp>
   );
 }
 

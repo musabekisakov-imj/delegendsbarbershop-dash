@@ -9,14 +9,16 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #030213;
+  /* Primary = brand blue so active nav, focus rings, CTAs actually read as accent.
+     Previously #030213 (near-black) which made light mode feel like a greyscale print. */
+  --primary: oklch(0.58 0.22 260);           /* ~ tailwind blue-600 */
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0.0058 264.53);
-  --secondary-foreground: #030213;
+  --secondary-foreground: oklch(0.145 0 0);
   --muted: #ececf0;
   --muted-foreground: #717182;
   --accent: #e9ebef;
-  --accent-foreground: #030213;
+  --accent-foreground: oklch(0.145 0 0);
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
   --border: rgba(0, 0, 0, 0.1);
@@ -25,7 +27,7 @@
   --switch-background: #cbced4;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.708 0 0);
+  --ring: oklch(0.58 0.22 260);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -34,7 +36,7 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #030213;
+  --sidebar-primary: oklch(0.58 0.22 260);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
@@ -43,25 +45,28 @@
 }
 
 .dark {
+  /* Surface tiers: background < card < muted/accent for clear elevation */
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
+  --card: oklch(0.185 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
+  --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.985 0 0);
   --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
+  --secondary: oklch(0.259 0 0);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --muted: oklch(0.235 0 0);
+  --muted-foreground: oklch(0.74 0 0);
+  --accent: oklch(0.265 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  --destructive: oklch(0.65 0.22 25);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 0.09);
+  --input: oklch(0.259 0 0);
+  --input-background: oklch(0.22 0 0);
+  --switch-background: oklch(0.35 0 0);
+  --ring: oklch(0.55 0 0);
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --chart-1: oklch(0.488 0.243 264.376);
@@ -69,14 +74,14 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: oklch(0.17 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent: oklch(0.265 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --sidebar-border: oklch(1 0 0 / 0.09);
+  --sidebar-ring: oklch(0.55 0 0);
 }
 
 @theme inline {
@@ -118,6 +123,27 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer components {
+  .break-stripes {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 4px,
+      oklch(0.7 0 0 / 0.1) 4px,
+      oklch(0.7 0 0 / 0.1) 8px
+    );
+  }
+  .dark .break-stripes {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 4px,
+      oklch(0.4 0 0 / 0.2) 4px,
+      oklch(0.4 0 0 / 0.2) 8px
+    );
+  }
 }
 
 @layer base {
@@ -179,5 +205,226 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+}
+
+/* ─── Bookings page animations ──────────────────────────── */
+@keyframes bookings-slide-right {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes bookings-slide-left {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes bookings-fade-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Continuous gradient shimmer for the accent stripe — breathes slowly */
+@keyframes bookings-shimmer {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Skeleton shimmer — sweeping highlight across neutral block.
+   Starts off-left (-100%), ends off-right (+100%) so the sweep always enters
+   and exits cleanly — no "stutter" at the loop boundary. */
+@keyframes shimmer-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Gentle breathing on the skeleton's base tint — pairs with the sweep highlight
+   so the whole block feels "alive" instead of being a static grey rectangle. */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.65; }
+}
+
+/* Three-dot loader used in RouteFallback and inline pending states.
+   Staggered via animation-delay on each dot. */
+@keyframes loader-dot {
+  0%, 80%, 100% { transform: translateY(0);      opacity: 0.35; }
+  40%           { transform: translateY(-4px);   opacity: 1;    }
+}
+
+/* Conic spinner — sweeps a transparent→primary arc.
+   Replaces the old <svg stroke> spinner with a CSS-only version that
+   renders at any size without anti-aliasing jitter. */
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* Route transition — gentle fade+rise applied to page content on mount */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter {
+  animation: page-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ─── Loading primitives ───────────────────────────────────── */
+
+/* Pulsing base layer for skeletons. Sits under the sweep highlight. */
+.skeleton-base {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 0%,
+    color-mix(in oklch, var(--muted), var(--foreground) 4%) 50%,
+    var(--muted) 100%
+  );
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+/* Sweeping highlight on top of the base. Together they read as motion + breath. */
+.skeleton-sweep::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--foreground), transparent 94%) 50%,
+    transparent 100%
+  );
+  animation: shimmer-sweep 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Three-dot loader. Apply `.loader-dots` to the wrapper; dots get staggered delays. */
+.loader-dots > span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: loader-dot 1.2s ease-in-out infinite;
+}
+.loader-dots > span:nth-child(1) { animation-delay: 0ms;    }
+.loader-dots > span:nth-child(2) { animation-delay: 140ms;  }
+.loader-dots > span:nth-child(3) { animation-delay: 280ms;  }
+
+/* Conic spinner — gradient arc rotating. Uses mask to cut inner hole. */
+.spinner-conic {
+  position: relative;
+  display: inline-block;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 0turn,
+    color-mix(in oklch, var(--primary), transparent 85%) 0turn,
+    var(--primary) 1turn
+  );
+  animation: spinner-rotate 720ms linear infinite;
+  mask: radial-gradient(circle, transparent 55%, #000 57%);
+  -webkit-mask: radial-gradient(circle, transparent 55%, #000 57%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .skeleton-base,
+  .skeleton-sweep::before,
+  .loader-dots > span,
+  .spinner-conic {
+    animation: none !important;
+  }
+}
+
+/* ─── Print styles ───────────────────────────────────────── */
+/* When the bookings page is printed, hide chrome and show the list only. */
+@media print {
+  /* Hide everything by default */
+  body * {
+    visibility: hidden;
+  }
+  /* Show only the printable area and its descendants */
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white !important;
+    color: black !important;
+    padding: 20px;
+  }
+  /* Hide non-printable UI */
+  .no-print,
+  .sidebar,
+  header,
+  nav,
+  button,
+  [role="dialog"] {
+    display: none !important;
+  }
+  /* Make table rows high-contrast for print */
+  .print-area table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .print-area th,
+  .print-area td {
+    border: 1px solid #ddd !important;
+    padding: 8px !important;
+    color: black !important;
+    background: white !important;
+  }
+  .print-area th {
+    background: #f5f5f5 !important;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+}
+
+.bookings-slide-right {
+  animation: bookings-slide-right 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bookings-slide-left {
+  animation: bookings-slide-left 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bookings-fade-in {
+  animation: bookings-fade-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bookings-accent-stripe {
+  background-image: linear-gradient(
+    90deg,
+    #3b82f6 0%,   /* blue-500 */
+    #6366f1 25%,  /* indigo-500 */
+    #8b5cf6 50%,  /* violet-500 */
+    #6366f1 75%,
+    #3b82f6 100%
+  );
+  background-size: 200% 100%;
+  animation: bookings-shimmer 5s ease-in-out infinite;
+}
+
+/* Overview — current-in-session appointment pulse. A soft primary halo
+   that breathes every ~3s. Not used anywhere else so it can stay quiet. */
+@keyframes overview-pulse-now {
+  0%, 100% { box-shadow: inset 3px 0 0 0 var(--primary), 0 0 0 0 rgb(var(--primary-rgb, 37 99 235) / 0.22); }
+  50%      { box-shadow: inset 3px 0 0 0 var(--primary), 0 0 0 6px rgb(var(--primary-rgb, 37 99 235) / 0); }
+}
+.overview-current {
+  animation: overview-pulse-now 3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bookings-slide-right,
+  .bookings-slide-left,
+  .bookings-fade-in,
+  .bookings-accent-stripe,
+  .overview-current {
+    animation: none;
+    transform: none;
+    transition: none;
   }
 }

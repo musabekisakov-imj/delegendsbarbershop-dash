@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router';
 import { servicesApi, categoriesApi } from '../lib/api';
+import { useOfficeStore } from '../store/office-store';
 import { PageHeader } from '../components/shared/page-header';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -8,261 +10,919 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { PlusIcon, ClockIcon } from '@heroicons/react/24/outline';
+import {
+  PlusIcon, ClockIcon, ScissorsIcon, TagIcon, Squares2X2Icon,
+  PencilSquareIcon, TrashIcon, MagnifyingGlassIcon, Cog6ToothIcon,
+  CheckIcon, XMarkIcon, PhotoIcon,
+} from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import { cn } from '../components/ui/utils';
+import { useT } from '../hooks/use-t';
+import { CardSkeleton } from '../components/shared/page-skeleton';
+import { FilterChip } from '../components/ui/filter-chip';
+import { exportCsv } from '../lib/csv';
+import { useConfirm } from '../hooks/use-confirm';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { fileToDataUrl, dataUrlBytes } from '../lib/image-upload';
 import type { Service, Category } from '../types';
+
+// ─── Palette: 8 gradient themes, deterministic per service ID ─────
+const GRADIENTS = [
+  'from-rose-400 via-fuchsia-500 to-purple-600',
+  'from-blue-400 via-indigo-500 to-violet-600',
+  'from-amber-400 via-orange-500 to-rose-600',
+  'from-emerald-400 via-teal-500 to-cyan-600',
+  'from-fuchsia-400 via-pink-500 to-rose-600',
+  'from-sky-400 via-blue-500 to-indigo-600',
+  'from-lime-400 via-emerald-500 to-teal-600',
+  'from-orange-400 via-red-500 to-pink-600',
+];
+
+const gradientForId = (id: string) => {
+  const n = [...id].reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, 0);
+  return GRADIENTS[n % GRADIENTS.length];
+};
+
+// Responsive <img> attrs for Unsplash URLs — serves 400/800/1200 widths instead of always 800.
+// For non-Unsplash URLs we just return a single src untouched.
+//
+// Previous version used a regex (`url.replace(/[?&]w=\d+/, '')`) that turned
+// `?w=800&q=80` into `q=80` glued onto the path — producing a 404 URL.
+// Using the URL API is safer: delete the `w` param, re-serialize, then append
+// the new width. No string surgery.
+function responsiveImg(url: string) {
+  const isUnsplash = /^https:\/\/images\.unsplash\.com\//.test(url);
+  if (!isUnsplash) return { src: url };
+  let base: string;
+  try {
+    const u = new URL(url);
+    u.searchParams.delete('w');
+    base = u.toString();
+  } catch {
+    // If URL is malformed, skip responsive logic and return as-is.
+    return { src: url };
+  }
+  const sep = base.includes('?') ? '&' : '?';
+  return {
+    src: `${base}${sep}w=800`,
+    srcSet: [400, 800, 1200].map(w => `${base}${sep}w=${w} ${w}w`).join(', '),
+    sizes: '(min-width: 1280px) 25vw, (min-width: 768px) 33vw, (min-width: 640px) 50vw, 100vw',
+  };
+}
+
+// Deterministic category color dot
+const CATEGORY_DOTS = [
+  'bg-blue-500', 'bg-violet-500', 'bg-amber-500',
+  'bg-emerald-500', 'bg-rose-500', 'bg-cyan-500',
+];
+const dotForId = (id: string) => {
+  const n = [...id].reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, 0);
+  return CATEGORY_DOTS[n % CATEGORY_DOTS.length];
+};
+
+interface ServiceForm {
+  name: string;
+  price: string;
+  duration: string;
+  categoryId: string;
+  description: string;
+  imageUrl: string;
+}
+
+const emptyForm: ServiceForm = {
+  name: '', price: '', duration: '', categoryId: '', description: '', imageUrl: '',
+};
 
 export function ServicesPage() {
   const queryClient = useQueryClient();
-  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
-  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
-  
-  const [serviceFormData, setServiceFormData] = useState({
-    name: '',
-    price: '',
-    duration: '',
-    categoryId: '',
-    description: ''
-  });
+  const t = useT();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
+  const officeId = useOfficeStore(s => s.currentOfficeId);
 
-  const [categoryFormData, setCategoryFormData] = useState({
-    name: ''
-  });
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<ServiceForm>(emptyForm);
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
 
-  const { data: services = [] } = useQuery({
-    queryKey: ['services'],
-    queryFn: () => servicesApi.getAll()
+  const { data: services = [], isLoading: servicesLoading } = useQuery({
+    queryKey: ['services', officeId],
+    queryFn: () => servicesApi.getAll(officeId),
   });
-
-  const { data: categories = [] } = useQuery({
+  const { data: categories = [], isLoading: categoriesLoading } = useQuery({
     queryKey: ['categories'],
-    queryFn: () => categoriesApi.getAll()
+    queryFn: () => categoriesApi.getAll(),
   });
+  const isLoading = servicesLoading || categoriesLoading;
 
   const createServiceMutation = useMutation({
     mutationFn: (data: Omit<Service, 'id' | 'createdAt'>) => servicesApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['services'] });
-      toast.success('Service created');
-      setIsServiceModalOpen(false);
-      resetServiceForm();
+      toast.success(t('toast.serviceCreated'));
+      closeEditor();
     },
-    onError: () => {
-      toast.error('Failed to create service');
-    }
+    onError: () => toast.error(t('toast.serviceCreateError')),
   });
-
-  const createCategoryMutation = useMutation({
-    mutationFn: (data: Omit<Category, 'id' | 'createdAt'>) => categoriesApi.create(data),
+  const updateServiceMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Service> }) =>
+      servicesApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
-      toast.success('Category created');
-      setIsCategoryModalOpen(false);
-      resetCategoryForm();
+      queryClient.invalidateQueries({ queryKey: ['services'] });
+      toast.success(t('toast.serviceUpdated'));
+      closeEditor();
     },
-    onError: () => {
-      toast.error('Failed to create category');
-    }
+    onError: () => toast.error(t('toast.serviceUpdateError')),
+  });
+  const servicesKey = ['services', officeId] as const;
+
+  // Optimistic delete — service card disappears immediately.
+  const deleteServiceMutation = useMutation({
+    mutationFn: (id: string) => servicesApi.delete(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: servicesKey });
+      const previous = queryClient.getQueryData(servicesKey);
+      queryClient.setQueryData(servicesKey, (old: Service[] | undefined) =>
+        (old ?? []).filter(s => s.id !== id)
+      );
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(servicesKey, context.previous);
+      toast.error(t('toast.serviceDeleteError'));
+    },
+    onSuccess: () => {
+      toast.success(t('toast.serviceDeleted'));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: servicesKey });
+    },
   });
 
-  const resetServiceForm = () => {
-    setServiceFormData({ name: '', price: '', duration: '', categoryId: '', description: '' });
-  };
+  const categoryById = useMemo(() => {
+    const m = new Map<string, Category>();
+    categories.forEach(c => m.set(c.id, c));
+    return m;
+  }, [categories]);
 
-  const resetCategoryForm = () => {
-    setCategoryFormData({ name: '' });
-  };
-
-  const handleCreateService = () => {
-    if (!serviceFormData.name || !serviceFormData.price || !serviceFormData.duration || !serviceFormData.categoryId) {
-      toast.error('Please fill all required fields');
-      return;
-    }
-    createServiceMutation.mutate({
-      name: serviceFormData.name,
-      price: parseFloat(serviceFormData.price),
-      duration: parseInt(serviceFormData.duration),
-      categoryId: serviceFormData.categoryId,
-      description: serviceFormData.description
+  const filteredServices = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return services.filter(s => {
+      if (categoryFilter !== 'all' && s.categoryId !== categoryFilter) return false;
+      if (!q) return true;
+      return s.name.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q);
     });
-  };
+  }, [services, search, categoryFilter]);
 
-  const handleCreateCategory = () => {
-    if (!categoryFormData.name) {
-      toast.error('Please enter a category name');
+  const openCreate = () => {
+    if (categories.length === 0) {
+      toast.error(t('toast.createCategoryFirst'));
+      setIsCategoryDialogOpen(true);
       return;
     }
-    createCategoryMutation.mutate({ name: categoryFormData.name });
+    setEditingId(null);
+    setForm({
+      ...emptyForm,
+      categoryId: categoryFilter !== 'all' ? categoryFilter : categories[0]?.id ?? '',
+    });
+    setEditorOpen(true);
   };
 
-  const servicesByCategory = categories.map(category => ({
-    category,
-    services: services.filter(s => s.categoryId === category.id)
-  }));
+  const openEdit = (svc: Service) => {
+    setEditingId(svc.id);
+    setForm({
+      name: svc.name,
+      price: String(svc.price),
+      duration: String(svc.duration),
+      categoryId: svc.categoryId,
+      description: svc.description ?? '',
+      imageUrl: svc.imageUrl ?? '',
+    });
+    setEditorOpen(true);
+  };
+
+  const closeEditor = () => {
+    setEditorOpen(false);
+    setEditingId(null);
+    setForm(emptyForm);
+  };
+
+  const submitForm = () => {
+    if (!form.name.trim() || !form.price || !form.duration || !form.categoryId) {
+      toast.error(t('toast.serviceRequired'));
+      return;
+    }
+    const payload = {
+      name: form.name.trim(),
+      price: parseFloat(form.price),
+      duration: parseInt(form.duration),
+      categoryId: form.categoryId,
+      description: form.description.trim(),
+      imageUrl: form.imageUrl.trim() || undefined,
+      officeId,
+    };
+    if (editingId) {
+      updateServiceMutation.mutate({ id: editingId, data: payload });
+    } else {
+      createServiceMutation.mutate(payload);
+    }
+  };
+
+  const handleDelete = async (svc: Service) => {
+    const ok = await confirm({
+      title: `Delete "${svc.name}"?`,
+      description: 'Appointments using this service will keep their record.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (ok) deleteServiceMutation.mutate(svc.id);
+  };
+
+  const isSubmitting = createServiceMutation.isPending || updateServiceMutation.isPending;
+  const isFiltering = search.trim() !== '' || categoryFilter !== 'all';
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Services"
-        description="Manage your service offerings and categories"
+        description="Your service menu, visually"
         action={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setIsCategoryModalOpen(true)}>
-              Add Category
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportCsv('services', filteredServices, [
+                { key: 'name', header: 'Name' },
+                { key: (s) => categoryById.get(s.categoryId)?.name ?? '', header: 'Category' },
+                { key: 'price', header: 'Price' },
+                { key: 'duration', header: 'Duration (min)' },
+                { key: 'description', header: 'Description' },
+              ])}
+              disabled={filteredServices.length === 0}
+              title="Export services to CSV"
+            >
+              <ArrowDownTrayIcon className="mr-1.5 h-4 w-4" />
+              Export
             </Button>
-            <Button onClick={() => setIsServiceModalOpen(true)}>
-              <PlusIcon className="mr-2 h-4 w-4" />
-              Add Service
+            <Button variant="outline" size="sm" onClick={() => setIsCategoryDialogOpen(true)}>
+              <Cog6ToothIcon className="mr-1.5 h-4 w-4" />
+              Categories
+            </Button>
+            <Button size="sm" onClick={openCreate}>
+              <PlusIcon className="mr-1.5 h-4 w-4" />
+              New Service
             </Button>
           </div>
         }
       />
 
-      {/* Services by Category */}
-      <div className="space-y-6">
-        {servicesByCategory.map(({ category, services: categoryServices }) => (
-          <div key={category.id} className="rounded-xl border border-gray-200 bg-white p-6">
-            <h3 className="mb-4 text-lg font-semibold text-gray-900">{category.name}</h3>
-            
-            {categoryServices.length === 0 ? (
-              <p className="py-4 text-center text-sm text-gray-500">No services in this category</p>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {categoryServices.map(service => (
-                  <div key={service.id} className="rounded-lg border border-gray-200 p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-gray-900">{service.name}</h4>
-                        <p className="mt-1 text-sm text-gray-600">{service.description}</p>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
-                      <div className="flex items-center gap-1 text-sm text-gray-600">
-                        <ClockIcon className="h-4 w-4" />
-                        {service.duration} min
-                      </div>
-                      <span className="text-lg font-bold text-gray-900">${service.price}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+      {/* Category filter chips */}
+      {categories.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterChip active={categoryFilter === 'all'} onClick={() => setCategoryFilter('all')}>
+            All
+            <span className="ml-1.5 text-xs opacity-70 tabular-nums">{services.length}</span>
+          </FilterChip>
+          {categories.map(cat => {
+            const count = services.filter(s => s.categoryId === cat.id).length;
+            return (
+              <FilterChip
+                key={cat.id}
+                active={categoryFilter === cat.id}
+                onClick={() => setCategoryFilter(cat.id)}
+              >
+                <span className={cn('h-1.5 w-1.5 rounded-full', dotForId(cat.id))} />
+                {cat.name}
+                <span className="ml-1.5 text-xs opacity-70 tabular-nums">{count}</span>
+              </FilterChip>
+            );
+          })}
+        </div>
+      )}
 
-        {categories.length === 0 && (
-          <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
-            <p className="text-sm text-gray-500">No categories yet. Create one to get started.</p>
+      {/* Search */}
+      {categories.length > 0 && (
+        <div className="relative max-w-md">
+          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search services…"
+            className="pl-9 h-10"
+          />
+        </div>
+      )}
+
+      {/* Loading skeleton */}
+      {isLoading && (
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => <CardSkeleton key={i} />)}
+        </div>
+      )}
+
+      {/* Empty: no categories */}
+      {!isLoading && categories.length === 0 && (
+        <div className="rounded-xl border-2 border-dashed border-border bg-muted/40 p-16 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-400 to-purple-600 mb-5 shadow-lg">
+            <Squares2X2Icon className="h-8 w-8 text-white" />
+          </div>
+          <h3 className="text-base font-bold text-foreground mb-1.5">No categories yet</h3>
+          <p className="text-sm text-muted-foreground mb-5">Create a category before adding services</p>
+          <Button onClick={() => setIsCategoryDialogOpen(true)}>
+            <TagIcon className="mr-2 h-4 w-4" />
+            Create Category
+          </Button>
+        </div>
+      )}
+
+      {/* Empty: filters return nothing */}
+      {!isLoading && categories.length > 0 && isFiltering && filteredServices.length === 0 && (
+        <div className="rounded-xl border border-border bg-card p-12 text-center">
+          <p className="text-sm font-medium text-foreground">No services match</p>
+          <p className="text-xs text-muted-foreground mt-1">Try a different search or category</p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearch(''); setCategoryFilter('all'); }}>
+            Clear filters
+          </Button>
+        </div>
+      )}
+
+      {/* Gallery grid */}
+      {!isLoading && categories.length > 0 && (filteredServices.length > 0 || !isFiltering) && (
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+          {filteredServices.map(svc => (
+            <ServiceCard
+              key={svc.id}
+              service={svc}
+              category={categoryById.get(svc.categoryId)}
+              onClick={() => openEdit(svc)}
+              onDelete={() => handleDelete(svc)}
+              onBook={() => navigate(`/bookings/new?serviceId=${svc.id}`)}
+            />
+          ))}
+
+          {/* Create card — always last tile */}
+          <button
+            onClick={openCreate}
+            className="group flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-border bg-muted/20 p-6 min-h-[220px] transition-all hover:border-foreground/40 hover:bg-muted/40"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-card border border-border text-muted-foreground transition-transform group-hover:scale-110 group-hover:text-foreground">
+              <PlusIcon className="h-5 w-5" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-medium text-foreground">Add a service</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {categoryFilter !== 'all' ? `to ${categoryById.get(categoryFilter)?.name ?? 'this category'}` : 'to your menu'}
+              </p>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Editor Modal */}
+      <ServiceEditorModal
+        open={editorOpen}
+        onOpenChange={(open) => { if (!open) closeEditor(); }}
+        mode={editingId ? 'edit' : 'create'}
+        form={form}
+        setForm={setForm}
+        categories={categories}
+        isSubmitting={isSubmitting}
+        onSave={submitForm}
+      />
+
+      {/* Categories Dialog */}
+      <CategoriesDialog
+        open={isCategoryDialogOpen}
+        onOpenChange={setIsCategoryDialogOpen}
+        categories={categories}
+        services={services}
+      />
+    </div>
+  );
+}
+
+// ─── ServiceCard ─────────────────────────────────────────────────
+function ServiceCard({
+  service, category, onClick, onDelete, onBook,
+}: {
+  service: Service;
+  category: Category | undefined;
+  onClick: () => void;
+  onDelete: () => void;
+  onBook: () => void;
+}) {
+  const initial = service.name.charAt(0).toUpperCase() || 'S';
+  // Track runtime image-load failure so we swap in the placeholder letter
+  // + scissors (same UI as "no photo yet") instead of showing a blank card.
+  // Previously onError just `display:none`d the img, leaving an empty tile.
+  const [imgFailed, setImgFailed] = useState(false);
+  const showPlaceholder = !service.imageUrl || imgFailed;
+
+  return (
+    <article
+      onClick={onClick}
+      className="group relative cursor-pointer rounded-xl border border-border bg-card overflow-hidden transition-all hover:shadow-lg hover:-translate-y-0.5 hover:border-foreground/20"
+    >
+      {/* Hero — photo if present, else a muted neutral fallback.
+          Dropped the per-service rainbow gradient: next to real photos it read
+          as chromatic noise. Now missing-photo tiles all share one quiet neutral
+          so the eye groups them as "placeholders" instead of "loud cards". */}
+      <div className={cn(
+        'relative aspect-[4/3] overflow-hidden',
+        showPlaceholder && 'bg-gradient-to-br from-muted to-accent/60 dark:from-muted dark:to-accent/20',
+      )}>
+        {service.imageUrl && !imgFailed && (
+          <img
+            {...responsiveImg(service.imageUrl)}
+            alt={service.name}
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            onError={() => setImgFailed(true)}
+          />
+        )}
+
+        {/* Neutral placeholder — the initial + a scissors silhouette in muted
+            foreground tones so it reads as "no photo yet" rather than decorative. */}
+        {showPlaceholder && (
+          <>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-foreground/15 font-black leading-none select-none text-[5rem]">
+                {initial}
+              </span>
+            </div>
+            <ScissorsIcon className="absolute -bottom-3 -right-3 h-24 w-24 text-foreground/10 rotate-12" />
+          </>
+        )}
+
+        {/* Dark overlay — only over a real loaded photo, not over the placeholder
+            fallback (otherwise the placeholder letter gets darkened for no reason).
+            Softened from /60 → /40 because the price pill already has backdrop-blur
+            and the stronger ramp was muddying already-dim barbershop interiors. */}
+        {!showPlaceholder && (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/5" />
+        )}
+
+        {/* Category marker — simplified from a heavy white-glass pill to a
+            colored dot with a small label. Category is already shown in the
+            filter chips above; this is just a reminder, not primary info.
+            Keeps the visual weight in the price pill (top-right) where it belongs. */}
+        {category && (
+          <div className={cn(
+            'absolute top-2 left-2 inline-flex items-center gap-1.5 text-[10px] font-medium drop-shadow-sm',
+            !showPlaceholder ? 'text-white/95' : 'text-muted-foreground',
+          )}>
+            <span className={cn('h-1.5 w-1.5 rounded-full', dotForId(category.id))} />
+            {category.name}
           </div>
         )}
+
+        {/* Price pill — top-right */}
+        <div className="absolute top-2 right-2 inline-flex items-center rounded-full bg-white/90 dark:bg-black/60 backdrop-blur-md px-2.5 py-0.5 text-xs font-bold tabular-nums text-foreground shadow-sm">
+          €{service.price}
+        </div>
+
+        {/* Action row — always visible (touch devices don't have hover), dims to
+            70% when idle, pops to 100% on hover. Adds a primary "Book" CTA so
+            receptionists can jump straight into /bookings/new with this service
+            pre-selected — the most common action, now one click away. */}
+        <div className="absolute bottom-2 right-2 flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => { e.stopPropagation(); onBook(); }}
+            aria-label="Book this service"
+            title="Book this service"
+            className="inline-flex h-7 items-center gap-1 rounded-full bg-primary text-primary-foreground px-2.5 text-[11px] font-semibold shadow-sm hover:bg-primary/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          >
+            <PlusIcon className="h-3 w-3" />
+            Book
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            aria-label="Edit"
+            title="Edit"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 dark:bg-black/60 backdrop-blur-md text-foreground shadow-sm hover:bg-white dark:hover:bg-black/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          >
+            <PencilSquareIcon className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            aria-label="Delete"
+            title="Delete"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 dark:bg-black/60 backdrop-blur-md text-rose-600 shadow-sm hover:bg-white dark:hover:bg-black/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
-      {/* Create Service Modal */}
-      <Dialog open={isServiceModalOpen} onOpenChange={setIsServiceModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Service</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div>
-              <Label>Service Name *</Label>
-              <Input
-                value={serviceFormData.name}
-                onChange={(e) => setServiceFormData({ ...serviceFormData, name: e.target.value })}
-                placeholder="e.g., Classic Haircut"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Category *</Label>
-              <Select value={serviceFormData.categoryId} onValueChange={(value) => setServiceFormData({ ...serviceFormData, categoryId: value })}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Price ($) *</Label>
-                <Input
-                  type="number"
-                  value={serviceFormData.price}
-                  onChange={(e) => setServiceFormData({ ...serviceFormData, price: e.target.value })}
-                  placeholder="35"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>Duration (min) *</Label>
-                <Input
-                  type="number"
-                  value={serviceFormData.duration}
-                  onChange={(e) => setServiceFormData({ ...serviceFormData, duration: e.target.value })}
-                  placeholder="30"
-                  className="mt-1"
-                />
-              </div>
-            </div>
-            <div>
-              <Label>Description</Label>
-              <Textarea
-                value={serviceFormData.description}
-                onChange={(e) => setServiceFormData({ ...serviceFormData, description: e.target.value })}
-                placeholder="Brief description of the service..."
-                className="mt-1"
-                rows={3}
-              />
-            </div>
+      {/* Info */}
+      <div className="p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-semibold text-foreground text-sm truncate">{service.name}</h3>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+            <ClockIcon className="h-3.5 w-3.5" />
+            <span className="tabular-nums">{service.duration}m</span>
+          </div>
+        </div>
+        {/* Description — always reserve 2 lines of space so the grid rows line
+            up even when some services have no description. `min-h` locks the
+            footer height; `line-clamp-2` truncates if someone writes a novel. */}
+        <p className="mt-1 text-xs text-muted-foreground line-clamp-2 min-h-[2rem]">
+          {service.description || '\u00A0'}
+        </p>
+      </div>
+    </article>
+  );
+}
 
-            <div className="flex gap-2 pt-4">
-              <Button onClick={handleCreateService} className="flex-1">
-                Create Service
-              </Button>
-              <Button variant="outline" onClick={() => setIsServiceModalOpen(false)}>
-                Cancel
-              </Button>
+// ─── ServiceEditorModal ─────────────────────────────────────────
+function ServiceEditorModal({
+  open, onOpenChange, mode, form, setForm, categories, isSubmitting, onSave,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mode: 'create' | 'edit';
+  form: ServiceForm;
+  setForm: (f: ServiceForm) => void;
+  categories: Category[];
+  isSubmitting: boolean;
+  onSave: () => void;
+}) {
+  // Deterministic preview gradient based on form name (since there's no ID yet for new services)
+  const previewSeed = form.name || 'preview';
+  const gradient = gradientForId(previewSeed);
+  const initial = (form.name.charAt(0) || 'S').toUpperCase();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{mode === 'create' ? 'New service' : 'Edit service'}</DialogTitle>
+        </DialogHeader>
+
+        {/* Live preview */}
+        <div className={cn(
+          'relative aspect-[5/2] rounded-xl overflow-hidden',
+          !form.imageUrl && `bg-gradient-to-br ${gradient}`,
+        )}>
+          {form.imageUrl ? (
+            <img {...responsiveImg(form.imageUrl)} alt="preview" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          ) : (
+            <>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-white/25 font-black leading-none select-none" style={{ fontSize: '6rem' }}>
+                  {initial}
+                </span>
+              </div>
+              <ScissorsIcon className="absolute -bottom-2 -right-2 h-24 w-24 text-white/15 rotate-12" />
+            </>
+          )}
+          {form.imageUrl && <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />}
+          {form.price && (
+            <div className="absolute top-3 right-3 inline-flex items-center rounded-full bg-white/90 dark:bg-black/60 backdrop-blur-md px-3 py-1 text-sm font-bold tabular-nums text-foreground shadow-sm">
+              €{form.price}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</Label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="e.g., Classic Haircut"
+              className="mt-1.5"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Category</Label>
+            <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map(cat => (
+                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Price (€)</Label>
+              <Input
+                type="number"
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: e.target.value })}
+                placeholder="35"
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Duration (min)</Label>
+              <Input
+                type="number"
+                value={form.duration}
+                onChange={(e) => setForm({ ...form, duration: e.target.value })}
+                placeholder="30"
+                className="mt-1.5"
+              />
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
 
-      {/* Create Category Modal */}
-      <Dialog open={isCategoryModalOpen} onOpenChange={setIsCategoryModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Category</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div>
-              <Label>Category Name *</Label>
-              <Input
-                value={categoryFormData.name}
-                onChange={(e) => setCategoryFormData({ ...categoryFormData, name: e.target.value })}
-                placeholder="e.g., Haircuts"
-                className="mt-1"
-              />
-            </div>
-
-            <div className="flex gap-2 pt-4">
-              <Button onClick={handleCreateCategory} className="flex-1">
-                Create Category
-              </Button>
-              <Button variant="outline" onClick={() => setIsCategoryModalOpen(false)}>
-                Cancel
-              </Button>
-            </div>
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</Label>
+            <Textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Optional description…"
+              className="mt-1.5"
+              rows={2}
+            />
           </div>
-        </DialogContent>
-      </Dialog>
+
+          {/* ── Photo — upload a file OR paste a URL ── */}
+          <ServicePhotoField
+            imageUrl={form.imageUrl}
+            onChange={(url) => setForm({ ...form, imageUrl: url })}
+          />
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button onClick={onSave} disabled={isSubmitting}>
+              {mode === 'create' ? 'Create service' : 'Save changes'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── CategoriesDialog ───────────────────────────────────────────
+function CategoriesDialog({
+  open, onOpenChange, categories, services,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  categories: Category[];
+  services: Service[];
+}) {
+  const queryClient = useQueryClient();
+  const t = useT();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+
+  const createMutation = useMutation({
+    mutationFn: (data: Omit<Category, 'id' | 'createdAt'>) => categoriesApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success(t('toast.categoryCreated'));
+      setName(''); setIsAdding(false);
+    },
+    onError: () => toast.error(t('toast.categoryCreateError')),
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Category> }) =>
+      categoriesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success(t('toast.categoryUpdated'));
+      setEditingId(null); setName('');
+    },
+    onError: () => toast.error(t('toast.categoryUpdateError')),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => categoriesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['services'] });
+      toast.success(t('toast.categoryDeleted'));
+    },
+    onError: () => toast.error(t('toast.categoryDeleteError')),
+  });
+
+  const handleDelete = (cat: Category) => {
+    const count = services.filter(s => s.categoryId === cat.id).length;
+    const msg = count > 0
+      ? `Delete "${cat.name}"? ${count} service${count === 1 ? '' : 's'} will be left uncategorized.`
+      : `Delete "${cat.name}"?`;
+    if (confirm(msg)) deleteMutation.mutate(cat.id);
+  };
+
+  const startAdd = () => { setIsAdding(true); setEditingId(null); setName(''); };
+  const startEdit = (cat: Category) => { setEditingId(cat.id); setIsAdding(false); setName(cat.name); };
+  const cancel = () => { setEditingId(null); setIsAdding(false); setName(''); };
+  const submit = () => {
+    if (!name.trim()) return toast.error(t('toast.enterCategoryName'));
+    if (editingId) updateMutation.mutate({ id: editingId, data: { name: name.trim() } });
+    else createMutation.mutate({ name: name.trim() });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Manage categories</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-1">
+          {categories.map(cat => {
+            const count = services.filter(s => s.categoryId === cat.id).length;
+            const isEditingThis = editingId === cat.id;
+            return (
+              <div key={cat.id} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', dotForId(cat.id))} />
+                {isEditingThis ? (
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && submit()}
+                    className="h-8 flex-1"
+                    autoFocus
+                  />
+                ) : (
+                  <>
+                    <span className="flex-1 truncate text-sm font-medium text-foreground">{cat.name}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                      {count} service{count === 1 ? '' : 's'}
+                    </span>
+                  </>
+                )}
+                {isEditingThis ? (
+                  <>
+                    <button onClick={submit} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" aria-label="Save">
+                      <CheckIcon className="h-4 w-4" />
+                    </button>
+                    <button onClick={cancel} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent" aria-label="Cancel">
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => startEdit(cat)} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Edit">
+                      <PencilSquareIcon className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => handleDelete(cat)} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-300" aria-label="Delete">
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+
+          {isAdding && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2">
+              <TagIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submit()}
+                placeholder="Category name"
+                className="h-8 flex-1"
+                autoFocus
+              />
+              <button onClick={submit} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" aria-label="Save">
+                <CheckIcon className="h-4 w-4" />
+              </button>
+              <button onClick={cancel} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent" aria-label="Cancel">
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {!isAdding && (
+          <Button variant="outline" size="sm" onClick={startAdd} className="w-full">
+            <PlusIcon className="mr-1.5 h-4 w-4" />
+            Add category
+          </Button>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── ServicePhotoField ─────────────────────────────────────
+// Upload a file from disk OR paste a URL. Uploaded files are downscaled to
+// 1200px and re-encoded as JPEG in the browser before being stored as a
+// data-URL — otherwise a single phone photo would blow the localStorage
+// quota (~5MB total per origin).
+function ServicePhotoField({
+  imageUrl,
+  onChange,
+}: {
+  imageUrl: string;
+  onChange: (url: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showUrlField, setShowUrlField] = useState(false);
+  const hasImage = !!imageUrl;
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+    // Keep raw source sane — ~15MB cap on the input side. Compression brings
+    // the stored size down to under 250KB regardless.
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Image too large (max 15MB)');
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const dataUrl = await fileToDataUrl(file, { maxSide: 1200, quality: 0.82 });
+      const kb = Math.round(dataUrlBytes(dataUrl) / 1024);
+      onChange(dataUrl);
+      toast.success(`Photo uploaded (${kb} KB)`);
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Upload failed');
+    } finally {
+      setIsUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div>
+      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+        <PhotoIcon className="h-3.5 w-3.5" />
+        Photo
+      </Label>
+
+      {/* Hidden native file input — the custom button triggers it. */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+
+      <div className="mt-1.5 space-y-2">
+        {/* Upload / replace button */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant={hasImage ? 'outline' : 'default'}
+            size="sm"
+            loading={isUploading}
+            onClick={() => inputRef.current?.click()}
+          >
+            <PhotoIcon className="h-4 w-4 mr-1.5" />
+            {hasImage ? 'Replace photo' : 'Upload photo'}
+          </Button>
+
+          {hasImage && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onChange('')}
+            >
+              <TrashIcon className="h-4 w-4 mr-1" />
+              Remove
+            </Button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowUrlField(v => !v)}
+            className="ml-auto text-xs font-medium text-muted-foreground hover:text-foreground underline underline-offset-2"
+          >
+            {showUrlField ? 'Hide URL field' : 'Paste URL instead'}
+          </button>
+        </div>
+
+        {/* Optional: paste a URL directly (for Unsplash/CDN). Hidden by default. */}
+        {showUrlField && (
+          <Input
+            value={imageUrl.startsWith('data:') ? '' : imageUrl}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="https://images.unsplash.com/…"
+            className="font-mono text-xs"
+          />
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          {hasImage
+            ? 'Shown as the hero image on the service card.'
+            : 'Upload from your device — auto-resized to 1200px. Or paste a URL.'}
+        </p>
+      </div>
     </div>
   );
 }
