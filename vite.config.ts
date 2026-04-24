@@ -57,6 +57,10 @@ export default defineConfig({
           ],
           'vendor-date': ['date-fns'],
           'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
+          // Framer Motion (renamed `motion`) — heavy, lazy-loaded with the
+          // first page that uses it. Pulled into its own chunk so adding it
+          // to more pages later doesn't re-cost users the download.
+          'vendor-motion': ['motion'],
         },
       },
     },
