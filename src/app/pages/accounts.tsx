@@ -5,24 +5,23 @@ import {
   PlusIcon, UserCircleIcon, EnvelopeIcon,
   PencilSquareIcon, TrashIcon, ShieldCheckIcon,
   ClockIcon, LockClosedIcon,
-  MagnifyingGlassIcon,
+  MagnifyingGlassIcon, MapPinIcon, ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 
 import { accountsApi, tenantApi, staffApi } from '../lib/api';
-import { PageHeader } from '../components/shared/page-header';
 import { EmptyState } from '../components/shared/empty-state';
 import { Can } from '../components/shared/can';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Field } from '../components/ui/field';
-import { FilterChip } from '../components/ui/filter-chip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { CardSkeleton } from '../components/shared/page-skeleton';
 import { usePermission } from '../hooks/use-permission';
 import { useConfirm } from '../hooks/use-confirm';
 import { useAuthStore } from '../store/auth-store';
+import { useOfficeStore } from '../store/office-store';
 import { ROLE_PERMISSIONS } from '../lib/permissions';
 import { AVATAR_GRADIENTS, hashToIndex } from '../lib/tokens';
 import { cn } from '../components/ui/utils';
@@ -36,12 +35,6 @@ const ROLE_STYLE: Record<StaffRole, { chip: string; dot: string; label: string }
   manager:      { chip: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900/60', dot: 'bg-violet-500', label: 'Manager' },
   receptionist: { chip: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/60',       dot: 'bg-blue-500',    label: 'Receptionist' },
   barber:       { chip: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/60', dot: 'bg-emerald-500', label: 'Barber' },
-};
-
-const STATUS_STYLE: Record<AccountStatus, { chip: string; label: string }> = {
-  active:   { chip: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',        label: 'Active' },
-  invited:  { chip: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',              label: 'Invited' },
-  disabled: { chip: 'bg-muted text-muted-foreground',                                  label: 'Disabled' },
 };
 
 type RoleFilter = 'all' | StaffRole;
@@ -97,6 +90,21 @@ export function AccountsPage() {
     for (const a of accounts) counts[a.role]++;
     return counts;
   }, [accounts]);
+
+  // Editorial hero stats — active vs pending tells the operator at a
+  // glance how many invites are still outstanding.
+  const statusCounts = useMemo(() => {
+    let active = 0, pending = 0, disabled = 0;
+    for (const a of accounts) {
+      if (a.status === 'active') active++;
+      else if (a.status === 'invited') pending++;
+      else if (a.status === 'disabled') disabled++;
+    }
+    return { active, pending, disabled };
+  }, [accounts]);
+
+  const currentOfficeId = useOfficeStore(s => s.currentOfficeId);
+  const currentOffice = useMemo(() => offices.find(o => o.id === currentOfficeId), [offices, currentOfficeId]);
 
   const inviteMut = useMutation({
     mutationFn: accountsApi.invite,
@@ -158,44 +166,93 @@ export function AccountsPage() {
     updateMut.mutate({ id: a.id, data: { status: next } });
   };
 
+  const ROLE_TABS: { id: RoleFilter; label: string; count: number }[] = [
+    { id: 'all',          label: 'All',          count: accounts.length },
+    { id: 'owner',        label: 'Owner',        count: roleCounts.owner },
+    { id: 'manager',      label: 'Manager',      count: roleCounts.manager },
+    { id: 'receptionist', label: 'Receptionist', count: roleCounts.receptionist },
+    { id: 'barber',       label: 'Barber',       count: roleCounts.barber },
+  ];
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        size="subtle"
-        title="Team & access"
-        description="Who can log in, and what they're allowed to do."
-        action={
+    <div className="space-y-5">
+      {/* ─── Editorial hero ──────────────────────────────
+          Access Roster direction: the total account count
+          IS the title. Eyebrow carries active / pending
+          breakdown — the operational signal for the owner. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <span>Team &amp; access</span>
+            {currentOffice && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
+                  <MapPinIcon className="h-3 w-3" />
+                  {currentOffice.name}
+                </span>
+              </>
+            )}
+            <span className="text-muted-foreground/40">·</span>
+            <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span className="tabular-nums">{statusCounts.active} active</span>
+            </span>
+            {statusCounts.pending > 0 && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  <span className="tabular-nums">{statusCounts.pending} pending</span>
+                </span>
+              </>
+            )}
+          </div>
+          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums">
+            {accounts.length.toLocaleString()}{' '}
+            <span className="text-muted-foreground/70 font-semibold">
+              {accounts.length === 1 ? 'account' : 'accounts'}
+            </span>
+          </h1>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <Can action="accounts.manage">
-            <Button onClick={openNew}>
-              <PlusIcon className="h-4 w-4 mr-2" /> Invite member
+            <Button size="sm" onClick={openNew}>
+              <PlusIcon className="h-4 w-4 mr-1" />
+              Invite member
             </Button>
           </Can>
-        }
-      />
+        </div>
+      </div>
 
-      {/* Role-permissions reference — collapsible "cheat sheet" so new users
-          can see what each role does BEFORE they invite anyone, without the
-          matrix dominating the page. */}
-      <details className="group rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-        <summary className="cursor-pointer list-none p-4 flex items-center gap-3 hover:bg-accent/30 transition-colors">
-          <ShieldCheckIcon className="h-5 w-5 text-primary shrink-0" />
+      {/* ─── Permission cheat-sheet (collapsible) ────────
+          Editorial chrome: no shadow, chevron heroicon
+          instead of ▾. Role columns get uppercase eyebrow
+          + subtle dot — same rhythm as the Staff cards. */}
+      <details className="group rounded-xl border border-border bg-card overflow-hidden">
+        <summary className="cursor-pointer list-none px-4 py-3 flex items-center gap-3 hover:bg-accent/30 transition-colors">
+          <ShieldCheckIcon className="h-5 w-5 text-muted-foreground shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-foreground">What each role can do</p>
-            <p className="text-xs text-muted-foreground">Tap to see the permission matrix.</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Reference
+            </p>
+            <p className="text-sm font-medium text-foreground">What each role can do</p>
           </div>
-          <span className="text-muted-foreground transition-transform group-open:rotate-180" aria-hidden>▾</span>
+          <ChevronDownIcon className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
         </summary>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border border-t border-border">
           {(['owner', 'manager', 'receptionist', 'barber'] as StaffRole[]).map(r => (
             <div key={r} className="p-5">
               <div className="flex items-center gap-2 mb-3">
-                <span className={`h-2 w-2 rounded-full ${ROLE_STYLE[r].dot}`} />
-                <h4 className="font-semibold text-foreground">{ROLE_STYLE[r].label}</h4>
-                <span className="text-xs text-muted-foreground ml-auto">
+                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', ROLE_STYLE[r].dot)} />
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  {ROLE_STYLE[r].label}
+                </p>
+                <span className="text-[11px] text-muted-foreground/80 ml-auto tabular-nums">
                   {ROLE_PERMISSIONS[r].length} perms
                 </span>
               </div>
-              <ul className="space-y-1">
+              <ul className="space-y-1.5">
                 {PERMISSION_SUMMARY.map(row => (
                   <li key={row.key} className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">{row.label}</span>
@@ -208,32 +265,58 @@ export function AccountsPage() {
         </div>
       </details>
 
-      {/* Search + role filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 max-w-md">
-          <MagnifyingGlassIcon className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search by name or email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 bg-card"
-          />
+      {/* ─── Operator bar — role tabs + search ────────── */}
+      <div className="rounded-xl border border-border bg-card">
+        <div className="flex items-end gap-1 overflow-x-auto border-b border-border px-2">
+          {ROLE_TABS.map(t => {
+            const active = roleFilter === t.id;
+            const dot = t.id !== 'all' ? ROLE_STYLE[t.id as StaffRole].dot : null;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setRoleFilter(t.id)}
+                aria-pressed={active}
+                className={cn(
+                  'relative inline-flex items-center gap-2 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors',
+                  active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {dot && <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', dot)} />}
+                <span>{t.label}</span>
+                <span className={cn(
+                  'inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
+                  active ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground',
+                )}>
+                  {t.count}
+                </span>
+                {active && (
+                  <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" aria-hidden />
+                )}
+              </button>
+            );
+          })}
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterChip active={roleFilter === 'all'} onClick={() => setRoleFilter('all')}>
-            All <span className="ml-1.5 tabular-nums text-muted-foreground">{accounts.length}</span>
-          </FilterChip>
-          {(['owner', 'manager', 'receptionist', 'barber'] as StaffRole[]).map(r => (
-            <FilterChip key={r} active={roleFilter === r} onClick={() => setRoleFilter(r)}>
-              {ROLE_STYLE[r].label} <span className="ml-1.5 tabular-nums text-muted-foreground">{roleCounts[r]}</span>
-            </FilterChip>
-          ))}
+        <div className="p-2.5">
+          <div className="relative">
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search by name or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-9 bg-background"
+            />
+          </div>
         </div>
       </div>
 
-      {/* List */}
+      {/* ─── Account cards ──────────────────────────────
+          Editorial cards: role becomes a subtle uppercase
+          eyebrow with a tiny dot (same rhythm as Staff);
+          status is a chip ONLY when non-active (pending /
+          disabled — the exceptional states worth flagging).
+          Offices fold into a plain text line. */}
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
@@ -248,111 +331,125 @@ export function AccountsPage() {
         <div className="grid gap-3 sm:grid-cols-2">
           {filtered.map(a => {
             const role = ROLE_STYLE[a.role];
-            const status = STATUS_STYLE[a.status];
             const initials = `${a.firstName[0] ?? ''}${a.lastName[0] ?? ''}`.toUpperCase();
             const isSelf = a.id === currentUser?.id;
-            const offices_ = a.officeIds.map(id => offices.find(o => o.id === id)?.name ?? '—');
+            const officeNames = a.officeIds.map(id => offices.find(o => o.id === id)?.name ?? '—');
             const photoUrl = resolveAvatar(a);
             const gradient = AVATAR_GRADIENTS[hashToIndex(a.id, AVATAR_GRADIENTS.length)];
+            const seenLabel = a.lastLoginAt
+              ? `Seen ${formatDistanceToNow(new Date(a.lastLoginAt), { addSuffix: true })}`
+              : 'Never signed in';
 
             return (
               <div
                 key={a.id}
-                className="group relative rounded-xl border border-border bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
+                className="group relative flex flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-foreground/15"
               >
                 <div className="flex items-start gap-3">
-                  {/* Avatar: uploaded photo → linked-staff photo → gradient initials.
-                      Matches the pattern used on /clients, /bookings, /calendar. */}
+                  {/* Avatar: uploaded photo → linked-staff photo → gradient initials */}
                   <div className="relative shrink-0">
                     {photoUrl ? (
                       <img
                         src={photoUrl}
                         alt={`${a.firstName} ${a.lastName}`}
-                        className="h-11 w-11 rounded-full object-cover"
+                        className="h-12 w-12 rounded-full object-cover"
                       />
                     ) : (
                       <div className={cn(
-                        'flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white',
+                        'flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white',
                         gradient,
                       )}>
                         {initials || <UserCircleIcon className="h-6 w-6 text-white/90" />}
                       </div>
                     )}
                   </div>
+
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-semibold text-foreground truncate">
-                        {a.firstName} {a.lastName}
-                      </p>
+                    <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', role.dot)} />
+                      {role.label}
                       {isSelf && (
-                        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground border border-border rounded px-1.5 py-0.5">
-                          you
-                        </span>
+                        <>
+                          <span className="text-muted-foreground/40">·</span>
+                          <span className="normal-case tracking-normal font-medium">you</span>
+                        </>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
-                      <EnvelopeIcon className="h-3.5 w-3.5" />
-                      {a.email}
+                    <p className="mt-0.5 font-semibold text-foreground truncate leading-tight">
+                      {a.firstName} {a.lastName}
+                    </p>
+                    <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground truncate">
+                      <EnvelopeIcon className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{a.email}</span>
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  <span className={`text-xs font-medium px-2 py-1 rounded-lg border inline-flex items-center gap-1.5 ${role.chip}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${role.dot}`} />
-                    {role.label}
-                  </span>
-                  <span className={`text-xs font-medium px-2 py-1 rounded-lg ${status.chip}`}>
-                    {status.label}
-                  </span>
-                  {offices_.map((name, i) => (
-                    <span key={i} className="text-xs text-muted-foreground px-2 py-1 rounded-lg bg-muted border border-border">
-                      {name}
+                {/* Secondary line — offices + seen, and a status chip
+                    ONLY when non-active (the exception worth flagging). */}
+                <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                  {officeNames.length > 0 && (
+                    <span className="inline-flex items-center gap-1">
+                      <MapPinIcon className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{officeNames.join(', ')}</span>
                     </span>
-                  ))}
-                </div>
-
-                <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">
-                    <ClockIcon className="h-3.5 w-3.5" />
-                    {a.lastLoginAt
-                      ? `Seen ${formatDistanceToNow(new Date(a.lastLoginAt), { addSuffix: true })}`
-                      : 'Never signed in'}
+                  )}
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="inline-flex items-center gap-1 tabular-nums">
+                    <ClockIcon className="h-3 w-3 shrink-0" />
+                    {seenLabel}
                   </span>
-
-                  {can('accounts.manage') && (
-                    // Always-visible at 70% opacity, full on hover — so touch
-                    // devices can tap them (no hover on iPad).
-                    <div className="flex items-center gap-0.5 opacity-70 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => toggleStatus(a)}
-                        disabled={isSelf}
-                        className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                        title={a.status === 'active' ? 'Disable account' : 'Reactivate account'}
-                        aria-label={a.status === 'active' ? 'Disable account' : 'Reactivate account'}
-                      >
-                        <LockClosedIcon className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => openEdit(a)}
-                        className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                        title="Edit"
-                        aria-label="Edit account"
-                      >
-                        <PencilSquareIcon className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleRemove(a)}
-                        disabled={isSelf}
-                        className="p-1.5 rounded-md hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                        title="Remove"
-                        aria-label="Remove account"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </button>
-                    </div>
+                  {a.status === 'invited' && (
+                    <>
+                      <span className="text-muted-foreground/40">·</span>
+                      <span className="inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        Pending invite
+                      </span>
+                    </>
+                  )}
+                  {a.status === 'disabled' && (
+                    <>
+                      <span className="text-muted-foreground/40">·</span>
+                      <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+                        <LockClosedIcon className="h-3 w-3" />
+                        Disabled
+                      </span>
+                    </>
                   )}
                 </div>
+
+                {/* Actions — absolute top-right so the card footer stays clean */}
+                {can('accounts.manage') && (
+                  <div className="absolute top-3 right-3 flex items-center gap-0.5 opacity-70 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => toggleStatus(a)}
+                      disabled={isSelf}
+                      className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                      title={a.status === 'active' ? 'Disable account' : 'Reactivate account'}
+                      aria-label={a.status === 'active' ? 'Disable account' : 'Reactivate account'}
+                    >
+                      <LockClosedIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => openEdit(a)}
+                      className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                      title="Edit"
+                      aria-label="Edit account"
+                    >
+                      <PencilSquareIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleRemove(a)}
+                      disabled={isSelf}
+                      className="p-1.5 rounded-md hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                      title="Remove"
+                      aria-label="Remove account"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -484,21 +581,26 @@ function AccountDialog({ open, account, offices, onClose, onSubmit, submitting }
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit account' : 'Invite new member'}</DialogTitle>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {isEdit ? 'Edit' : 'Invite'}
+          </p>
+          <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight">
+            {isEdit ? `${account.firstName} ${account.lastName}` : 'New team member'}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* ── Photo (logo) — upload + preview ─────────── */}
+          {/* ── Photo — upload + preview (no decorative halo) ─ */}
           <div className="flex items-center gap-4">
             <div className="relative shrink-0">
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
                   alt="Avatar preview"
-                  className="h-16 w-16 rounded-full object-cover ring-2 ring-border"
+                  className="h-16 w-16 rounded-full object-cover"
                 />
               ) : (
                 <div className={cn(
-                  'flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br text-lg font-bold text-white ring-2 ring-border',
+                  'flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br text-lg font-bold text-white',
                   previewGradient,
                 )}>
                   {initials || '?'}
