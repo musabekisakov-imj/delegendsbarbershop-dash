@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { servicesApi, categoriesApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
-import { PageHeader } from '../components/shared/page-header';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -13,35 +12,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import {
   PlusIcon, ClockIcon, ScissorsIcon, TagIcon, Squares2X2Icon,
   PencilSquareIcon, TrashIcon, MagnifyingGlassIcon, Cog6ToothIcon,
-  CheckIcon, XMarkIcon, PhotoIcon,
+  CheckIcon, XMarkIcon, PhotoIcon, MapPinIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
 import { useT } from '../hooks/use-t';
 import { CardSkeleton } from '../components/shared/page-skeleton';
-import { FilterChip } from '../components/ui/filter-chip';
 import { exportCsv } from '../lib/csv';
 import { useConfirm } from '../hooks/use-confirm';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { fileToDataUrl, dataUrlBytes } from '../lib/image-upload';
 import type { Service, Category } from '../types';
-
-// ─── Palette: 8 gradient themes, deterministic per service ID ─────
-const GRADIENTS = [
-  'from-rose-400 via-fuchsia-500 to-purple-600',
-  'from-blue-400 via-indigo-500 to-violet-600',
-  'from-amber-400 via-orange-500 to-rose-600',
-  'from-emerald-400 via-teal-500 to-cyan-600',
-  'from-fuchsia-400 via-pink-500 to-rose-600',
-  'from-sky-400 via-blue-500 to-indigo-600',
-  'from-lime-400 via-emerald-500 to-teal-600',
-  'from-orange-400 via-red-500 to-pink-600',
-];
-
-const gradientForId = (id: string) => {
-  const n = [...id].reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, 0);
-  return GRADIENTS[n % GRADIENTS.length];
-};
 
 // Responsive <img> attrs for Unsplash URLs — serves 400/800/1200 widths instead of always 800.
 // For non-Unsplash URLs we just return a single src untouched.
@@ -99,6 +80,8 @@ export function ServicesPage() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const officeId = useOfficeStore(s => s.currentOfficeId);
+  const offices = useOfficeStore(s => s.offices);
+  const currentOffice = useMemo(() => offices.find(o => o.id === officeId), [offices, officeId]);
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -176,6 +159,14 @@ export function ServicesPage() {
     });
   }, [services, search, categoryFilter]);
 
+  // Editorial hero stats — price range across all services gives an
+  // at-a-glance sense of the menu's span without a heavy chart.
+  const priceRange = useMemo(() => {
+    if (services.length === 0) return null;
+    const prices = services.map(s => s.price);
+    return { min: Math.min(...prices), max: Math.max(...prices) };
+  }, [services]);
+
   const openCreate = () => {
     if (categories.length === 0) {
       toast.error(t('toast.createCategoryFirst'));
@@ -243,75 +234,127 @@ export function ServicesPage() {
   const isSubmitting = createServiceMutation.isPending || updateServiceMutation.isPending;
   const isFiltering = search.trim() !== '' || categoryFilter !== 'all';
 
+  const handleExport = () => exportCsv('services', filteredServices, [
+    { key: 'name', header: 'Name' },
+    { key: (s) => categoryById.get(s.categoryId)?.name ?? '', header: 'Category' },
+    { key: 'price', header: 'Price' },
+    { key: 'duration', header: 'Duration (min)' },
+    { key: 'description', header: 'Description' },
+  ]);
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Services"
-        description="Your service menu, visually"
-        action={
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => exportCsv('services', filteredServices, [
-                { key: 'name', header: 'Name' },
-                { key: (s) => categoryById.get(s.categoryId)?.name ?? '', header: 'Category' },
-                { key: 'price', header: 'Price' },
-                { key: 'duration', header: 'Duration (min)' },
-                { key: 'description', header: 'Description' },
-              ])}
-              disabled={filteredServices.length === 0}
-              title="Export services to CSV"
-            >
-              <ArrowDownTrayIcon className="mr-1.5 h-4 w-4" />
-              Export
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setIsCategoryDialogOpen(true)}>
-              <Cog6ToothIcon className="mr-1.5 h-4 w-4" />
-              Categories
-            </Button>
-            <Button size="sm" onClick={openCreate}>
-              <PlusIcon className="mr-1.5 h-4 w-4" />
-              New Service
-            </Button>
+    <div className="space-y-5">
+      {/* ─── Editorial hero ──────────────────────────────
+          The Menu: the service count IS the title, eyebrow
+          carries office + category count + price range.
+          Matches Client Ledger / Crew Board hero rhythm. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <span>Services</span>
+            {currentOffice && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
+                  <MapPinIcon className="h-3 w-3" />
+                  {currentOffice.name}
+                </span>
+              </>
+            )}
+            {categories.length > 0 && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="normal-case tracking-normal tabular-nums">
+                  {categories.length} {categories.length === 1 ? 'category' : 'categories'}
+                </span>
+              </>
+            )}
+            {priceRange && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="normal-case tracking-normal tabular-nums">
+                  €{priceRange.min}–€{priceRange.max}
+                </span>
+              </>
+            )}
           </div>
-        }
-      />
-
-      {/* Category filter chips */}
-      {categories.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterChip active={categoryFilter === 'all'} onClick={() => setCategoryFilter('all')}>
-            All
-            <span className="ml-1.5 text-xs opacity-70 tabular-nums">{services.length}</span>
-          </FilterChip>
-          {categories.map(cat => {
-            const count = services.filter(s => s.categoryId === cat.id).length;
-            return (
-              <FilterChip
-                key={cat.id}
-                active={categoryFilter === cat.id}
-                onClick={() => setCategoryFilter(cat.id)}
-              >
-                <span className={cn('h-1.5 w-1.5 rounded-full', dotForId(cat.id))} />
-                {cat.name}
-                <span className="ml-1.5 text-xs opacity-70 tabular-nums">{count}</span>
-              </FilterChip>
-            );
-          })}
+          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums">
+            {services.length.toLocaleString()}{' '}
+            <span className="text-muted-foreground/70 font-semibold">
+              {services.length === 1 ? 'service' : 'services'}
+            </span>
+          </h1>
         </div>
-      )}
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={filteredServices.length === 0}
+            aria-label="Export services"
+          >
+            <ArrowDownTrayIcon className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setIsCategoryDialogOpen(true)}>
+            <Cog6ToothIcon className="mr-1 h-4 w-4" />
+            Categories
+          </Button>
+          <Button size="sm" onClick={openCreate}>
+            <PlusIcon className="mr-1 h-4 w-4" />
+            New service
+          </Button>
+        </div>
+      </div>
 
-      {/* Search */}
+      {/* ─── Operator bar — category filter + search ─────
+          One tight band. Tab-underline category filter on
+          top (replaces rainbow chip row), search below. */}
       {categories.length > 0 && (
-        <div className="relative max-w-md">
-          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search services…"
-            className="pl-9 h-10"
-          />
+        <div className="rounded-xl border border-border bg-card">
+          <div className="flex items-end gap-1 overflow-x-auto border-b border-border px-2">
+            {[{ id: 'all', name: 'All', count: services.length }, ...categories.map(c => ({
+              id: c.id, name: c.name, count: services.filter(s => s.categoryId === c.id).length,
+            }))].map(cat => {
+              const active = categoryFilter === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat.id)}
+                  aria-pressed={active}
+                  className={cn(
+                    'relative inline-flex items-center gap-2 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors',
+                    active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {cat.id !== 'all' && (
+                    <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', dotForId(cat.id))} />
+                  )}
+                  <span>{cat.name}</span>
+                  <span className={cn(
+                    'inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
+                    active ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground',
+                  )}>
+                    {cat.count}
+                  </span>
+                  {active && (
+                    <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" aria-hidden />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div className="p-2.5">
+            <div className="relative">
+              <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search services…"
+                className="pl-9 h-9 bg-background"
+              />
+            </div>
+          </div>
         </div>
       )}
 
@@ -322,17 +365,18 @@ export function ServicesPage() {
         </div>
       )}
 
-      {/* Empty: no categories */}
+      {/* Empty: no categories — editorial empty state, no gradient chrome. */}
       {!isLoading && categories.length === 0 && (
-        <div className="rounded-xl border-2 border-dashed border-border bg-muted/40 p-16 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-400 to-purple-600 mb-5 shadow-lg">
-            <Squares2X2Icon className="h-8 w-8 text-white" />
-          </div>
-          <h3 className="text-base font-bold text-foreground mb-1.5">No categories yet</h3>
-          <p className="text-sm text-muted-foreground mb-5">Create a category before adding services</p>
-          <Button onClick={() => setIsCategoryDialogOpen(true)}>
+        <div className="rounded-xl border border-dashed border-border bg-card p-16 text-center">
+          <Squares2X2Icon className="mx-auto h-10 w-10 text-muted-foreground/40" />
+          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Start here
+          </p>
+          <h3 className="mt-1 text-base font-bold text-foreground">No categories yet</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Create a category before adding services</p>
+          <Button className="mt-5" onClick={() => setIsCategoryDialogOpen(true)}>
             <TagIcon className="mr-2 h-4 w-4" />
-            Create Category
+            Create category
           </Button>
         </div>
       )}
@@ -550,36 +594,40 @@ function ServiceEditorModal({
   isSubmitting: boolean;
   onSave: () => void;
 }) {
-  // Deterministic preview gradient based on form name (since there's no ID yet for new services)
-  const previewSeed = form.name || 'preview';
-  const gradient = gradientForId(previewSeed);
   const initial = (form.name.charAt(0) || 'S').toUpperCase();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{mode === 'create' ? 'New service' : 'Edit service'}</DialogTitle>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {mode === 'create' ? 'New' : 'Edit'}
+          </p>
+          <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight">
+            {mode === 'create' ? 'Add a service' : form.name || 'Service'}
+          </DialogTitle>
         </DialogHeader>
 
-        {/* Live preview */}
+        {/* Live preview — neutral fallback to match the card grid.
+            The rainbow gradient was a demo-era decoration; now the
+            placeholder reads as a deliberate "no photo yet" state. */}
         <div className={cn(
           'relative aspect-[5/2] rounded-xl overflow-hidden',
-          !form.imageUrl && `bg-gradient-to-br ${gradient}`,
+          !form.imageUrl && 'bg-gradient-to-br from-muted to-accent/60 dark:from-muted dark:to-accent/20 border border-border',
         )}>
           {form.imageUrl ? (
             <img {...responsiveImg(form.imageUrl)} alt="preview" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           ) : (
             <>
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-white/25 font-black leading-none select-none" style={{ fontSize: '6rem' }}>
+                <span className="text-foreground/15 font-black leading-none select-none text-[6rem]">
                   {initial}
                 </span>
               </div>
-              <ScissorsIcon className="absolute -bottom-2 -right-2 h-24 w-24 text-white/15 rotate-12" />
+              <ScissorsIcon className="absolute -bottom-2 -right-2 h-24 w-24 text-foreground/10 rotate-12" />
             </>
           )}
-          {form.imageUrl && <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />}
+          {form.imageUrl && <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />}
           {form.price && (
             <div className="absolute top-3 right-3 inline-flex items-center rounded-full bg-white/90 dark:bg-black/60 backdrop-blur-md px-3 py-1 text-sm font-bold tabular-nums text-foreground shadow-sm">
               €{form.price}
@@ -589,7 +637,7 @@ function ServiceEditorModal({
 
         <div className="space-y-4">
           <div>
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</Label>
+            <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Name</Label>
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -600,7 +648,7 @@ function ServiceEditorModal({
           </div>
 
           <div>
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Category</Label>
+            <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Category</Label>
             <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
               <SelectTrigger className="mt-1.5">
                 <SelectValue placeholder="Select category" />
@@ -615,29 +663,29 @@ function ServiceEditorModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Price (€)</Label>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Price (€)</Label>
               <Input
                 type="number"
                 value={form.price}
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
                 placeholder="35"
-                className="mt-1.5"
+                className="mt-1.5 tabular-nums"
               />
             </div>
             <div>
-              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Duration (min)</Label>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Duration (min)</Label>
               <Input
                 type="number"
                 value={form.duration}
                 onChange={(e) => setForm({ ...form, duration: e.target.value })}
                 placeholder="30"
-                className="mt-1.5"
+                className="mt-1.5 tabular-nums"
               />
             </div>
           </div>
 
           <div>
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</Label>
+            <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Description</Label>
             <Textarea
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
