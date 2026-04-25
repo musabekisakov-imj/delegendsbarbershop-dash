@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { CheckIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, ArrowDownTrayIcon, ArrowUpRightIcon } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
 import type { ConfirmedBooking } from '@/lib/types';
+
+const REVEAL_EASE = [0.16, 1, 0.3, 1] as const;
 
 export default function ConfirmationPage() {
   const [booking, setBooking] = useState<ConfirmedBooking | null>(null);
@@ -15,18 +17,18 @@ export default function ConfirmationPage() {
       try {
         setBooking(JSON.parse(raw));
       } catch {
-        // Stale or corrupted — show the empty state below.
+        // Stale or corrupted — show empty state.
       }
     }
   }, []);
 
   if (!booking) {
     return (
-      <main className="min-h-screen flex items-center justify-center px-6 bg-bg">
+      <main className="min-h-screen flex items-center justify-center px-6 bg-ink">
         <div className="text-center">
-          <div className="eyebrow mb-4">Nieko nerasta</div>
-          <h1 className="display text-3xl mb-6">Vizitas neaptiktas.</h1>
-          <Link href="/book" className="btn-primary">Užsisakyti naują</Link>
+          <div className="eyebrow mb-5">Nieko nerasta</div>
+          <h1 className="display text-4xl mb-8">Vizitas neaptiktas.</h1>
+          <Link href="/book" className="btn-mark">Užsisakyti naują</Link>
         </div>
       </main>
     );
@@ -35,52 +37,91 @@ export default function ConfirmationPage() {
   const start = new Date(booking.startTime);
 
   return (
-    <main className="min-h-screen bg-bg">
-      <div className="editorial pt-20 sm:pt-32 pb-32">
+    <main className="min-h-screen bg-ink relative overflow-hidden">
+      {/* Vermillion glow — confirms the success moment without screaming */}
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10"
+        style={{
+          background:
+            'radial-gradient(ellipse 50% 40% at 50% 30%, rgba(232,72,45,0.12), transparent 70%)',
+        }}
+      />
+
+      <div className="editorial pt-24 sm:pt-32 pb-32">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: 'easeOut' }}
-          className="max-w-2xl mx-auto text-center"
+          transition={{ duration: 0.8, ease: REVEAL_EASE }}
+          className="max-w-3xl mx-auto"
         >
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ok/10 text-ok mb-8">
-            <CheckIcon className="h-7 w-7" />
-          </div>
+          {/* Confirmation mark */}
+          <motion.div
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.7, delay: 0.1, ease: REVEAL_EASE }}
+            className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-vermillion bg-vermillion/15 text-vermillion mb-10"
+          >
+            <CheckIcon className="h-6 w-6" />
+          </motion.div>
+
           <div className="eyebrow mb-6">Patvirtinta · Iki greito</div>
-          <h1 className="display text-5xl sm:text-7xl leading-[0.95]">
-            Lauksime jūsų<br />
-            <span className="italic" style={{ fontVariationSettings: "'opsz' 144, 'SOFT' 100" }}>
-              {formatDateLT(start)} {formatTimeShort(start)}.
+
+          <h1 className="display text-5xl sm:text-7xl lg:text-[100px] leading-[0.92] mb-6">
+            Lauksime jūsų{' '}
+            <span className="display-italic text-vermillion">
+              {formatDateLT(start)} {formatTime(start)}.
             </span>
           </h1>
-          <p className="mt-8 text-ink-muted">
-            Patvirtinimo el. laišką netrukus išsiuntėme. Jei reikia atšaukti — paskambinkite į saloną.
+
+          <p className="mt-8 text-bone-muted text-lg max-w-xl">
+            Patvirtinimo el. laišką netrukus išsiuntėme. Jei reikia atšaukti
+            ar perkelti vizitą — paskambinkite į saloną.
           </p>
 
-          <div className="mt-16 bg-bg-raised rounded-[3px] p-8 sm:p-10 text-left">
+          {/* Details card */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.3, ease: REVEAL_EASE }}
+            className="mt-16 border border-hairline rounded-[2px] bg-ink-2/60 backdrop-blur-sm p-8 sm:p-10"
+          >
             <Row label="Paslauga" value={booking.serviceName} />
             <Row label="Meistras" value={booking.staffName} />
             <Row label="Salonas" value={booking.officeName} />
             <Row label="Adresas" value={booking.officeAddress} />
-            <Row label="Data" value={`${formatDateLT(start)}, ${formatTime(start)}`} mono />
+            <Row
+              label="Data"
+              value={`${formatLongDateLT(start)} · ${formatTime(start)}`}
+              mono
+            />
             <div className="hairline mt-6 pt-6 flex items-center justify-between">
               <span className="eyebrow">Rezervacijos Nr.</span>
-              <span className="font-mono text-sm tabular text-ink-muted">
-                {booking.appointmentId.slice(-8).toUpperCase()}
+              <span className="font-mono text-sm tabular text-bone">
+                #{booking.appointmentId.slice(-8).toUpperCase()}
               </span>
             </div>
-          </div>
+          </motion.div>
 
-          <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.5 }}
+            className="mt-12 flex flex-wrap items-center gap-3"
+          >
             <a
               href={icsHref(booking)}
               download={`vizitas-${booking.appointmentId.slice(-6)}.ics`}
-              className="btn-secondary"
+              className="btn-bone"
             >
-              Pridėti į kalendorių
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              Įsidėti į kalendorių
             </a>
-            <Link href="/" className="btn-secondary">Į pradžią</Link>
-          </div>
+            <Link href="/" className="btn-ghost">
+              Į pradžią
+              <ArrowUpRightIcon className="h-4 w-4" />
+            </Link>
+          </motion.div>
         </motion.div>
       </div>
     </main>
@@ -89,9 +130,9 @@ export default function ConfirmationPage() {
 
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="grid grid-cols-[120px_1fr] gap-4 py-2">
-      <div className="eyebrow !text-[10px] mt-1.5">{label}</div>
-      <div className={mono ? 'tabular text-sm' : 'text-sm'}>{value}</div>
+    <div className="grid grid-cols-[120px_1fr] gap-4 py-3 border-b border-hairline last:border-b-0">
+      <div className="eyebrow !text-[9px] mt-1.5">{label}</div>
+      <div className={mono ? 'tabular text-base text-bone' : 'text-base text-bone'}>{value}</div>
     </div>
   );
 }
@@ -101,18 +142,19 @@ function formatDateLT(d: Date): string {
   return `${d.getDate()} ${months[d.getMonth()]}`;
 }
 
-function formatTime(d: Date): string {
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function formatLongDateLT(d: Date): string {
+  const dows = ['sekmadienis', 'pirmadienis', 'antradienis', 'trečiadienis', 'ketvirtadienis', 'penktadienis', 'šeštadienis'];
+  return `${dows[d.getDay()]}, ${formatDateLT(d)}`;
 }
 
-function formatTimeShort(d: Date): string {
+function formatTime(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function icsHref(b: ConfirmedBooking): string {
-  // Minimal RFC 5545 — enough for Apple Calendar / Google Calendar to import.
+  // Minimal RFC 5545 — Apple Calendar / Google Calendar friendly.
   const fmt = (iso: string) => iso.replace(/[-:]/g, '').split('.')[0] + 'Z';
   const ics = [
     'BEGIN:VCALENDAR',
