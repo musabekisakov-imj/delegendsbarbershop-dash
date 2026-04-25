@@ -1538,17 +1538,21 @@ export function CalendarPage() {
             This barber is already booked at another location during this time.
           </p>
           <div className="divide-y divide-border border-y border-border -mx-6">
-            {conflictState?.conflicts.map(({ appointment, office }) => (
-              <div key={appointment.id} className="px-6 py-3">
-                <p className="text-sm font-semibold text-foreground tabular-nums">
-                  {format(new Date(appointment.startTime), 'MMM d, HH:mm')} — {format(new Date(appointment.endTime), 'HH:mm')}
-                </p>
-                <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <MapPinIcon className="h-3 w-3 shrink-0" />
-                  {office.name} · {office.address}
-                </p>
-              </div>
-            ))}
+            {conflictState?.conflicts.map(({ appointment, office }) => {
+              const cs = new Date(appointment.startTime);
+              const ce = new Date(appointment.endTime);
+              return (
+                <div key={appointment.id} className="px-6 py-3">
+                  <p className="text-sm font-semibold text-foreground tabular-nums">
+                    {format(cs, 'MMM d')} · {formatTime(cs, timeFormat)} — {formatTime(ce, timeFormat)}
+                  </p>
+                  <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <MapPinIcon className="h-3 w-3 shrink-0" />
+                    {office.name} · {office.address}
+                  </p>
+                </div>
+              );
+            })}
           </div>
           <div className="flex gap-2 pt-2">
             <Button variant="outline" className="flex-1" onClick={() => setConflictState(null)}>

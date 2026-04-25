@@ -11,8 +11,9 @@ import { Switch } from '../components/ui/switch';
 import { BuildingStorefrontIcon, PaintBrushIcon, ClockIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
-import { useT } from '../hooks/use-t';
+import { useT, useTimeFormat } from '../hooks/use-t';
 import type { Theme, Language, DayOfWeek, Tenant } from '../types';
+import type { TimeFormat } from '../lib/time';
 
 const DAYS: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -26,6 +27,9 @@ export function SettingsPage() {
   const offices = useOfficeStore(s => s.offices);
   const currentOffice = useMemo(() => offices.find(o => o.id === officeId), [offices, officeId]);
   const [tab, setTab] = useState<SettingsTab>('general');
+  // Time format lives in the language-store (persisted) — independent of
+  // tenant data, applies instantly on change without a Save button.
+  const [timeFormat, setTimeFormat] = useTimeFormat();
 
   const { data: tenant } = useQuery({
     queryKey: ['tenant'],
@@ -306,6 +310,37 @@ export function SettingsPage() {
                   <SelectItem value="ru">🇷🇺 Russian</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Time format — applies instantly via the language store
+                (no Save button needed). Used by Calendar grid, Bookings,
+                Conflict modal, etc. via formatTime() helper. */}
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Time format</Label>
+              <Select value={timeFormat} onValueChange={(v) => setTimeFormat(v as TimeFormat)}>
+                <SelectTrigger className="mt-1.5 h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="24h">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs tabular-nums">14:30</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span>24-hour</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="12h">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs tabular-nums">2:30 PM</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span>12-hour (AM/PM)</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                Applies everywhere times appear — calendar, bookings, conflicts.
+              </p>
             </div>
 
             <div className="pt-4 border-t border-border">
