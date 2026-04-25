@@ -1,0 +1,344 @@
+// Prisma schema — mirrors src/app/types/index.ts in the frontend.
+// Run: npx prisma migrate dev --name init
+// Studio: npx prisma studio
+//
+// Multi-tenant via tenantId on every domain table. Soft-delete via
+// deletedAt on Client + Appointment (audit-critical entities).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────
+enum AppointmentStatus {
+  scheduled
+  confirmed
+  completed
+  cancelled
+  no_show
+}
+
+enum StaffRole {
+  owner
+  manager
+  barber
+  receptionist
+}
+
+enum DayOfWeek {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+}
+
+enum AccountStatus {
+  active
+  invited
+  disabled
+}
+
+enum AbsenceReason {
+  day_off    @map("day-off")
+  vacation
+  sick
+  training
+}
+
+enum BreakType {
+  lunch
+  dinner
+  rest
+}
+
+enum Gender {
+  male
+  female
+  other
+}
+
+enum Theme {
+  light
+  dark
+}
+
+enum Language {
+  en
+  ru
+  lt
+}
+
+// ─── Tenant + Office ─────────────────────────────────────
+model Tenant {
+  id           String        @id @default(cuid())
+  name         String
+  email        String
+  phone        String
+  theme        Theme         @default(light)
+  language     Language      @default(en)
+  workingHours Json          // map of day → {isOpen, openTime, closeTime}
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  offices      Office[]
+  accounts     Account[]
+  staff        Staff[]
+  clients      Client[]
+  services     Service[]
+  categories   Category[]
+  appointments Appointment[]
+
+  @@map("tenants")
+}
+
+model Office {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  address   String
+  phone     String?
+  timezone  String?
+  createdAt DateTime @default(now())
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Many-to-many bridges (accounts/staff/clients can belong to multiple offices)
+  accountLinks AccountOffice[]
+  staffLinks   StaffOffice[]
+  clientLinks  ClientOffice[]
+  services     Service[]
+  appointments Appointment[]
+
+  @@index([tenantId])
+  @@map("offices")
+}
+
+// ─── Accounts (who can log in) ───────────────────────────
+model Account {
+  id           String        @id @default(cuid())
+  tenantId     String
+  email        String        @unique
+  passwordHash String        // argon2 hash
+  firstName    String
+  lastName     String
+  role         StaffRole
+  status       AccountStatus @default(active)
+  avatarUrl    String?
+  staffId      String?       @unique
+  lastLoginAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staff        Staff?          @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  officeLinks  AccountOffice[]
+
+  @@index([tenantId])
+  @@index([email])
+  @@map("accounts")
+}
+
+model AccountOffice {
+  accountId String
+  officeId  String
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  office  Office  @relation(fields: [officeId], references: [id], onDelete: Cascade)
+
+  @@id([accountId, officeId])
+  @@map("account_offices")
+}
+
+// ─── Staff (haircutters) ─────────────────────────────────
+model Staff {
+  id        String    @id @default(cuid())
+  tenantId  String
+  firstName String
+  lastName  String
+  email     String
+  phone     String
+  role      StaffRole
+  isActive  Boolean   @default(true)
+  avatarUrl String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account      Account?
+  officeLinks  StaffOffice[]
+  shifts       Shift[]
+  absences     Absence[]
+  breaks       Break[]
+  appointments Appointment[]
+
+  @@index([tenantId])
+  @@map("staff")
+}
+
+model StaffOffice {
+  staffId  String
+  officeId String
+
+  staff  Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  office Office @relation(fields: [officeId], references: [id], onDelete: Cascade)
+
+  @@id([staffId, officeId])
+  @@map("staff_offices")
+}
+
+// ─── Clients ─────────────────────────────────────────────
+model Client {
+  id          String    @id @default(cuid())
+  tenantId    String
+  firstName   String
+  lastName    String
+  email       String
+  phone       String
+  notes       String    @default("")
+  gender      Gender?
+  totalVisits Int       @default(0)
+  lastVisitAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  /// Soft-delete — preserves appointment history integrity. Nullable.
+  deletedAt   DateTime?
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  officeLinks  ClientOffice[]
+  appointments Appointment[]
+
+  @@index([tenantId])
+  @@index([deletedAt])
+  @@index([phone])
+  @@map("clients")
+}
+
+model ClientOffice {
+  clientId String
+  officeId String
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  office Office @relation(fields: [officeId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, officeId])
+  @@map("client_offices")
+}
+
+// ─── Categories + Services ───────────────────────────────
+model Category {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  createdAt DateTime @default(now())
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  services Service[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("categories")
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  tenantId    String
+  officeId    String
+  categoryId  String
+  name        String
+  description String   @default("")
+  price       Decimal  @db.Decimal(10, 2)
+  duration    Int      // minutes
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  office       Office        @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  category     Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  appointments Appointment[]
+
+  @@index([tenantId, officeId])
+  @@index([categoryId])
+  @@map("services")
+}
+
+// ─── Shifts + Absences + Breaks ──────────────────────────
+model Shift {
+  id        String    @id @default(cuid())
+  staffId   String
+  dayOfWeek DayOfWeek
+  startTime String    // "HH:mm"
+  endTime   String    // "HH:mm"
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, dayOfWeek])
+  @@index([staffId])
+  @@map("shifts")
+}
+
+model Absence {
+  id        String        @id @default(cuid())
+  staffId   String
+  dayOfWeek DayOfWeek
+  reason    AbsenceReason
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, dayOfWeek])
+  @@index([staffId])
+  @@map("absences")
+}
+
+model Break {
+  id        String    @id @default(cuid())
+  staffId   String
+  dayOfWeek DayOfWeek
+  startTime String    // "HH:mm"
+  endTime   String    // "HH:mm"
+  type      BreakType
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId])
+  @@map("breaks")
+}
+
+// ─── Appointments — the heart of the system ──────────────
+model Appointment {
+  id         String            @id @default(cuid())
+  tenantId   String
+  locationId String            // = officeId; kept as locationId to mirror frontend types
+  clientId   String
+  staffId    String
+  serviceId  String
+  startTime  DateTime
+  endTime    DateTime
+  status     AppointmentStatus @default(scheduled)
+  notes      String            @default("")
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  /// Soft-delete — appointments preserved for audit (payroll, no-show
+  /// disputes, receipts). Default queries filter this out.
+  deletedAt  DateTime?
+
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  office   Office  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  staff    Staff   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  service  Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  // Conflict detection — fast lookup of "what does this barber have on day X"
+  @@index([staffId, startTime])
+  @@index([locationId, startTime])
+  @@index([clientId])
+  @@index([deletedAt])
+  @@map("appointments")
+}

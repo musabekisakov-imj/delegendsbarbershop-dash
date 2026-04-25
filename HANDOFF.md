@@ -57,10 +57,11 @@ Keep it tight — don't narrate every feature. Let the UI speak.
 > - Photo uploads for staff avatars and service images
 > - Three languages, light + dark mode, fully responsive
 >
-> **What still needs backend** (separate phase when you're ready to scale):
-> - Data syncs only on the device you're using it — each iPad has its own copy. A real backend (Supabase ~€3,500–5,000) would let multiple devices share live data.
-> - Login is demo-mode today. Real auth (~€800) wires Google/email login.
-> - Real SMS reminders to clients need a Twilio account (~€500 setup + per-message cost).
+> **What still needs backend** (Phase 2 — already started):
+> - The NestJS scaffold lives in `server/` (Postgres + Prisma + JWT auth + Resend email). Schema is complete, auth and the appointments module are working. The remaining domain modules (clients, staff, services, schedules) and the frontend swap are Phase 1 work — that's the next sprint.
+> - Until that ships, data is per-device localStorage and login is demo-mode (any email/password).
+> - Email confirmations + cancellations to clients work in the backend (Resend) — needs a verified sender domain to go live.
+> - SMS reminders are not in scope for this phase.
 >
 > Loom video walkthrough: [link when you record it]
 >
@@ -96,12 +97,14 @@ Open each page, hit ⌘-shift-4 (Mac) or Win+Shift+S (Windows). Save as `screens
 
 ## Post-handoff support
 
-The README has the "Backend swap guide" section. If a future developer picks it up, they can:
+The README has the "Backend (Phase 2)" section. If a future developer picks it up, they can:
 
 - Read `src/app/lib/api.ts` — the single file to swap for real fetches
 - Read `src/app/lib/query-keys.ts` — cache invalidation rule
-- Read `src/app/types/index.ts` — full type surface
+- Read `src/app/types/index.ts` — full type surface, mirrors `server/prisma/schema.prisma`
 - Read `src/app/lib/permissions.ts` — role matrix
-- Run `npm install && npm run dev` to get it live in 30 seconds
+- Read `server/README.md` — Phase 0 scaffold + Phase 1 module roadmap
+- Run `npm install && npm run dev` to get the frontend live in 30 seconds
+- Run the steps in `server/README.md` to get the backend up locally
 
-Tell the client: **"If you hire anyone else to extend this, have them read the README + HANDOFF.md first. It's all there."**
+Tell the client: **"If you hire anyone else to extend this, have them read the root README + HANDOFF.md + server/README.md first. It's all there."**

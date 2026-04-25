@@ -81,20 +81,28 @@ This is the right setup for a demo, training, or a single receptionist on one de
 
 ---
 
-## Backend swap guide (for your next developer)
+## Backend (Phase 2 — in progress)
 
-The app is frontend-only today, but it's structured to drop a backend in with minimal page changes.
+A NestJS + Prisma + PostgreSQL backend lives in [`server/`](./server). Status: **Phase 0 scaffold** — schema, auth, email, and the appointments module are in place. The frontend still reads/writes `src/app/lib/api.ts` against localStorage; the swap to real REST is Phase 1.
 
-1. **Every data access goes through `src/app/lib/api.ts`**. That single file owns localStorage reads/writes today. Swap each function's body for `fetch('/api/...')` and the pages won't notice.
-2. **Query keys are stable and office-scoped**: `['appointments', officeId]`, `['clients', officeId]`, etc. When you add a backend, the same keys map to REST endpoints 1:1.
+```bash
+cd server
+npm install && npm run db:up && npm run prisma:migrate && npm run prisma:seed
+npm run start:dev      # http://localhost:3001/api/v1, Swagger at /api/docs
+```
+
+See [`server/README.md`](./server/README.md) for full setup, what's implemented, and the Phase 1 roadmap.
+
+### Why the swap is surgical, not a rewrite
+
+1. **Every data access goes through `src/app/lib/api.ts`**. That single file owns localStorage reads/writes today. Swap each function's body for `fetch('/api/v1/…')` and the pages won't notice.
+2. **Query keys are stable and office-scoped**: `['appointments', officeId]`, `['clients', officeId]`, etc. The new REST endpoints map 1:1.
 3. **Mutations already have `onMutate` / `onError` / `onSettled`** — optimistic updates work locally and will keep working against a real API.
-4. **`src/app/lib/query-keys.ts::invalidateBookingGraph`** centralizes cache invalidation. One function to call after any booking mutation — covers appointments, clients, overview, analytics, calendar, staff-stats.
-5. **Office write guard is already in place**: `appointmentsApi.update/delete/restore` accept `{ officeId }` and throw on mismatch. Mirror this server-side when you wire up auth.
-6. **Soft-delete is opt-in via `deletedAt`** — the schema is ready for real DB migrations.
-7. **Error reporting** goes through `src/app/lib/report-error.ts::reportError()`. Replace the body with `Sentry.captureException()` and you're done.
+4. **`src/app/lib/query-keys.ts::invalidateBookingGraph`** centralizes cache invalidation — one function to call after any booking mutation.
+5. **Office write guard is already in place**: `appointmentsApi.update/delete/restore` accept `{ officeId }` and throw on mismatch. The server enforces the same via `req.user.tenantId`.
+6. **Soft-delete is opt-in via `deletedAt`** — Prisma schema mirrors it.
+7. **Error reporting** goes through `src/app/lib/report-error.ts::reportError()`. Swap the body for `Sentry.captureException()` when ready.
 8. **Schema versioning** lives at the top of `src/app/lib/mock-data.ts` (`CURRENT_SCHEMA_VERSION`). Bump on breaking seed changes.
-
-Recommended stack for the swap: **Supabase** (Postgres + auth + storage) or **Hono + Drizzle + Postgres** if you want full control. Either route is a separate ~60–100 hour project.
 
 ---
 
@@ -157,8 +165,8 @@ src/styles/          theme.css with tokens + animations
 
 ## Known gaps (honest handoff)
 
-- **No real backend** — localStorage only. Listed above.
-- **No real authentication** — any email/password passes (mock `authApi.login` accepts anything).
+- **No real backend wired to the frontend yet** — frontend reads localStorage. NestJS scaffold is in [`server/`](./server) but the swap is Phase 1.
+- **No real authentication on the deployed app** — any email/password passes (mock `authApi.login` accepts anything). The server module already implements argon2 + JWT, just not connected.
 - **No timezones** — all dates render in the browser's local zone. Fine for a single country; multi-country deployment needs `date-fns-tz`.
 - **No SMS / email delivery** — `tel:` and `sms:` are OS handoffs, not server-sent.
 - **No payment / deposit tracking** — not in scope.
