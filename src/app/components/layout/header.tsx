@@ -84,9 +84,12 @@ export function Header() {
           <span className="hidden sm:inline font-bold text-foreground">BarberPro</span>
         </NavLink>
 
-        {/* Desktop nav (inline) */}
+        {/* Desktop nav (inline) — overflow-hidden + min-w-0 prevents
+            children with whitespace-nowrap from bleeding into the
+            right-side utilities. Labels appear ONLY at 2xl (≥1536px)
+            because below that, 10 labels + utilities don't fit cleanly. */}
         <nav
-          className="hidden md:flex items-center gap-0.5 flex-1 min-w-0 ml-2"
+          className="hidden md:flex items-center gap-0.5 flex-1 min-w-0 ml-2 overflow-hidden"
           aria-label="Primary navigation"
         >
           {visibleNav.map(item => (
@@ -106,8 +109,8 @@ export function Header() {
               {({ isActive }) => (
                 <>
                   <item.icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                  {/* Label hidden on md, shown at xl+ */}
-                  <span className="hidden xl:inline">{t(item.key)}</span>
+                  {/* Label only at 2xl+ — at smaller widths, icon + tooltip */}
+                  <span className="hidden 2xl:inline">{t(item.key)}</span>
                 </>
               )}
             </NavLink>
