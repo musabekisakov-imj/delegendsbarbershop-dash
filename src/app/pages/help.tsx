@@ -6,6 +6,7 @@ import {
   CalendarIcon, UserGroupIcon, Cog6ToothIcon, QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline';
 import { cn } from '../components/ui/utils';
+import { EmptyState } from '../components/shared/empty-state';
 
 type CategoryId = 'appointments' | 'clients' | 'settings';
 
@@ -129,14 +130,13 @@ export function HelpPage() {
       {/* ─── FAQ — search results OR category accordion ─ */}
       {searchResults ? (
         searchResults.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center">
-            <QuestionMarkCircleIcon className="mx-auto h-10 w-10 text-muted-foreground/40" />
-            <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              No matches
-            </p>
-            <h3 className="mt-1 text-base font-bold text-foreground">Nothing found for "{searchQuery}"</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Try a different search term, or browse a category above.</p>
-          </div>
+          <EmptyState
+            icon={QuestionMarkCircleIcon}
+            eyebrow="No matches"
+            title={`Nothing found for "${searchQuery}"`}
+            description="Try a different search term, or browse a category above."
+            variant="plain"
+          />
         ) : (
           <div className="rounded-xl border border-border bg-card overflow-hidden">
             <Accordion type="single" collapsible className="w-full">

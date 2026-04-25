@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
 import { useT } from '../hooks/use-t';
 import { CardSkeleton } from '../components/shared/page-skeleton';
+import { EmptyState } from '../components/shared/empty-state';
 import { exportCsv } from '../lib/csv';
 import { useConfirm } from '../hooks/use-confirm';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
@@ -365,31 +366,36 @@ export function ServicesPage() {
         </div>
       )}
 
-      {/* Empty: no categories — editorial empty state, no gradient chrome. */}
+      {/* Empty: no categories — first-time placeholder */}
       {!isLoading && categories.length === 0 && (
-        <div className="rounded-xl border border-dashed border-border bg-card p-16 text-center">
-          <Squares2X2Icon className="mx-auto h-10 w-10 text-muted-foreground/40" />
-          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Start here
-          </p>
-          <h3 className="mt-1 text-base font-bold text-foreground">No categories yet</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Create a category before adding services</p>
-          <Button className="mt-5" onClick={() => setIsCategoryDialogOpen(true)}>
-            <TagIcon className="mr-2 h-4 w-4" />
-            Create category
-          </Button>
-        </div>
+        <EmptyState
+          icon={Squares2X2Icon}
+          eyebrow="Start here"
+          title="No categories yet"
+          description="Create a category before adding services."
+          action={
+            <Button onClick={() => setIsCategoryDialogOpen(true)}>
+              <TagIcon className="mr-2 h-4 w-4" />
+              Create category
+            </Button>
+          }
+        />
       )}
 
       {/* Empty: filters return nothing */}
       {!isLoading && categories.length > 0 && isFiltering && filteredServices.length === 0 && (
-        <div className="rounded-xl border border-border bg-card p-12 text-center">
-          <p className="text-sm font-medium text-foreground">No services match</p>
-          <p className="text-xs text-muted-foreground mt-1">Try a different search or category</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearch(''); setCategoryFilter('all'); }}>
-            Clear filters
-          </Button>
-        </div>
+        <EmptyState
+          icon={MagnifyingGlassIcon}
+          eyebrow="No matches"
+          title="No services match"
+          description="Try a different search term or pick another category."
+          variant="plain"
+          action={
+            <Button variant="outline" size="sm" onClick={() => { setSearch(''); setCategoryFilter('all'); }}>
+              Clear filters
+            </Button>
+          }
+        />
       )}
 
       {/* Gallery grid */}

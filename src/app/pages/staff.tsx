@@ -14,6 +14,7 @@ import { useOfficeStore } from '../store/office-store';
 import { useT } from '../hooks/use-t';
 import { cn } from '../components/ui/utils';
 import { CardSkeleton } from '../components/shared/page-skeleton';
+import { EmptyState } from '../components/shared/empty-state';
 import { Field } from '../components/ui/field';
 import { useConfirm } from '../hooks/use-confirm';
 import { Can } from '../components/shared/can';
@@ -465,15 +466,21 @@ export function StaffPage() {
           </div>
 
           {/* ─── Directory grid (rebuilt cards) ─────────── */}
+          {isLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)}
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={UsersIcon}
+              eyebrow={search || filter !== 'all' ? 'No matches' : 'Empty'}
+              title={t('staff.none')}
+              description={search ? 'Try a different search term.' : filter !== 'all' ? 'No staff in this filter.' : 'Add your first team member to get started.'}
+              variant={search || filter !== 'all' ? 'plain' : 'dashed'}
+            />
+          ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {isLoading ? (
-              Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
-            ) : filtered.length === 0 ? (
-              <div className="col-span-full flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card py-14 text-center">
-                <UsersIcon className="h-8 w-8 text-muted-foreground/60" />
-                <p className="text-sm text-muted-foreground">{t('staff.none')}</p>
-              </div>
-            ) : (
+            {
               filtered.map(member => {
                 const c = accentFor(member.id);
                 const memberShifts = shifts.filter(s => s.staffId === member.id);
@@ -586,8 +593,9 @@ export function StaffPage() {
                   </div>
                 );
               })
-            )}
+            }
           </div>
+          )}
         </>
       ) : (
         /* ─── Schedule ───────────────────────────────────
@@ -595,14 +603,14 @@ export function StaffPage() {
             eyebrow columns for days. ScheduleCell kept
             as-is — its popover + pill logic works well. */
         staff.filter(s => s.isActive).length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card py-14 text-center">
-            <CalendarDaysIcon className="h-8 w-8 text-muted-foreground/60" />
-            <p className="text-sm text-muted-foreground">
-              {staff.length === 0
-                ? t('staff.none')
-                : 'No active staff to schedule. Activate a team member first.'}
-            </p>
-          </div>
+          <EmptyState
+            icon={CalendarDaysIcon}
+            eyebrow="Empty"
+            title={staff.length === 0 ? t('staff.none') : 'No active staff'}
+            description={staff.length === 0
+              ? 'Add your first team member, then come back to plan their week.'
+              : 'Activate at least one team member from the Directory tab to start scheduling.'}
+          />
         ) : (
           <div className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="overflow-x-auto">
