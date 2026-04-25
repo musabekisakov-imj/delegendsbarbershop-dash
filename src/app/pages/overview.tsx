@@ -18,8 +18,7 @@ import { format, startOfWeek, endOfWeek, isWithinInterval, parseISO, startOfDay,
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useNavigate } from 'react-router';
 import { cn } from '../components/ui/utils';
-import { gradientFor, STATUS_DOT } from '../lib/tokens';
-import type { AppointmentStatus } from '../types';
+import { gradientFor, STATUS_DOT, STATUS_PILL, STATUS_LABEL } from '../lib/tokens';
 
 export function OverviewPage() {
   const navigate = useNavigate();
@@ -112,21 +111,8 @@ export function OverviewPage() {
     return { day, revenue, appointments: count, isToday: isToday(dayDate) };
   });
 
-  // Status pill palette — matches Bookings page so colors read consistently.
-  const STATUS_PILL: Record<AppointmentStatus, string> = {
-    scheduled: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-    confirmed: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-    completed: 'bg-muted text-muted-foreground',
-    cancelled: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
-    no_show:   'bg-amber-500/10 text-amber-700 dark:text-amber-400',
-  };
-  const STATUS_LABEL: Record<AppointmentStatus, string> = {
-    scheduled: 'Scheduled',
-    confirmed: 'Confirmed',
-    completed: 'Completed',
-    cancelled: 'Cancelled',
-    no_show:   'No-show',
-  };
+  // STATUS_PILL / STATUS_LABEL imported from `lib/tokens` — same palette
+  // as Bookings, Calendar, Accounts. Single source of truth.
 
   // Current office for the hero
   const offices = useOfficeStore(s => s.offices);

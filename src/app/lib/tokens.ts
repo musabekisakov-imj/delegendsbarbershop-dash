@@ -83,6 +83,27 @@ export const STATUS_STRIPE = {
   no_show:   'bg-amber-500',
 } as const;
 
+// Soft-tint pill background — pairs with STATUS_DOT for status chips
+// rendered inline (booking tiles, overview schedule, member status).
+// Uses the same hue family as STATUS_DOT but at 10% alpha.
+export const STATUS_PILL = {
+  scheduled: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+  confirmed: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  completed: 'bg-muted text-muted-foreground',
+  cancelled: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+  no_show:   'bg-amber-500/10 text-amber-700 dark:text-amber-400',
+} as const;
+
+// Human-readable labels — status enum values are snake_case
+// ('no_show') but must never render that way in UI.
+export const STATUS_LABEL = {
+  scheduled: 'Scheduled',
+  confirmed: 'Confirmed',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  no_show:   'No-show',
+} as const;
+
 // ─── Recency buckets for client last-seen ─────────────────
 export const RECENCY_STYLE = {
   fresh: { dot: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' },

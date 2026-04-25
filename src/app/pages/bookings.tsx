@@ -29,40 +29,15 @@ import { exportCsv } from '../lib/csv';
 import { useConfirm } from '../hooks/use-confirm';
 import { Can } from '../components/shared/can';
 import { EmptyState } from '../components/shared/empty-state';
-import { gradientFor } from '../lib/tokens';
+import { gradientFor, STATUS_DOT, STATUS_PILL, STATUS_LABEL, STATUS_STRIPE } from '../lib/tokens';
 import { ArrowDownTrayIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import type { AppointmentStatus, AppointmentWithDetails } from '../types';
 
 type ViewMode = 'list' | 'grid';
 
-// Avatar gradients: shared across the app via tokens.ts so the same client ID
-// paints the same gradient on every page (Bookings, Clients, New booking).
-
-const STATUS_DOT: Record<AppointmentStatus, string> = {
-  scheduled: 'bg-blue-500',
-  confirmed: 'bg-emerald-500',
-  completed: 'bg-muted-foreground/50',
-  cancelled: 'bg-rose-500',
-  no_show:   'bg-amber-500',
-};
-
-const STATUS_PILL: Record<AppointmentStatus, string> = {
-  scheduled: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-  confirmed: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  completed: 'bg-muted text-muted-foreground',
-  cancelled: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
-  no_show:   'bg-amber-500/10 text-amber-700 dark:text-amber-400',
-};
-
-// Human-readable labels — status values are snake_case in the enum
-// ('no_show') but must never render like that in the UI.
-const STATUS_LABEL: Record<AppointmentStatus, string> = {
-  scheduled: 'Scheduled',
-  confirmed: 'Confirmed',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
-  no_show:   'No-show',
-};
+// Status palettes (STATUS_DOT / STATUS_PILL / STATUS_LABEL / STATUS_STRIPE)
+// + avatar gradients are imported from `lib/tokens` — single source of truth
+// across Bookings, Overview, Calendar, Accounts.
 
 export function BookingsPage() {
   const navigate = useNavigate();
@@ -1092,13 +1067,7 @@ export function BookingsPage() {
 
 // ─── BookingCard (grid view) ─────────────────────────────────
 // Time-first calendar-style card. Colored left stripe = status at a glance.
-const STATUS_STRIPE: Record<AppointmentStatus, string> = {
-  scheduled: 'bg-blue-500',
-  confirmed: 'bg-emerald-500',
-  completed: 'bg-muted-foreground/40',
-  cancelled: 'bg-rose-500',
-  no_show:   'bg-amber-500',
-};
+// STATUS_STRIPE is imported from `lib/tokens` (top of file).
 
 interface BookingCardProps {
   apt: AppointmentWithDetails;
