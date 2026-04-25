@@ -11,7 +11,7 @@ import { Switch } from '../components/ui/switch';
 import { BuildingStorefrontIcon, PaintBrushIcon, ClockIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
-import { useT, useTimeFormat } from '../hooks/use-t';
+import { useT, useTimeFormat, useLanguage } from '../hooks/use-t';
 import type { Theme, Language, DayOfWeek, Tenant } from '../types';
 import type { TimeFormat } from '../lib/time';
 
@@ -22,14 +22,16 @@ type SettingsTab = 'general' | 'appearance' | 'hours';
 export function SettingsPage() {
   const queryClient = useQueryClient();
   const t = useT();
-  const { setTheme } = useTheme();
+  const { theme: currentTheme, setTheme } = useTheme();
   const officeId = useOfficeStore(s => s.currentOfficeId);
   const offices = useOfficeStore(s => s.offices);
   const currentOffice = useMemo(() => offices.find(o => o.id === officeId), [offices, officeId]);
   const [tab, setTab] = useState<SettingsTab>('general');
-  // Time format lives in the language-store (persisted) — independent of
-  // tenant data, applies instantly on change without a Save button.
+  // All Appearance preferences live client-side (next-themes for theme,
+  // language-store for language + time format). They persist via their
+  // own mechanisms and apply instantly — no Save button needed.
   const [timeFormat, setTimeFormat] = useTimeFormat();
+  const [language, setLanguage] = useLanguage();
 
   const { data: tenant } = useQuery({
     queryKey: ['tenant'],
@@ -42,10 +44,8 @@ export function SettingsPage() {
     phone: tenant?.phone || '',
   });
 
-  const [appearanceForm, setAppearanceForm] = useState({
-    theme: tenant?.theme || 'light' as Theme,
-    language: tenant?.language || 'en' as Language
-  });
+  // Theme + Language live in client-side stores (next-themes, language-store)
+  // — not tenant data — so no local form state is needed for them.
 
   const [workingHours, setWorkingHours] = useState(tenant?.workingHours || {});
 
@@ -66,10 +66,6 @@ export function SettingsPage() {
       return;
     }
     updateMutation.mutate(generalForm);
-  };
-
-  const handleSaveAppearance = () => {
-    updateMutation.mutate(appearanceForm);
   };
 
   const handleSaveWorkingHours = () => {
@@ -93,10 +89,6 @@ export function SettingsPage() {
       name: tenant.name,
       email: tenant.email,
       phone: tenant.phone,
-    });
-    setAppearanceForm({
-      theme: tenant.theme,
-      language: tenant.language,
     });
     setWorkingHours(tenant.workingHours);
   }, [tenant]);
@@ -257,7 +249,10 @@ export function SettingsPage() {
         </div>
       )}
 
-      {/* ─── Appearance ──────────────────────────────── */}
+      {/* ─── Appearance ────────────────────────────────
+          All three preferences (Theme / Language / Time format)
+          are client-side and apply instantly — no Save button.
+          Live preview where it makes sense. */}
       {tab === 'appearance' && (
         <div className="rounded-xl border border-border bg-card p-6">
           <div className="mb-5">
@@ -265,18 +260,17 @@ export function SettingsPage() {
               Appearance
             </p>
             <h3 className="mt-1 text-lg font-bold text-foreground">Look and feel</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Personal preferences. Changes apply instantly across the app.
+            </p>
           </div>
 
           <div className="space-y-5">
             <div>
               <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Theme</Label>
               <Select
-                value={appearanceForm.theme}
-                onValueChange={(value) => {
-                  const v = value as Theme;
-                  setAppearanceForm({ ...appearanceForm, theme: v });
-                  setTheme(v);
-                }}
+                value={(currentTheme as Theme) ?? 'light'}
+                onValueChange={(value) => setTheme(value as Theme)}
               >
                 <SelectTrigger className="mt-1.5 h-10">
                   <SelectValue />
@@ -300,7 +294,7 @@ export function SettingsPage() {
 
             <div>
               <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Language</Label>
-              <Select value={appearanceForm.language} onValueChange={(value) => setAppearanceForm({ ...appearanceForm, language: value as Language })}>
+              <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
                 <SelectTrigger className="mt-1.5 h-10">
                   <SelectValue />
                 </SelectTrigger>
@@ -312,9 +306,6 @@ export function SettingsPage() {
               </Select>
             </div>
 
-            {/* Time format — applies instantly via the language store
-                (no Save button needed). Used by Calendar grid, Bookings,
-                Conflict modal, etc. via formatTime() helper. */}
             <div>
               <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Time format</Label>
               <Select value={timeFormat} onValueChange={(v) => setTimeFormat(v as TimeFormat)}>
@@ -338,15 +329,6 @@ export function SettingsPage() {
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">
-                Applies everywhere times appear — calendar, bookings, conflicts.
-              </p>
-            </div>
-
-            <div className="pt-4 border-t border-border">
-              <Button onClick={handleSaveAppearance}>
-                Save changes
-              </Button>
             </div>
           </div>
         </div>
