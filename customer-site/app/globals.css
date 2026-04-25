@@ -2,145 +2,167 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── HOURS — base layer ─────────────────────────────────────── */
+/* ─── STUDIO — base layer ────────────────────────────────────── */
 
 @layer base {
   :root {
-    color-scheme: dark;
-  }
-
-  ::selection {
-    background: #E8482D;
-    color: #F4ECDB;
+    color-scheme: light;
   }
 
   html {
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
   }
 
   body {
-    @apply bg-ink text-bone antialiased;
-    font-family: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
-    font-feature-settings: 'ss01', 'ss03', 'cv11';
+    @apply bg-bg text-ink antialiased;
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Subtle film-grain texture across the entire site. Cheap, no asset. */
-    background-image:
-      radial-gradient(ellipse at top, rgba(232, 72, 45, 0.04), transparent 60%),
-      radial-gradient(ellipse at bottom, rgba(244, 236, 219, 0.02), transparent 50%);
+    /* Subtle radial mood */
+    background-image: radial-gradient(ellipse at top, rgba(44, 74, 56, 0.04), transparent 60%);
   }
 
-  /* Tabular numerics for prices, durations, times — protagonist of HOURS */
+  ::selection {
+    background: #2C4A38;
+    color: #F4F1EA;
+  }
+
+  /* Tabular numerics for prices, durations, IDs */
   .tabular {
     font-variant-numeric: tabular-nums;
   }
 
-  /* Display headlines — Fraunces pushed to its dramatic mode */
+  /* Display headlines — Geist tightened */
   .display {
-    font-family: var(--font-fraunces), Georgia, serif;
-    font-optical-sizing: auto;
-    font-variation-settings: 'opsz' 144, 'SOFT' 30;
-    letter-spacing: -0.025em;
-    line-height: 0.92;
-    font-weight: 400;
-  }
-  .display-italic {
-    font-family: var(--font-fraunces), Georgia, serif;
-    font-optical-sizing: auto;
-    font-style: italic;
-    /* Heavy SOFT setting + italic is the signature voice of HOURS. */
-    font-variation-settings: 'opsz' 144, 'SOFT' 100;
-    letter-spacing: -0.03em;
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui;
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 0.96;
   }
 
-  /* Eyebrow — uppercase tracking label, always above a section title */
+  /* Eyebrow — uppercase tracking label */
   .eyebrow {
-    @apply text-[10px] uppercase tracking-eyebrow text-bone-subtle font-medium;
+    @apply text-[10px] uppercase tracking-eyebrow text-ink-muted font-medium;
   }
-  .eyebrow-bone {
-    @apply text-[10px] uppercase tracking-eyebrow text-bone-muted font-medium;
+  .eyebrow-strong {
+    @apply text-[11px] uppercase tracking-eyebrow text-ink font-semibold;
+  }
+
+  /* Inverse panels — dark sections within the light page */
+  .inverse {
+    @apply bg-ink text-ink-inverse;
+  }
+  .inverse ::selection {
+    background: #F4F1EA;
+    color: #0E0E10;
   }
 }
 
 @layer components {
   /* ── Layout ── */
   .editorial {
-    @apply mx-auto w-full max-w-editorial px-6 sm:px-10;
+    @apply mx-auto w-full max-w-editorial px-5 sm:px-8;
   }
   .narrow {
-    @apply mx-auto w-full max-w-narrow px-6 sm:px-10;
+    @apply mx-auto w-full max-w-narrow px-5 sm:px-8;
   }
   .hairline {
     @apply border-t border-hairline;
   }
-  .hairline-strong {
-    @apply border-t border-hairline-strong;
+
+  /* ── Card primitive — modern bento grid building block ── */
+  .card {
+    @apply relative rounded-card bg-bg-surface border border-hairline
+           transition-all duration-300 ease-out;
+  }
+  .card-hover {
+    @apply hover:border-hairline-strong hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-12px_rgba(14,14,16,0.12)];
+  }
+  .card-inverse {
+    @apply relative rounded-card bg-ink-soft border border-hairline-inverse text-ink-inverse
+           transition-all duration-300 ease-out;
   }
 
   /* ── Buttons ── */
   .btn-mark {
-    /* Primary CTA — vermillion, single attention-grabbing block */
-    @apply inline-flex items-center justify-center gap-2.5 rounded-[2px]
-           bg-vermillion text-bone px-7 py-4 text-sm font-medium tracking-wide uppercase
-           transition-all duration-300 ease-out
-           hover:bg-bone hover:text-ink hover:tracking-wider
-           active:scale-[0.98]
-           disabled:opacity-30 disabled:pointer-events-none disabled:hover:bg-vermillion disabled:hover:text-bone;
+    /* Primary CTA — moss */
+    @apply inline-flex items-center justify-center gap-2 rounded-pill
+           bg-ink text-ink-inverse px-6 py-3 text-sm font-medium
+           transition-all duration-200 ease-out
+           hover:bg-moss
+           active:scale-[0.97]
+           disabled:opacity-30 disabled:pointer-events-none;
+  }
+
+  .btn-mark-lg {
+    @apply inline-flex items-center justify-center gap-2.5 rounded-pill
+           bg-ink text-ink-inverse px-8 py-4 text-base font-medium
+           transition-all duration-200 ease-out
+           hover:bg-moss
+           active:scale-[0.97]
+           disabled:opacity-30 disabled:pointer-events-none;
   }
 
   .btn-ghost {
-    /* Secondary — bone outline on dark */
-    @apply inline-flex items-center justify-center gap-2.5 rounded-[2px]
-           bg-transparent text-bone border border-hairline px-7 py-4 text-sm font-medium tracking-wide uppercase
-           transition-all duration-300 ease-out
-           hover:border-bone hover:bg-bone/[0.04] hover:tracking-wider
-           active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 rounded-pill
+           bg-transparent text-ink border border-hairline-strong px-6 py-3 text-sm font-medium
+           transition-all duration-200 ease-out
+           hover:border-ink hover:bg-ink/[0.03]
+           active:scale-[0.97];
   }
 
   .btn-bone {
-    /* Inverse — bone block, ink type. Used in "we mean it" moments. */
-    @apply inline-flex items-center justify-center gap-2.5 rounded-[2px]
-           bg-bone text-ink px-7 py-4 text-sm font-medium tracking-wide uppercase
-           transition-all duration-300 ease-out
-           hover:bg-vermillion hover:text-bone
-           active:scale-[0.98];
+    /* Used inside inverse panels */
+    @apply inline-flex items-center justify-center gap-2 rounded-pill
+           bg-ink-inverse text-ink px-6 py-3 text-sm font-medium
+           transition-all duration-200 ease-out
+           hover:bg-bg-raised
+           active:scale-[0.97];
   }
 
-  /* ── Tiles (slot picker, service rows, etc.) ── */
+  /* ── Pills — modern filter / tab pattern ── */
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-4 py-1.5 rounded-pill text-xs font-medium
+           bg-bg-raised text-ink-muted border border-transparent
+           transition-all duration-200 ease-out cursor-pointer
+           hover:text-ink hover:border-hairline-strong;
+  }
+  .pill-active {
+    @apply bg-ink text-ink-inverse hover:bg-ink hover:text-ink-inverse hover:border-transparent;
+  }
+
+  /* ── Tile (used inside booking flow) ── */
   .tile {
-    @apply rounded-[2px] border border-hairline bg-ink-2/40 backdrop-blur-sm
-           transition-all duration-300 ease-out cursor-pointer
-           hover:border-hairline-strong hover:bg-ink-3/60
-           focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-vermillion focus-visible:ring-offset-2 focus-visible:ring-offset-ink;
+    @apply relative rounded-card border border-hairline bg-bg-surface text-left
+           transition-all duration-200 ease-out cursor-pointer
+           hover:border-ink/40 hover:shadow-[0_4px_16px_-8px_rgba(14,14,16,0.10)]
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss focus-visible:ring-offset-2;
   }
   .tile-selected {
-    @apply border-vermillion bg-vermillion/[0.08];
-  }
-  .tile-selected:hover {
-    @apply border-vermillion bg-vermillion/[0.12];
+    @apply border-ink bg-ink text-ink-inverse hover:border-ink hover:bg-ink;
   }
 
-  /* Slot button — for the time grid */
+  /* ── Slot button ── */
   .slot {
-    @apply py-3 px-2 rounded-[2px] border border-hairline tabular text-sm
-           text-bone-muted transition-all duration-200 ease-snap cursor-pointer
-           hover:border-bone-muted hover:text-bone hover:bg-bone/[0.03]
-           focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-vermillion;
+    @apply py-3 px-2 rounded-md border border-hairline tabular text-sm
+           text-ink-muted transition-all duration-200 ease-snap cursor-pointer
+           hover:border-ink hover:text-ink hover:bg-ink/[0.02]
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss focus-visible:ring-offset-2;
   }
   .slot-selected {
-    @apply border-vermillion bg-vermillion text-bone hover:bg-vermillion hover:text-bone;
+    @apply border-ink bg-ink text-ink-inverse hover:bg-ink hover:text-ink-inverse;
   }
 
-  /* Decorative vertical wordmark — used as page-edge ornament */
-  .vmark {
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    @apply text-[10px] uppercase tracking-eyebrow text-bone-subtle;
+  /* ── Live indicator dot ── */
+  .live-dot {
+    @apply inline-block h-1.5 w-1.5 rounded-full bg-live;
+    animation: live-dot 1.6s ease-in-out infinite;
   }
 }
 
-/* Hide scrollbars on horizontal date strips while preserving function */
+/* Hide scrollbars on horizontal strips while preserving function */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }

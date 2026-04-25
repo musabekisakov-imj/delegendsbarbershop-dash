@@ -1,59 +1,74 @@
 import type { Config } from 'tailwindcss';
 
-// "HOURS" — dark editorial design system for the customer booking site.
-// Time is the protagonist. Vermillion is reserved for decision moments.
+// "STUDIO" — modern multi-page design system.
+// Mixed-mode (warm cream default + dark inverse panels). Sans-only typography
+// (Geist). Forest-moss accent. Vermillion reserved for live/hot states only.
 
 const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // Foundation — warm-leaning blacks and bones.
+        // Light surface foundation
+        bg: {
+          DEFAULT: '#F4F1EA',
+          raised: '#EAE5DA',
+          surface: '#FFFFFF',
+        },
         ink: {
-          DEFAULT: '#0E0D0B',
-          2: '#171511',
-          3: '#26221C',
-          4: '#3A352D',
+          DEFAULT: '#0E0E10',
+          soft: '#1A1A1D',
+          muted: '#6A6A6F',
+          subtle: '#9A9A9F',
+          inverse: '#F4F1EA',
         },
-        bone: {
-          DEFAULT: '#F4ECDB',
-          muted: '#B8AE9D',
-          subtle: '#7A7367',
-          dim: '#544E45',
+        hairline: {
+          DEFAULT: '#E5E1D8',
+          strong: '#D2CDC0',
+          inverse: 'rgba(244,241,234,0.10)',
+          'inverse-strong': 'rgba(244,241,234,0.20)',
         },
-        // Single shock accent. Used surgically.
-        vermillion: {
-          DEFAULT: '#E8482D',
-          dim: '#8B2D1B',
-          glow: 'rgba(232,72,45,0.18)',
+        // Primary brand accent — deep moss. Premium, artisan, calm.
+        moss: {
+          DEFAULT: '#2C4A38',
+          dim: '#1F3528',
+          light: '#3D6B4F',
+          glow: 'rgba(44,74,56,0.12)',
         },
-        // Hairlines on dark — alpha bone.
-        hairline: 'rgba(244,236,219,0.10)',
-        'hairline-strong': 'rgba(244,236,219,0.20)',
+        // Reserved for live/hot states only — now-line, available-now
+        live: '#E8482D',
+        ok: '#4D7A50',
+        warn: '#C5752E',
       },
       fontFamily: {
-        display: ['var(--font-fraunces)', 'Georgia', 'serif'],
-        sans: ['var(--font-inter-tight)', 'ui-sans-serif', 'system-ui'],
-        mono: ['var(--font-jetbrains-mono)', 'ui-monospace', 'monospace'],
+        sans: ['var(--font-geist-sans)', 'ui-sans-serif', 'system-ui'],
+        mono: ['var(--font-geist-mono)', 'ui-monospace', 'monospace'],
+        display: ['var(--font-geist-sans)', 'ui-sans-serif', 'system-ui'],
       },
       letterSpacing: {
-        eyebrow: '0.22em',
+        eyebrow: '0.14em',
+        tight: '-0.02em',
+        tighter: '-0.03em',
+        snug: '-0.04em',
       },
       maxWidth: {
         editorial: '1320px',
         narrow: '780px',
       },
       borderRadius: {
-        DEFAULT: '2px',
+        DEFAULT: '8px',
+        card: '12px',
+        pill: '9999px',
       },
-      // Custom easing matching the rest of the system.
       transitionTimingFunction: {
         out: 'cubic-bezier(0.16, 1, 0.3, 1)',
         snap: 'cubic-bezier(0.4, 0, 0.2, 1)',
+        bouncy: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
       animation: {
-        'marquee': 'marquee 40s linear infinite',
-        'pulse-slow': 'pulse-slow 3s ease-in-out infinite',
+        marquee: 'marquee 50s linear infinite',
+        'pulse-slow': 'pulse-slow 2.4s ease-in-out infinite',
+        'live-dot': 'live-dot 1.6s ease-in-out infinite',
       },
       keyframes: {
         marquee: {
@@ -63,6 +78,10 @@ const config: Config = {
         'pulse-slow': {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.55' },
+        },
+        'live-dot': {
+          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+          '50%': { opacity: '0.5', transform: 'scale(1.4)' },
         },
       },
     },

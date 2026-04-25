@@ -1,36 +1,13 @@
 import type { Metadata, Viewport } from 'next';
-import { Fraunces, Inter_Tight, JetBrains_Mono } from 'next/font/google';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
 import './globals.css';
-
-// Display — Fraunces variable serif. Pushed via SOFT axis for italic drama.
-// `axes` requires a true variable font load, so we omit `weight` (the variable
-// version covers the full weight range automatically).
-const fraunces = Fraunces({
-  subsets: ['latin', 'latin-ext'],
-  variable: '--font-fraunces',
-  display: 'swap',
-  axes: ['SOFT', 'opsz'],
-});
-
-// Body — Inter Tight, more confident than vanilla Inter (less SaaS-template).
-const interTight = Inter_Tight({
-  subsets: ['latin', 'latin-ext'],
-  variable: '--font-inter-tight',
-  display: 'swap',
-  weight: ['300', '400', '500', '600'],
-});
-
-// Tabular numerics — JetBrains Mono. Used in slot times, prices, IDs.
-const mono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-jetbrains-mono',
-  display: 'swap',
-  weight: ['400', '500'],
-});
+import { MainNav } from '@/components/shared/main-nav';
+import { SiteFooter } from '@/components/shared/site-footer';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Kirpykla Vilnius — vyriški kirpimai senamiestyje ir naujamiestyje',
+    default: 'Kirpykla Vilnius — vyriški kirpimai',
     template: '%s · Kirpykla Vilnius',
   },
   description:
@@ -43,16 +20,17 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0E0D0B',
+  themeColor: '#F4F1EA',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="lt"
-      className={`${fraunces.variable} ${interTight.variable} ${mono.variable}`}
-    >
-      <body>{children}</body>
+    <html lang="lt" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      <body className="flex min-h-screen flex-col">
+        <MainNav />
+        <main className="flex-1">{children}</main>
+        <SiteFooter />
+      </body>
     </html>
   );
 }

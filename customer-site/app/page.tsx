@@ -1,14 +1,10 @@
 import Link from 'next/link';
-import { ArrowDownIcon, ArrowUpRightIcon } from '@heroicons/react/24/outline';
-import { SiteHeader } from '@/components/shared/site-header';
-import { SiteFooter } from '@/components/shared/site-footer';
-import { NowMarquee } from '@/components/shared/now-marquee';
+import { ArrowUpRightIcon, MapPinIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { Photo } from '@/components/shared/photo';
-import { Atmosfera } from '@/components/shared/atmosfera';
-import { HeroReveal, RevealOnScroll, ServiceRow } from '@/components/shared/home-anim';
 import { publicApi } from '@/lib/api';
 import { PHOTOS, GRADIENTS } from '@/lib/photos';
 import type { Service, Office, PublicStaff } from '@/lib/types';
+import { HomeHero, BentoReveal } from '@/components/home/home-anim';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,259 +15,231 @@ export default async function HomePage() {
     publicApi.staff().catch(() => [] as PublicStaff[]),
   ]);
 
+  // Live availability sample for the bento "now" cell
   const today = new Date().toISOString().slice(0, 10);
   const sampleStaff = staff[0];
-  const todayDuration = services[0]?.duration ?? 45;
-  const todaySlots: string[] = sampleStaff
+  const sampleService = services[0];
+  const todaySlots: string[] = sampleStaff && sampleService
     ? await publicApi
-        .availability({ staffId: sampleStaff.id, date: today, duration: todayDuration })
+        .availability({ staffId: sampleStaff.id, date: today, duration: sampleService.duration })
         .catch(() => [] as string[])
     : [];
 
+  const featuredService = services.find((s) => s.name.toLowerCase().includes('kirpimas')) ?? services[0];
+  const officeA = offices[0];
+  const officeB = offices[1];
+
   return (
     <>
-      <Hero />
-      <NowMarquee slots={todaySlots} />
-      <Services services={services.length ? services : FALLBACK_SERVICES} />
-      <Atmosfera />
-      <Locations offices={offices.length ? offices : FALLBACK_OFFICES} />
-      <ClosingCTA />
-      <SiteFooter />
+      <HomeHero />
+      <Bento
+        slots={todaySlots}
+        sampleStaff={sampleStaff}
+        sampleService={sampleService}
+        featured={featuredService}
+        officeA={officeA}
+        officeB={officeB}
+        staff={staff}
+      />
+      <Manifesto />
     </>
   );
 }
 
-// ─── Hero ─────────────────────────────────────────────────────────
+// ─── Bento — modular grid of 6 cells ─────────────────────────────
 
-function Hero() {
-  return (
-    <section className="relative min-h-[100vh] overflow-hidden flex flex-col">
-      <SiteHeader />
-
-      {/* Full-bleed photo background — moody barbershop interior */}
-      <Photo
-        src={PHOTOS.hero}
-        fallback={GRADIENTS.hero}
-        alt="Kirpykla — vakaro atmosfera"
-        className="absolute inset-0 -z-20 w-full h-full"
-      />
-
-      {/* Dark overlay — keeps type legible regardless of photo brightness */}
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10"
-        style={{
-          background:
-            'linear-gradient(180deg, rgba(14,13,11,0.55) 0%, rgba(14,13,11,0.70) 50%, rgba(14,13,11,0.92) 100%), radial-gradient(ellipse 60% 40% at 30% 20%, rgba(232,72,45,0.18), transparent 60%)',
-        }}
-      />
-
-      {/* Vertical edge markers */}
-      <div className="hidden lg:block absolute left-6 top-1/2 -translate-y-1/2">
-        <span className="vmark">№ 01 — Atviras šešias dienas</span>
-      </div>
-      <div className="hidden lg:block absolute right-6 top-1/2 -translate-y-1/2">
-        <span className="vmark">Established Vilnius MMXXVI</span>
-      </div>
-
-      <div className="editorial flex-1 flex items-center pt-32 pb-24 sm:pb-32">
-        <HeroReveal />
-      </div>
-
-      <div className="editorial pb-12">
-        <div className="hairline pt-8 grid grid-cols-2 sm:grid-cols-4 gap-y-6">
-          <Stat label="Salonai" value="02" />
-          <Stat label="Meistrai" value="04" />
-          <Stat label="Vidutinis vizitas" value="45'" />
-          <Stat label="Rezervacija" value="60 sek." />
-        </div>
-        <div className="mt-12 flex items-center gap-2 text-bone-subtle">
-          <ArrowDownIcon className="h-4 w-4 animate-pulse-slow" />
-          <span className="eyebrow">Slinkti žemyn</span>
-        </div>
-      </div>
-    </section>
-  );
+interface BentoProps {
+  slots: string[];
+  sampleStaff?: PublicStaff;
+  sampleService?: Service;
+  featured?: Service;
+  officeA?: Office;
+  officeB?: Office;
+  staff: PublicStaff[];
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Bento({ slots, sampleStaff, sampleService, featured, officeA, officeB, staff }: BentoProps) {
   return (
-    <div>
-      <div className="eyebrow mb-2">{label}</div>
-      <div className="display text-2xl sm:text-3xl tabular text-bone">{value}</div>
-    </div>
-  );
-}
-
-// ─── Services — ledger menu ──────────────────────────────────────
-
-function Services({ services }: { services: Service[] }) {
-  return (
-    <section id="services" className="border-t border-hairline py-32 sm:py-44">
-      <div className="editorial">
-        <RevealOnScroll>
-          <div className="grid lg:grid-cols-12 gap-10 mb-20">
-            <div className="lg:col-span-4">
-              <div className="eyebrow mb-5">Paslaugos · Kainoraštis</div>
-              <h2 className="display text-5xl sm:text-6xl">
-                Tai, ką darome.{' '}
-                <span className="display-italic text-vermillion">Be lozungų.</span>
-              </h2>
+    <section className="editorial py-20">
+      <BentoReveal>
+        <div className="grid grid-cols-1 md:grid-cols-6 auto-rows-[minmax(180px,auto)] gap-3 sm:gap-4">
+          {/* 1. Live availability — wide, dark inverse panel — STAR cell */}
+          <div className="md:col-span-4 md:row-span-2 card-inverse p-8 sm:p-10 flex flex-col">
+            <div className="flex items-center gap-2 mb-6">
+              <span className="live-dot" />
+              <span className="text-[10px] uppercase tracking-eyebrow text-ink-inverse/60">
+                Šiandien laisva · Su {sampleStaff?.firstName ?? 'meistru'}
+              </span>
             </div>
-            <div className="lg:col-span-6 lg:col-start-7 self-end">
-              <p className="text-bone-muted text-lg leading-relaxed max-w-xl">
-                Trumpas sąrašas, ilga praktika. Kiekvienas mūsų meistras dirba bent
-                penkerius metus, o trumpiausias vizitas — trisdešimt minučių.
+            <h3 className="display text-4xl sm:text-5xl lg:text-6xl text-ink-inverse mb-6">
+              {slots.length > 0 ? `${slots.length} laisvi laikai` : 'Visi laikai užimti'}
+            </h3>
+            {slots.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-auto">
+                {slots.slice(0, 8).map((t) => (
+                  <Link
+                    key={t}
+                    href="/book"
+                    className="px-4 py-2 rounded-pill border border-hairline-inverse-strong tabular text-sm text-ink-inverse hover:bg-ink-inverse hover:text-ink transition-all"
+                  >
+                    {t}
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="text-ink-inverse/60 text-base mb-auto max-w-md">
+                Susitarkime kitai dienai — pasirinkimas dar platus.
               </p>
+            )}
+            <div className="mt-8 flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-eyebrow text-ink-inverse/40 tabular">
+                Atnaujinta dabar
+              </span>
+              <Link
+                href="/book"
+                className="inline-flex items-center gap-2 text-sm text-ink-inverse hover:text-live transition-colors"
+              >
+                Visi laikai
+                <ArrowUpRightIcon className="h-4 w-4" />
+              </Link>
             </div>
           </div>
-        </RevealOnScroll>
 
-        <div className="border-t border-hairline-strong">
-          {services.map((s, i) => (
-            <ServiceRow key={s.id} service={s} index={i + 1} />
-          ))}
-        </div>
-
-        <div className="mt-16 flex items-center justify-between">
-          <span className="eyebrow">Visos kainos eurais · Be paslėptų mokesčių</span>
+          {/* 2. Featured service — compact card with price */}
           <Link
-            href="/book"
-            className="group inline-flex items-center gap-2 text-sm tracking-wide text-bone hover:text-vermillion transition-colors"
+            href="/services"
+            className="md:col-span-2 card card-hover p-7 flex flex-col group"
           >
-            Susitarti vizitą
-            <ArrowUpRightIcon className="h-4 w-4 transition-transform group-hover:rotate-45 duration-300" />
+            <span className="eyebrow mb-4">Populiariausia</span>
+            <div className="display text-3xl tracking-tight mb-2 group-hover:text-moss transition-colors">
+              {featured?.name ?? 'Vyriškas kirpimas'}
+            </div>
+            <p className="text-sm text-ink-muted mt-auto mb-4">
+              {featured?.description || 'Klasikinis arba modernus.'}
+            </p>
+            <div className="flex items-baseline justify-between">
+              <span className="display text-3xl tabular text-ink">€{featured?.price ?? 25}</span>
+              <span className="text-[10px] uppercase tracking-eyebrow text-ink-subtle tabular">
+                {featured?.duration ?? 45} min
+              </span>
+            </div>
+          </Link>
+
+          {/* 3. Stat trio — compact */}
+          <div className="md:col-span-2 card p-6 flex flex-col justify-between">
+            <span className="eyebrow">Mūsų pasaulis</span>
+            <div className="grid grid-cols-3 gap-3 mt-4">
+              <Stat value="02" label="Salonai" />
+              <Stat value="04" label="Meistrai" />
+              <Stat value="06" label="Dienos" />
+            </div>
+          </div>
+
+          {/* 4. Office A — photo card */}
+          <Link href="/locations" className="md:col-span-2 card card-hover overflow-hidden group flex flex-col">
+            <Photo
+              src={PHOTOS.locationByIndex[0]}
+              fallback={GRADIENTS.warm}
+              alt={officeA?.name ?? 'Senamiestis'}
+              className="aspect-[4/3]"
+            />
+            <div className="p-5 flex items-start justify-between gap-3">
+              <div>
+                <div className="eyebrow mb-1">№ 01 · Salonas</div>
+                <div className="display text-xl tracking-tight">{officeA?.name ?? 'Senamiestis'}</div>
+                <div className="text-xs text-ink-muted mt-0.5 inline-flex items-center gap-1">
+                  <MapPinIcon className="h-3 w-3" />
+                  {officeA?.address?.split(',')[0] ?? 'Pilies g. 12'}
+                </div>
+              </div>
+              <ArrowUpRightIcon className="h-4 w-4 text-ink-subtle group-hover:text-ink group-hover:rotate-45 transition-all duration-300" />
+            </div>
+          </Link>
+
+          {/* 5. Office B — photo card */}
+          <Link href="/locations" className="md:col-span-2 card card-hover overflow-hidden group flex flex-col">
+            <Photo
+              src={PHOTOS.locationByIndex[1]}
+              fallback={GRADIENTS.amber}
+              alt={officeB?.name ?? 'Naujamiestis'}
+              className="aspect-[4/3]"
+            />
+            <div className="p-5 flex items-start justify-between gap-3">
+              <div>
+                <div className="eyebrow mb-1">№ 02 · Salonas</div>
+                <div className="display text-xl tracking-tight">{officeB?.name ?? 'Naujamiestis'}</div>
+                <div className="text-xs text-ink-muted mt-0.5 inline-flex items-center gap-1">
+                  <MapPinIcon className="h-3 w-3" />
+                  {officeB?.address?.split(',')[0] ?? 'Gedimino pr. 45'}
+                </div>
+              </div>
+              <ArrowUpRightIcon className="h-4 w-4 text-ink-subtle group-hover:text-ink group-hover:rotate-45 transition-all duration-300" />
+            </div>
+          </Link>
+
+          {/* 6. Team preview — compact */}
+          <Link href="/team" className="md:col-span-2 card card-hover p-6 flex flex-col group">
+            <span className="eyebrow mb-4">Meistrai</span>
+            <div className="flex -space-x-2 mb-auto">
+              {staff.slice(0, 4).map((s) => (
+                <div
+                  key={s.id}
+                  className="h-10 w-10 rounded-full bg-bg-raised border-2 border-bg-surface flex items-center justify-center text-xs font-semibold text-ink"
+                  style={s.avatarUrl ? { background: `url(${s.avatarUrl}) center/cover` } : undefined}
+                >
+                  {!s.avatarUrl && `${s.firstName[0]}${s.lastName[0]}`}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-baseline justify-between mt-4">
+              <span className="display text-2xl tracking-tight group-hover:text-moss transition-colors">
+                {staff.length || 4} meistrai
+              </span>
+              <ArrowUpRightIcon className="h-4 w-4 text-ink-subtle group-hover:text-ink group-hover:rotate-45 transition-all duration-300" />
+            </div>
           </Link>
         </div>
-      </div>
+      </BentoReveal>
     </section>
   );
 }
 
-// ─── Locations — magazine spread w/ photos ───────────────────────
-
-function Locations({ offices }: { offices: Office[] }) {
-  return (
-    <section id="locations" className="border-t border-hairline">
-      <div className="editorial pt-32 sm:pt-44 pb-20">
-        <RevealOnScroll>
-          <div className="eyebrow mb-5">Salonai · Du adresai</div>
-          <h2 className="display text-5xl sm:text-7xl mb-20 max-w-3xl leading-[0.92]">
-            Pasirinkite tą,{' '}
-            <span className="display-italic">kuris arčiau jūsų pasivaikščiojimo.</span>
-          </h2>
-        </RevealOnScroll>
-      </div>
-
-      <div className="grid lg:grid-cols-2 border-t border-hairline">
-        {offices.slice(0, 2).map((o, i) => (
-          <LocationBlock key={o.id} office={o} index={i} divided={i === 0} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function LocationBlock({ office, index, divided }: { office: Office; index: number; divided: boolean }) {
-  return (
-    <RevealOnScroll delay={index * 0.1}>
-      <div className={`${divided ? 'lg:border-r border-hairline' : ''}`}>
-        {/* Photo block — 4:5 ratio for portrait magazine feel */}
-        <Photo
-          src={PHOTOS.locationByIndex[index] ?? PHOTOS.locationByIndex[0]}
-          fallback={index === 0 ? GRADIENTS.warm : GRADIENTS.amber}
-          alt={`${office.name} — interjeras`}
-          className="aspect-[4/5] sm:aspect-[16/9] lg:aspect-[4/5]"
-        >
-          {/* Office name as overlay — magazine cover treatment */}
-          <div className="absolute inset-0 flex flex-col justify-end p-8 sm:p-12">
-            <div className="eyebrow text-bone mb-3 tabular">№ {String(index + 1).padStart(2, '0')}</div>
-            <h3 className="display text-6xl sm:text-7xl lg:text-8xl text-bone">
-              {office.name}
-            </h3>
-          </div>
-        </Photo>
-
-        {/* Detail block below the photo */}
-        <div className="p-8 sm:p-12 lg:p-16">
-          <p className="text-base leading-relaxed text-bone-muted mb-6 max-w-md">
-            {office.address}
-          </p>
-          {office.phone && (
-            <a
-              href={`tel:${office.phone}`}
-              className="block tabular text-sm text-bone hover:text-vermillion transition-colors mb-10"
-            >
-              {office.phone}
-            </a>
-          )}
-          <div className="hairline pt-8 grid grid-cols-2 gap-x-8 gap-y-5">
-            <Hours day="Pirmadienis—Ketvirt." hours="09:00 — 20:00" />
-            <Hours day="Penktadienis" hours="09:00 — 21:00" />
-            <Hours day="Šeštadienis" hours="10:00 — 18:00" />
-            <Hours day="Sekmadienis" hours="Uždara" muted />
-          </div>
-        </div>
-      </div>
-    </RevealOnScroll>
-  );
-}
-
-function Hours({ day, hours, muted }: { day: string; hours: string; muted?: boolean }) {
+function Stat({ value, label }: { value: string; label: string }) {
   return (
     <div>
-      <div className="eyebrow mb-1.5">{day}</div>
-      <div className={`tabular text-sm ${muted ? 'text-bone-subtle' : 'text-bone'}`}>{hours}</div>
+      <div className="display text-2xl tabular text-ink">{value}</div>
+      <div className="text-[9px] uppercase tracking-eyebrow text-ink-muted mt-1">{label}</div>
     </div>
   );
 }
 
-// ─── Closing CTA — wall of type ──────────────────────────────────
+// ─── Closing manifesto ──────────────────────────────────────────
 
-function ClosingCTA() {
+function Manifesto() {
   return (
-    <section className="border-t border-hairline relative overflow-hidden">
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10"
-        style={{
-          background:
-            'radial-gradient(ellipse 50% 60% at 50% 100%, rgba(232,72,45,0.18), transparent 70%)',
-        }}
-      />
-      <div className="editorial py-32 sm:py-48 text-center">
-        <RevealOnScroll>
-          <div className="eyebrow mb-8">Užsisakykite šiandien</div>
-          <h2 className="display text-6xl sm:text-8xl lg:text-9xl leading-[0.9] max-w-5xl mx-auto">
-            Devyniasdešimt sekundžių,{' '}
-            <span className="display-italic text-vermillion">ir laikas — jūsų.</span>
-          </h2>
-          <p className="mt-12 text-bone-muted max-w-xl mx-auto text-base leading-relaxed">
-            Pasirinkite paslaugą, meistrą ir laiką. Patvirtinimo el. laišką
-            gausite per minutę. Atšaukti galima paskambinus į saloną.
-          </p>
-          <div className="mt-16">
-            <Link href="/book" className="btn-mark">
-              Pradėti rezervaciją
+    <section className="border-t border-hairline mt-20">
+      <div className="editorial py-24 sm:py-32">
+        <div className="grid lg:grid-cols-12 gap-10">
+          <div className="lg:col-span-6">
+            <span className="eyebrow mb-5 inline-block">Filosofija</span>
+            <h2 className="display text-4xl sm:text-5xl tracking-snug">
+              Trumpas sąrašas, ilga praktika.{' '}
+              <span className="text-moss">Be lozungų, be paspaudimų.</span>
+            </h2>
+          </div>
+          <div className="lg:col-span-5 lg:col-start-8 self-end">
+            <p className="text-ink-muted text-lg leading-relaxed mb-8">
+              Mes nedirbame su devyniomis paslaugomis ir trimis franšizėmis.
+              Du salonai, keturi meistrai, vienas standartas — kruopštumas.
+              Užsisakykite vizitą per minutę.
+            </p>
+            <Link href="/book" className="btn-mark-lg">
+              Susitarti laiką
               <ArrowUpRightIcon className="h-4 w-4" />
             </Link>
           </div>
-        </RevealOnScroll>
+        </div>
       </div>
     </section>
   );
 }
-
-// ─── Fallbacks for backend-down state ───────────────────────────
-
-const FALLBACK_SERVICES: Service[] = [
-  { id: '1', name: 'Vyriškas kirpimas', description: 'Klasikinis arba modernus', price: 25, duration: 45, officeId: '', categoryId: '' },
-  { id: '2', name: 'Barzdos formavimas', description: 'Su karštu rankšluosčiu', price: 18, duration: 30, officeId: '', categoryId: '' },
-  { id: '3', name: 'Kirpimas + barzda', description: 'Kombinuota paslauga', price: 38, duration: 70, officeId: '', categoryId: '' },
-  { id: '4', name: 'Skutimas peiliu', description: 'Tradicinis skutimas', price: 22, duration: 35, officeId: '', categoryId: '' },
-];
-
-const FALLBACK_OFFICES: Office[] = [
-  { id: '1', name: 'Senamiestis', address: 'Pilies g. 12, Vilnius', phone: '+370 600 00001' },
-  { id: '2', name: 'Naujamiestis', address: 'Gedimino pr. 45, Vilnius', phone: '+370 600 00002' },
-];

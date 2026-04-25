@@ -6,7 +6,7 @@ import { CheckIcon, ArrowDownTrayIcon, ArrowUpRightIcon } from '@heroicons/react
 import { motion } from 'framer-motion';
 import type { ConfirmedBooking } from '@/lib/types';
 
-const REVEAL_EASE = [0.16, 1, 0.3, 1] as const;
+const EASE = [0.16, 1, 0.3, 1] as const;
 
 export default function ConfirmationPage() {
   const [booking, setBooking] = useState<ConfirmedBooking | null>(null);
@@ -24,7 +24,7 @@ export default function ConfirmationPage() {
 
   if (!booking) {
     return (
-      <main className="min-h-screen flex items-center justify-center px-6 bg-ink">
+      <main className="min-h-screen flex items-center justify-center px-6 bg-bg">
         <div className="text-center">
           <div className="eyebrow mb-5">Nieko nerasta</div>
           <h1 className="display text-4xl mb-8">Vizitas neaptiktas.</h1>
@@ -37,67 +37,60 @@ export default function ConfirmationPage() {
   const start = new Date(booking.startTime);
 
   return (
-    <main className="min-h-screen bg-ink relative overflow-hidden">
-      {/* Vermillion glow — confirms the success moment without screaming */}
+    <main className="min-h-screen bg-bg relative overflow-hidden">
       <div
         aria-hidden
         className="absolute inset-0 -z-10"
         style={{
           background:
-            'radial-gradient(ellipse 50% 40% at 50% 30%, rgba(232,72,45,0.12), transparent 70%)',
+            'radial-gradient(ellipse 50% 40% at 50% 30%, rgba(44,74,56,0.10), transparent 70%)',
         }}
       />
 
-      <div className="editorial pt-24 sm:pt-32 pb-32">
+      <div className="editorial pt-20 sm:pt-28 pb-32">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: REVEAL_EASE }}
+          transition={{ duration: 0.7, ease: EASE }}
           className="max-w-3xl mx-auto"
         >
-          {/* Confirmation mark */}
           <motion.div
-            initial={{ scale: 0.6, opacity: 0 }}
+            initial={{ scale: 0.7, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.7, delay: 0.1, ease: REVEAL_EASE }}
-            className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-vermillion bg-vermillion/15 text-vermillion mb-10"
+            transition={{ duration: 0.6, delay: 0.1, ease: EASE }}
+            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-moss text-ink-inverse mb-10"
           >
-            <CheckIcon className="h-6 w-6" />
+            <CheckIcon className="h-7 w-7" />
           </motion.div>
 
           <div className="eyebrow mb-6">Patvirtinta · Iki greito</div>
 
-          <h1 className="display text-5xl sm:text-7xl lg:text-[100px] leading-[0.92] mb-6">
+          <h1 className="display text-5xl sm:text-7xl lg:text-8xl tracking-snug mb-6 leading-[0.92]">
             Lauksime jūsų{' '}
-            <span className="display-italic text-vermillion">
+            <span className="text-moss">
               {formatDateLT(start)} {formatTime(start)}.
             </span>
           </h1>
 
-          <p className="mt-8 text-bone-muted text-lg max-w-xl">
+          <p className="mt-8 text-ink-muted text-lg max-w-xl leading-relaxed">
             Patvirtinimo el. laišką netrukus išsiuntėme. Jei reikia atšaukti
             ar perkelti vizitą — paskambinkite į saloną.
           </p>
 
-          {/* Details card */}
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.3, ease: REVEAL_EASE }}
-            className="mt-16 border border-hairline rounded-[2px] bg-ink-2/60 backdrop-blur-sm p-8 sm:p-10"
+            transition={{ duration: 0.7, delay: 0.3, ease: EASE }}
+            className="mt-16 card p-8 sm:p-10"
           >
             <Row label="Paslauga" value={booking.serviceName} />
             <Row label="Meistras" value={booking.staffName} />
             <Row label="Salonas" value={booking.officeName} />
             <Row label="Adresas" value={booking.officeAddress} />
-            <Row
-              label="Data"
-              value={`${formatLongDateLT(start)} · ${formatTime(start)}`}
-              mono
-            />
+            <Row label="Data" value={`${formatLongDateLT(start)} · ${formatTime(start)}`} mono />
             <div className="hairline mt-6 pt-6 flex items-center justify-between">
               <span className="eyebrow">Rezervacijos Nr.</span>
-              <span className="font-mono text-sm tabular text-bone">
+              <span className="font-mono text-sm tabular text-ink">
                 #{booking.appointmentId.slice(-8).toUpperCase()}
               </span>
             </div>
@@ -106,13 +99,13 @@ export default function ConfirmationPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.5 }}
+            transition={{ duration: 0.5, delay: 0.5 }}
             className="mt-12 flex flex-wrap items-center gap-3"
           >
             <a
               href={icsHref(booking)}
               download={`vizitas-${booking.appointmentId.slice(-6)}.ics`}
-              className="btn-bone"
+              className="btn-mark"
             >
               <ArrowDownTrayIcon className="h-4 w-4" />
               Įsidėti į kalendorių
@@ -132,7 +125,7 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
   return (
     <div className="grid grid-cols-[120px_1fr] gap-4 py-3 border-b border-hairline last:border-b-0">
       <div className="eyebrow !text-[9px] mt-1.5">{label}</div>
-      <div className={mono ? 'tabular text-base text-bone' : 'text-base text-bone'}>{value}</div>
+      <div className={mono ? 'tabular text-base text-ink' : 'text-base text-ink'}>{value}</div>
     </div>
   );
 }
@@ -154,7 +147,6 @@ function formatTime(d: Date): string {
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function icsHref(b: ConfirmedBooking): string {
-  // Minimal RFC 5545 — Apple Calendar / Google Calendar friendly.
   const fmt = (iso: string) => iso.replace(/[-:]/g, '').split('.')[0] + 'Z';
   const ics = [
     'BEGIN:VCALENDAR',
