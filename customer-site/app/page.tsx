@@ -3,14 +3,16 @@ import { ArrowDownIcon, ArrowUpRightIcon } from '@heroicons/react/24/outline';
 import { SiteHeader } from '@/components/shared/site-header';
 import { SiteFooter } from '@/components/shared/site-footer';
 import { NowMarquee } from '@/components/shared/now-marquee';
+import { Photo } from '@/components/shared/photo';
+import { Atmosfera } from '@/components/shared/atmosfera';
 import { HeroReveal, RevealOnScroll, ServiceRow } from '@/components/shared/home-anim';
 import { publicApi } from '@/lib/api';
+import { PHOTOS, GRADIENTS } from '@/lib/photos';
 import type { Service, Office, PublicStaff } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  // Pull catalog + a sample of today's availability for the marquee.
   const [services, offices, staff] = await Promise.all([
     publicApi.services().catch(() => [] as Service[]),
     publicApi.offices().catch(() => [] as Office[]),
@@ -31,6 +33,7 @@ export default async function HomePage() {
       <Hero />
       <NowMarquee slots={todaySlots} />
       <Services services={services.length ? services : FALLBACK_SERVICES} />
+      <Atmosfera />
       <Locations offices={offices.length ? offices : FALLBACK_OFFICES} />
       <ClosingCTA />
       <SiteFooter />
@@ -45,17 +48,25 @@ function Hero() {
     <section className="relative min-h-[100vh] overflow-hidden flex flex-col">
       <SiteHeader />
 
-      {/* Decorative vermillion glow — subtle, frames the type without dominating */}
+      {/* Full-bleed photo background — moody barbershop interior */}
+      <Photo
+        src={PHOTOS.hero}
+        fallback={GRADIENTS.hero}
+        alt="Kirpykla — vakaro atmosfera"
+        className="absolute inset-0 -z-20 w-full h-full"
+      />
+
+      {/* Dark overlay — keeps type legible regardless of photo brightness */}
       <div
         aria-hidden
         className="absolute inset-0 -z-10"
         style={{
           background:
-            'radial-gradient(ellipse 60% 40% at 30% 20%, rgba(232,72,45,0.10), transparent 60%), radial-gradient(ellipse 80% 60% at 80% 100%, rgba(244,236,219,0.04), transparent 60%)',
+            'linear-gradient(180deg, rgba(14,13,11,0.55) 0%, rgba(14,13,11,0.70) 50%, rgba(14,13,11,0.92) 100%), radial-gradient(ellipse 60% 40% at 30% 20%, rgba(232,72,45,0.18), transparent 60%)',
         }}
       />
 
-      {/* Vertical edge marker — magazine-style ornament */}
+      {/* Vertical edge markers */}
       <div className="hidden lg:block absolute left-6 top-1/2 -translate-y-1/2">
         <span className="vmark">№ 01 — Atviras šešias dienas</span>
       </div>
@@ -63,12 +74,10 @@ function Hero() {
         <span className="vmark">Established Vilnius MMXXVI</span>
       </div>
 
-      {/* Hero body */}
       <div className="editorial flex-1 flex items-center pt-32 pb-24 sm:pb-32">
         <HeroReveal />
       </div>
 
-      {/* Bottom strip — meta facts */}
       <div className="editorial pb-12">
         <div className="hairline pt-8 grid grid-cols-2 sm:grid-cols-4 gap-y-6">
           <Stat label="Salonai" value="02" />
@@ -118,7 +127,6 @@ function Services({ services }: { services: Service[] }) {
           </div>
         </RevealOnScroll>
 
-        {/* Ledger table */}
         <div className="border-t border-hairline-strong">
           {services.map((s, i) => (
             <ServiceRow key={s.id} service={s} index={i + 1} />
@@ -140,7 +148,7 @@ function Services({ services }: { services: Service[] }) {
   );
 }
 
-// ─── Locations — magazine spread ─────────────────────────────────
+// ─── Locations — magazine spread w/ photos ───────────────────────
 
 function Locations({ offices }: { offices: Office[] }) {
   return (
@@ -155,38 +163,57 @@ function Locations({ offices }: { offices: Office[] }) {
         </RevealOnScroll>
       </div>
 
-      {/* Two-column spread, edge-to-edge */}
-      <div className="grid sm:grid-cols-2 border-t border-hairline">
+      <div className="grid lg:grid-cols-2 border-t border-hairline">
         {offices.slice(0, 2).map((o, i) => (
-          <div
-            key={o.id}
-            className={`p-10 sm:p-16 lg:p-20 ${i === 0 ? 'sm:border-r border-hairline' : ''}`}
-          >
-            <RevealOnScroll delay={i * 0.1}>
-              <div className="eyebrow mb-6 tabular">№ {String(i + 1).padStart(2, '0')}</div>
-              <h3 className="display text-6xl sm:text-7xl lg:text-8xl mb-8">{o.name}</h3>
-              <p className="text-base leading-relaxed text-bone-muted max-w-md mb-12">
-                {o.address}
-              </p>
-              {o.phone && (
-                <a
-                  href={`tel:${o.phone}`}
-                  className="block tabular text-sm text-bone hover:text-vermillion transition-colors mb-12"
-                >
-                  {o.phone}
-                </a>
-              )}
-              <div className="hairline pt-8 grid grid-cols-2 gap-x-8 gap-y-5">
-                <Hours day="Pirmadienis—Ketvirt." hours="09:00 — 20:00" />
-                <Hours day="Penktadienis" hours="09:00 — 21:00" />
-                <Hours day="Šeštadienis" hours="10:00 — 18:00" />
-                <Hours day="Sekmadienis" hours="Uždara" muted />
-              </div>
-            </RevealOnScroll>
-          </div>
+          <LocationBlock key={o.id} office={o} index={i} divided={i === 0} />
         ))}
       </div>
     </section>
+  );
+}
+
+function LocationBlock({ office, index, divided }: { office: Office; index: number; divided: boolean }) {
+  return (
+    <RevealOnScroll delay={index * 0.1}>
+      <div className={`${divided ? 'lg:border-r border-hairline' : ''}`}>
+        {/* Photo block — 4:5 ratio for portrait magazine feel */}
+        <Photo
+          src={PHOTOS.locationByIndex[index] ?? PHOTOS.locationByIndex[0]}
+          fallback={index === 0 ? GRADIENTS.warm : GRADIENTS.amber}
+          alt={`${office.name} — interjeras`}
+          className="aspect-[4/5] sm:aspect-[16/9] lg:aspect-[4/5]"
+        >
+          {/* Office name as overlay — magazine cover treatment */}
+          <div className="absolute inset-0 flex flex-col justify-end p-8 sm:p-12">
+            <div className="eyebrow text-bone mb-3 tabular">№ {String(index + 1).padStart(2, '0')}</div>
+            <h3 className="display text-6xl sm:text-7xl lg:text-8xl text-bone">
+              {office.name}
+            </h3>
+          </div>
+        </Photo>
+
+        {/* Detail block below the photo */}
+        <div className="p-8 sm:p-12 lg:p-16">
+          <p className="text-base leading-relaxed text-bone-muted mb-6 max-w-md">
+            {office.address}
+          </p>
+          {office.phone && (
+            <a
+              href={`tel:${office.phone}`}
+              className="block tabular text-sm text-bone hover:text-vermillion transition-colors mb-10"
+            >
+              {office.phone}
+            </a>
+          )}
+          <div className="hairline pt-8 grid grid-cols-2 gap-x-8 gap-y-5">
+            <Hours day="Pirmadienis—Ketvirt." hours="09:00 — 20:00" />
+            <Hours day="Penktadienis" hours="09:00 — 21:00" />
+            <Hours day="Šeštadienis" hours="10:00 — 18:00" />
+            <Hours day="Sekmadienis" hours="Uždara" muted />
+          </div>
+        </div>
+      </div>
+    </RevealOnScroll>
   );
 }
 
