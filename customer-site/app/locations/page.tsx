@@ -80,7 +80,7 @@ function LocationBlock({ office, index }: { office: Office; index: number }) {
             {office.phone && (
               <div className="flex items-center gap-3">
                 <PhoneIcon className="h-4 w-4 text-ink-subtle shrink-0" />
-                <a href={`tel:${office.phone}`} className="text-sm tabular text-ink hover:text-moss transition-colors">
+                <a href={`tel:${office.phone}`} className="text-sm tabular text-ink hover:text-oxblood transition-colors">
                   {office.phone}
                 </a>
               </div>

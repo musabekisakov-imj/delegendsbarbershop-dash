@@ -1,0 +1,132 @@
+import Link from 'next/link';
+import { ArrowUpRightIcon } from '@heroicons/react/24/outline';
+import { PageHeader } from '@/components/shared/page-header';
+import { Photo } from '@/components/shared/photo';
+import { PHOTOS, GRADIENTS } from '@/lib/photos';
+
+export const metadata = {
+  title: 'Istorija',
+  description: 'Kaip atsirado Kirpykla Vilnius. Filosofija, meistrai, kruopštumo standartas.',
+};
+
+export default function StoryPage() {
+  return (
+    <>
+      <PageHeader
+        eyebrow="Istorija · Mūsų darbas"
+        title="Du salonai,"
+        accent="vienas standartas."
+        sub="Atvyko į Vilnių 2026-ųjų pavasarį — ne iš galios troškimo, o todėl, kad senasis miesto centras nusipelnė tikro barbershop'o. Be lozungų, be paspaudimų, be konvejerinio kirpimo."
+      />
+
+      <section className="editorial pb-32">
+        {/* Lead photo — full-width */}
+        <Photo
+          src={PHOTOS.atmosfera[0].url}
+          fallback={GRADIENTS.warm}
+          alt="Kirpyklos interjeras — vakaro atmosfera"
+          className="aspect-[16/9] rounded-card overflow-hidden mb-20"
+        />
+
+        {/* Manifesto — narrow column for readability */}
+        <div className="prose-narrow">
+          <Section eyebrow="Filosofija" title="Trys principai.">
+            <Principle
+              n="01"
+              title="Laikas yra įrankis."
+              body="Trumpiausias mūsų vizitas — trisdešimt minučių. Vidutinis — keturiasdešimt penkios. Per tą laiką nesusiformuoja vaikiškas šokių pamokos ritmas, tik kirpimas, pokalbis ir, jei reikia, tylos minutė."
+            />
+            <Principle
+              n="02"
+              title="Įrankiai yra darbo veidrodis."
+              body="Kiekvieną rytą galąstos žirklės. Drabužiai praplauti. Skutimas peiliu — tik su nauju ašmeniu kiekvienam klientui. Detalės, kurių klientas dažnai nepastebi, bet visada pajunta."
+            />
+            <Principle
+              n="03"
+              title="Vienas standartas."
+              body="Nesvarbu, ar užsuksite į Senamiestį, ar į Naujamiestį — kirpimą atliks tos pačios mokyklos meistras. Nesame franšizė. Esame du salonai, viena komanda."
+            />
+          </Section>
+
+          <div className="brass-rule mx-auto my-24" />
+
+          <Section eyebrow="Komanda" title="Keturi vardai, vienas požiūris.">
+            <p className="text-ink-muted text-lg leading-relaxed mb-8">
+              Aurimas pradėjo barzdaskutystėje 2014-aisiais Londone, grįžo į Vilnių
+              su ramia mintimi atidaryti vietą, kurią pats norėtų lankyti. Lukas,
+              Šarūnas ir Tomas prisijungė per pirmuosius mėnesius — visi su mažiausiai
+              penkerių metų patirtimi, visi su skirtingais polinkiais.
+            </p>
+            <p className="text-ink-muted text-lg leading-relaxed">
+              Trumpas sąrašas, ilga praktika. Pasirinkite tą, su kuriuo jaučiatės gerai.
+            </p>
+            <Link
+              href="/team"
+              className="mt-8 inline-flex items-center gap-2 text-sm tracking-wide text-ink hover:text-oxblood transition-colors group"
+            >
+              Susipažinti su meistrais
+              <ArrowUpRightIcon className="h-3.5 w-3.5 group-hover:rotate-45 transition-transform duration-300" />
+            </Link>
+          </Section>
+
+          <div className="brass-rule mx-auto my-24" />
+
+          <Section eyebrow="Vieta" title="Kodėl du salonai?">
+            <p className="text-ink-muted text-lg leading-relaxed">
+              Nes Vilnius — du miestai. Senamiestis vakarop kvepia kava ir lietumi
+              ant grindinio. Naujamiestis ryte skuba į Gedimino prospektą.
+              Mūsų salonai — toje pačioje kavos ir lietaus distancijoje. Vienas
+              standartas, dvi atmosferos.
+            </p>
+            <Link
+              href="/locations"
+              className="mt-8 inline-flex items-center gap-2 text-sm tracking-wide text-ink hover:text-oxblood transition-colors group"
+            >
+              Žiūrėti salonus
+              <ArrowUpRightIcon className="h-3.5 w-3.5 group-hover:rotate-45 transition-transform duration-300" />
+            </Link>
+          </Section>
+        </div>
+
+        {/* Closing CTA */}
+        <div className="mt-32 pt-16 border-t border-hairline grid lg:grid-cols-12 gap-10">
+          <div className="lg:col-span-6">
+            <div className="eyebrow-brass mb-4">Pradėkime</div>
+            <h2 className="display text-3xl sm:text-4xl tracking-snug">
+              Užsisakykite vizitą{' '}
+              <span className="display-italic text-oxblood">per minutę.</span>
+            </h2>
+          </div>
+          <div className="lg:col-span-5 lg:col-start-8 self-end">
+            <Link href="/book" className="btn-mark-lg">
+              Susitarti laiką
+              <ArrowUpRightIcon className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function Section({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-20 last:mb-0">
+      <div className="eyebrow-brass mb-4">{eyebrow}</div>
+      <h2 className="display text-3xl sm:text-5xl tracking-snug mb-10">{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function Principle({ n, title, body }: { n: string; title: string; body: string }) {
+  return (
+    <div className="grid grid-cols-[40px_1fr] gap-6 py-8 border-b border-hairline last:border-b-0">
+      <span className="display text-2xl text-brass tabular pt-1">{n}</span>
+      <div>
+        <h3 className="display text-2xl sm:text-3xl tracking-tight mb-3">{title}</h3>
+        <p className="text-ink-muted text-base leading-relaxed">{body}</p>
+      </div>
+    </div>
+  );
+}

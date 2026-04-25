@@ -33,7 +33,7 @@ export function PageHeader({ eyebrow, title, accent, sub }: Props) {
         className="display text-5xl sm:text-7xl lg:text-8xl tracking-snug max-w-4xl"
       >
         {title}{' '}
-        {accent && <span className="text-moss">{accent}</span>}
+        {accent && <span className="text-oxblood">{accent}</span>}
       </motion.h1>
 
       {sub && (

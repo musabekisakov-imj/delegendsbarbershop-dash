@@ -2,143 +2,137 @@
 
 import Link from 'next/link';
 import { useRef, type ReactNode } from 'react';
-import { motion, useInView } from 'framer-motion';
-import { ArrowUpRightIcon, ArrowDownIcon } from '@heroicons/react/24/outline';
+import { motion, useInView, useScroll, useTransform } from 'framer-motion';
+import { ArrowDownIcon, ArrowUpRightIcon } from '@heroicons/react/24/outline';
+import { Photo } from '@/components/shared/photo';
+import { PHOTOS, GRADIENTS } from '@/lib/photos';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
-// ─── Hero ───────────────────────────────────────────────────────
+// ─── Hero — full-bleed photo with type overlay (Murdock pattern) ─────
 
-export function HomeHero() {
+export function HeroPhoto() {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ['start start', 'end start'],
+  });
+  const photoY = useTransform(scrollYProgress, [0, 1], ['0%', '20%']);
+  const textY = useTransform(scrollYProgress, [0, 1], ['0%', '40%']);
+  const opacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
+
   return (
-    <section className="relative overflow-hidden">
-      {/* Backdrop — soft moss radial glow + warm cream */}
+    <section ref={ref} className="relative h-[88vh] min-h-[640px] overflow-hidden">
+      {/* Photo backdrop with parallax */}
+      <motion.div style={{ y: photoY }} className="absolute inset-0 -z-10">
+        <Photo
+          src={PHOTOS.hero}
+          fallback={GRADIENTS.warm}
+          alt="Vilniaus kirpykla — vakaro atmosfera"
+          className="w-full h-[110%]"
+        />
+      </motion.div>
+
+      {/* Warm overlay — keeps type readable, ties palette together */}
       <div
         aria-hidden
-        className="absolute inset-0 -z-10"
+        className="absolute inset-0 -z-[5]"
         style={{
           background:
-            'radial-gradient(ellipse 70% 50% at 80% 20%, rgba(44,74,56,0.10), transparent 60%), radial-gradient(ellipse 50% 40% at 0% 80%, rgba(232,72,45,0.04), transparent 60%)',
+            'linear-gradient(180deg, rgba(26,23,20,0.30) 0%, rgba(26,23,20,0.55) 60%, rgba(26,23,20,0.85) 100%), radial-gradient(ellipse 50% 40% at 30% 25%, rgba(124,38,48,0.15), transparent 60%)',
         }}
       />
 
-      <div className="editorial pt-12 sm:pt-20 pb-16 sm:pb-24">
-        <div className="grid lg:grid-cols-12 gap-10 items-end">
-          {/* Headline */}
-          <div className="lg:col-span-8">
+      {/* Hero text — rests at bottom-left like an editorial cover line */}
+      <motion.div
+        style={{ y: textY, opacity }}
+        className="absolute inset-0 flex items-end"
+      >
+        <div className="editorial pb-20 sm:pb-28 w-full">
+          <div className="max-w-4xl">
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: EASE }}
-              className="flex items-center gap-2 mb-6"
+              className="flex items-center gap-3 mb-8"
             >
-              <span className="live-dot" />
-              <span className="text-[10px] uppercase tracking-eyebrow text-ink-muted">
-                Atviri dabar · Vilnius
+              <span className="brass-rule" />
+              <span className="text-[10px] uppercase tracking-eyebrow text-bg/80">
+                Vilnius · Du salonai · Est. MMXXVI
               </span>
             </motion.div>
 
             <motion.h1
-              initial={{ opacity: 0, y: 16 }}
+              initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: EASE, delay: 0.05 }}
-              className="display text-[14vw] sm:text-[10vw] lg:text-[120px] tracking-snug leading-[0.92]"
+              transition={{ duration: 0.9, ease: EASE, delay: 0.1 }}
+              className="display text-[14vw] sm:text-[10vw] lg:text-[124px] text-bg leading-[0.92] tracking-snug"
             >
               Vyriški kirpimai{' '}
-              <span className="text-moss">be lozungų.</span>
+              <span className="display-italic text-bg/95">be lozungų.</span>
             </motion.h1>
 
             <motion.p
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: EASE, delay: 0.15 }}
-              className="mt-10 text-lg sm:text-xl text-ink-muted max-w-xl leading-relaxed"
+              transition={{ duration: 0.8, ease: EASE, delay: 0.2 }}
+              className="mt-8 text-lg text-bg/80 max-w-xl leading-relaxed"
             >
-              Du salonai Vilniuje. Keturi meistrai.
-              Susitarkite vizitą — pasirinkimas matomas iš karto.
+              Senamiestyje ir Naujamiestyje. Patyrę meistrai,
+              kruopščiai parinkti įrankiai, jokio skubėjimo.
             </motion.p>
 
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: EASE, delay: 0.25 }}
-              className="mt-12 flex flex-wrap items-center gap-3"
+              transition={{ duration: 0.8, ease: EASE, delay: 0.3 }}
+              className="mt-10 flex flex-wrap items-center gap-3"
             >
               <Link href="/book" className="btn-mark-lg">
                 Susitarti laiką
                 <ArrowUpRightIcon className="h-4 w-4" />
               </Link>
-              <Link href="/services" className="btn-ghost">
+              <Link href="/services" className="inline-flex items-center justify-center gap-2.5 rounded-DEFAULT bg-transparent text-bg border border-bg/20 px-7 py-4 text-sm font-medium tracking-wide hover:bg-bg hover:text-ink transition-all duration-200">
                 Žiūrėti paslaugas
               </Link>
             </motion.div>
           </div>
-
-          {/* Right meta column */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.8, ease: EASE, delay: 0.35 }}
-            className="hidden lg:block lg:col-span-4 lg:col-start-9"
-          >
-            <div className="border-l border-hairline pl-6 space-y-7">
-              <MetaRow label="Vidutinis vizitas" value="45 min" />
-              <MetaRow label="Trumpiausias" value="30 min" />
-              <MetaRow label="Atviri" value="Pirm — Šešt" />
-              <MetaRow label="Rezervacija" value="60 sek." />
-            </div>
-          </motion.div>
         </div>
+      </motion.div>
 
-        {/* Down indicator */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.5 }}
-          className="mt-20 flex items-center gap-2 text-ink-subtle"
-        >
-          <ArrowDownIcon className="h-3.5 w-3.5 animate-pulse-slow" />
-          <span className="text-[10px] uppercase tracking-eyebrow">Žvilgsnis žemiau</span>
-        </motion.div>
-      </div>
+      {/* Down indicator */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, delay: 0.6 }}
+        className="absolute bottom-6 right-6 hidden lg:flex flex-col items-center gap-2 text-bg/60"
+      >
+        <span className="text-[10px] uppercase tracking-eyebrow vertical-rl">Žvilgsnis žemiau</span>
+        <ArrowDownIcon className="h-4 w-4 animate-pulse-slow" />
+      </motion.div>
     </section>
   );
 }
 
-function MetaRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-eyebrow text-ink-subtle mb-1.5">{label}</div>
-      <div className="display text-2xl tabular text-ink">{value}</div>
-    </div>
-  );
-}
+// ─── Generic scroll-triggered reveal ────────────────────────────
 
-// ─── Bento reveal — staggered fade-up of bento children ─────────
-
-export function BentoReveal({ children }: { children: ReactNode }) {
+export function RevealOnScroll({
+  children,
+  delay = 0,
+}: {
+  children: ReactNode;
+  delay?: number;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: '-80px' });
-
   return (
     <motion.div
       ref={ref}
-      initial="hidden"
-      animate={inView ? 'show' : 'hidden'}
-      variants={{
-        hidden: {},
-        show: { transition: { staggerChildren: 0.06 } },
-      }}
+      initial={{ opacity: 0, y: 16 }}
+      animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
+      transition={{ duration: 0.7, delay, ease: EASE }}
     >
-      {/* Wrap the grid so the children inside can use motion variants */}
-      <motion.div
-        variants={{
-          hidden: { opacity: 0, y: 16 },
-          show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: EASE } },
-        }}
-      >
-        {children}
-      </motion.div>
+      {children}
     </motion.div>
   );
 }

@@ -69,7 +69,7 @@ function StaffCard({
         </div>
 
         <div className="p-6 flex flex-col flex-1">
-          <div className="display text-2xl tracking-tight group-hover:text-moss transition-colors">
+          <div className="display text-2xl tracking-tight group-hover:text-oxblood transition-colors">
             {staff.firstName}
           </div>
           <div className="eyebrow mt-1 mb-auto">{staff.lastName}</div>

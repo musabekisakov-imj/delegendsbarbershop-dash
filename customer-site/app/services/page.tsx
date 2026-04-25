@@ -54,7 +54,7 @@ export default async function ServicesPage({
             <div className="eyebrow mb-4">Pasirengę?</div>
             <h2 className="display text-3xl sm:text-4xl tracking-snug">
               Pasirinkite paslaugą ir{' '}
-              <span className="text-moss">susitarkime laiką.</span>
+              <span className="text-oxblood">susitarkime laiką.</span>
             </h2>
           </div>
           <div className="lg:col-span-5 lg:col-start-8 self-end">

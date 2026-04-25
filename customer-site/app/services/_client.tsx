@@ -99,7 +99,7 @@ function ServiceCard({ service }: { service: Service }) {
         </div>
 
         {/* Title */}
-        <h3 className="display text-3xl sm:text-4xl tracking-snug mb-3 group-hover:text-moss transition-colors">
+        <h3 className="display text-3xl sm:text-4xl tracking-snug mb-3 group-hover:text-oxblood transition-colors">
           {service.name}
         </h3>
 

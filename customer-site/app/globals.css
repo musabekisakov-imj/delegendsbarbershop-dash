@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── STUDIO — base layer ────────────────────────────────────── */
+/* ─── PARLOUR — base layer ───────────────────────────────────── */
 
 @layer base {
   :root {
@@ -20,109 +20,122 @@
     font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Subtle radial mood */
-    background-image: radial-gradient(ellipse at top, rgba(44, 74, 56, 0.04), transparent 60%);
+    background-image: radial-gradient(ellipse at top, rgba(124, 38, 48, 0.04), transparent 60%);
   }
 
   ::selection {
-    background: #2C4A38;
-    color: #F4F1EA;
+    background: #7C2630;
+    color: #F4EFE5;
   }
 
-  /* Tabular numerics for prices, durations, IDs */
   .tabular {
     font-variant-numeric: tabular-nums;
   }
 
-  /* Display headlines — Geist tightened */
+  /* Display — Fraunces with optical-size + soft axis pushed for warmth */
   .display {
-    font-family: var(--font-geist-sans), ui-sans-serif, system-ui;
-    font-weight: 600;
-    letter-spacing: -0.035em;
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-optical-sizing: auto;
+    font-variation-settings: 'opsz' 144, 'SOFT' 30;
+    letter-spacing: -0.02em;
     line-height: 0.96;
+    font-weight: 400;
+  }
+  .display-italic {
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-optical-sizing: auto;
+    font-style: italic;
+    font-variation-settings: 'opsz' 144, 'SOFT' 100;
+    letter-spacing: -0.025em;
   }
 
-  /* Eyebrow — uppercase tracking label */
+  /* Eyebrow — uppercase tracking label, brass tint for the heritage feel */
   .eyebrow {
     @apply text-[10px] uppercase tracking-eyebrow text-ink-muted font-medium;
   }
-  .eyebrow-strong {
-    @apply text-[11px] uppercase tracking-eyebrow text-ink font-semibold;
+  .eyebrow-brass {
+    @apply text-[10px] uppercase tracking-eyebrow text-brass font-semibold;
   }
 
-  /* Inverse panels — dark sections within the light page */
+  /* Inverse panels */
   .inverse {
     @apply bg-ink text-ink-inverse;
-  }
-  .inverse ::selection {
-    background: #F4F1EA;
-    color: #0E0E10;
   }
 }
 
 @layer components {
-  /* ── Layout ── */
   .editorial {
     @apply mx-auto w-full max-w-editorial px-5 sm:px-8;
   }
   .narrow {
     @apply mx-auto w-full max-w-narrow px-5 sm:px-8;
   }
+  .prose-narrow {
+    @apply mx-auto w-full max-w-prose px-5 sm:px-8;
+  }
   .hairline {
     @apply border-t border-hairline;
   }
 
-  /* ── Card primitive — modern bento grid building block ── */
+  /* Brass divider — used as the heritage-detail accent bar */
+  .brass-rule {
+    @apply h-px bg-brass w-12;
+  }
+
+  /* Card primitive */
   .card {
     @apply relative rounded-card bg-bg-surface border border-hairline
            transition-all duration-300 ease-out;
   }
   .card-hover {
-    @apply hover:border-hairline-strong hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-12px_rgba(14,14,16,0.12)];
-  }
-  .card-inverse {
-    @apply relative rounded-card bg-ink-soft border border-hairline-inverse text-ink-inverse
-           transition-all duration-300 ease-out;
+    @apply hover:border-hairline-strong hover:shadow-[0_8px_24px_-12px_rgba(26,23,20,0.12)];
   }
 
-  /* ── Buttons ── */
+  /* Buttons — calmer, less app-style */
   .btn-mark {
-    /* Primary CTA — moss */
-    @apply inline-flex items-center justify-center gap-2 rounded-pill
-           bg-ink text-ink-inverse px-6 py-3 text-sm font-medium
+    @apply inline-flex items-center justify-center gap-2 rounded-DEFAULT
+           bg-oxblood text-bg px-7 py-3.5 text-sm font-medium tracking-wide
            transition-all duration-200 ease-out
-           hover:bg-moss
-           active:scale-[0.97]
-           disabled:opacity-30 disabled:pointer-events-none;
+           hover:bg-oxblood-dim
+           active:scale-[0.98]
+           disabled:opacity-40 disabled:pointer-events-none;
   }
 
   .btn-mark-lg {
-    @apply inline-flex items-center justify-center gap-2.5 rounded-pill
-           bg-ink text-ink-inverse px-8 py-4 text-base font-medium
+    @apply inline-flex items-center justify-center gap-2.5 rounded-DEFAULT
+           bg-oxblood text-bg px-8 py-4 text-base font-medium tracking-wide
            transition-all duration-200 ease-out
-           hover:bg-moss
-           active:scale-[0.97]
-           disabled:opacity-30 disabled:pointer-events-none;
+           hover:bg-oxblood-dim
+           active:scale-[0.98]
+           disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  .btn-ink {
+    @apply inline-flex items-center justify-center gap-2 rounded-DEFAULT
+           bg-ink text-ink-inverse px-7 py-3.5 text-sm font-medium tracking-wide
+           transition-all duration-200 ease-out
+           hover:bg-ink-soft
+           active:scale-[0.98]
+           disabled:opacity-40 disabled:pointer-events-none;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-pill
-           bg-transparent text-ink border border-hairline-strong px-6 py-3 text-sm font-medium
+    @apply inline-flex items-center justify-center gap-2 rounded-DEFAULT
+           bg-transparent text-ink border border-hairline-strong px-7 py-3.5 text-sm font-medium tracking-wide
            transition-all duration-200 ease-out
            hover:border-ink hover:bg-ink/[0.03]
-           active:scale-[0.97];
+           active:scale-[0.98];
   }
 
   .btn-bone {
-    /* Used inside inverse panels */
-    @apply inline-flex items-center justify-center gap-2 rounded-pill
-           bg-ink-inverse text-ink px-6 py-3 text-sm font-medium
+    @apply inline-flex items-center justify-center gap-2 rounded-DEFAULT
+           bg-bg text-ink px-7 py-3.5 text-sm font-medium tracking-wide
            transition-all duration-200 ease-out
            hover:bg-bg-raised
-           active:scale-[0.97];
+           active:scale-[0.98];
   }
 
-  /* ── Pills — modern filter / tab pattern ── */
+  /* Pill nav — modern but quieter */
   .pill {
     @apply inline-flex items-center gap-1.5 px-4 py-1.5 rounded-pill text-xs font-medium
            bg-bg-raised text-ink-muted border border-transparent
@@ -133,36 +146,32 @@
     @apply bg-ink text-ink-inverse hover:bg-ink hover:text-ink-inverse hover:border-transparent;
   }
 
-  /* ── Tile (used inside booking flow) ── */
+  /* Tile (booking flow) */
   .tile {
     @apply relative rounded-card border border-hairline bg-bg-surface text-left
            transition-all duration-200 ease-out cursor-pointer
-           hover:border-ink/40 hover:shadow-[0_4px_16px_-8px_rgba(14,14,16,0.10)]
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss focus-visible:ring-offset-2;
+           hover:border-ink/40 hover:shadow-[0_4px_16px_-8px_rgba(26,23,20,0.10)]
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oxblood focus-visible:ring-offset-2;
   }
   .tile-selected {
-    @apply border-ink bg-ink text-ink-inverse hover:border-ink hover:bg-ink;
+    @apply border-oxblood bg-oxblood text-bg hover:border-oxblood hover:bg-oxblood;
   }
 
-  /* ── Slot button ── */
   .slot {
-    @apply py-3 px-2 rounded-md border border-hairline tabular text-sm
+    @apply py-3 px-2 rounded-DEFAULT border border-hairline tabular text-sm
            text-ink-muted transition-all duration-200 ease-snap cursor-pointer
-           hover:border-ink hover:text-ink hover:bg-ink/[0.02]
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss focus-visible:ring-offset-2;
+           hover:border-ink hover:text-ink hover:bg-ink/[0.02];
   }
   .slot-selected {
-    @apply border-ink bg-ink text-ink-inverse hover:bg-ink hover:text-ink-inverse;
+    @apply border-oxblood bg-oxblood text-bg hover:bg-oxblood hover:text-bg;
   }
 
-  /* ── Live indicator dot ── */
   .live-dot {
     @apply inline-block h-1.5 w-1.5 rounded-full bg-live;
     animation: live-dot 1.6s ease-in-out infinite;
   }
 }
 
-/* Hide scrollbars on horizontal strips while preserving function */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }

@@ -43,7 +43,7 @@ export default function ConfirmationPage() {
         className="absolute inset-0 -z-10"
         style={{
           background:
-            'radial-gradient(ellipse 50% 40% at 50% 30%, rgba(44,74,56,0.10), transparent 70%)',
+            'radial-gradient(ellipse 50% 40% at 50% 30%, rgba(124,38,48,0.10), transparent 70%)',
         }}
       />
 
@@ -58,7 +58,7 @@ export default function ConfirmationPage() {
             initial={{ scale: 0.7, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.1, ease: EASE }}
-            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-moss text-ink-inverse mb-10"
+            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-oxblood text-ink-inverse mb-10"
           >
             <CheckIcon className="h-7 w-7" />
           </motion.div>
@@ -67,7 +67,7 @@ export default function ConfirmationPage() {
 
           <h1 className="display text-5xl sm:text-7xl lg:text-8xl tracking-snug mb-6 leading-[0.92]">
             Lauksime jūsų{' '}
-            <span className="text-moss">
+            <span className="text-oxblood">
               {formatDateLT(start)} {formatTime(start)}.
             </span>
           </h1>

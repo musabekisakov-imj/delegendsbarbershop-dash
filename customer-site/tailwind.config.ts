@@ -1,69 +1,77 @@
 import type { Config } from 'tailwindcss';
 
-// "STUDIO" — modern multi-page design system.
-// Mixed-mode (warm cream default + dark inverse panels). Sans-only typography
-// (Geist). Forest-moss accent. Vermillion reserved for live/hot states only.
+// "PARLOUR" — boutique heritage-modern.
+// Researched against Murdock London, Hawthorne NYC, Ruffians Edinburgh,
+// Pall Mall Barbers, Persons of Interest, Pankhurst London. Palette and
+// type pairing draws from leather-chair-and-mahogany barbershop tradition.
 
 const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // Light surface foundation
+        // Surfaces — warm cream, slight peach undertone
         bg: {
-          DEFAULT: '#F4F1EA',
-          raised: '#EAE5DA',
+          DEFAULT: '#F4EFE5',
+          raised: '#EAE3D4',
           surface: '#FFFFFF',
         },
         ink: {
-          DEFAULT: '#0E0E10',
-          soft: '#1A1A1D',
-          muted: '#6A6A6F',
-          subtle: '#9A9A9F',
-          inverse: '#F4F1EA',
+          DEFAULT: '#1A1714',
+          soft: '#2A2522',
+          muted: '#5A5147',
+          subtle: '#8A8073',
+          inverse: '#F4EFE5',
         },
         hairline: {
-          DEFAULT: '#E5E1D8',
-          strong: '#D2CDC0',
-          inverse: 'rgba(244,241,234,0.10)',
-          'inverse-strong': 'rgba(244,241,234,0.20)',
+          DEFAULT: '#D7D0C3',
+          strong: '#B8B0A0',
+          inverse: 'rgba(244,239,229,0.10)',
+          'inverse-strong': 'rgba(244,239,229,0.20)',
         },
-        // Primary brand accent — deep moss. Premium, artisan, calm.
-        moss: {
-          DEFAULT: '#2C4A38',
-          dim: '#1F3528',
-          light: '#3D6B4F',
-          glow: 'rgba(44,74,56,0.12)',
+        // Primary action — oxblood (leather chair / stained mahogany)
+        oxblood: {
+          DEFAULT: '#7C2630',
+          dim: '#5A1A22',
+          light: '#9C3340',
         },
-        // Reserved for live/hot states only — now-line, available-now
+        // Secondary detail — brass (vintage hardware)
+        brass: {
+          DEFAULT: '#A87E3A',
+          dim: '#826230',
+          light: '#C39955',
+        },
+        // Reserved for live/hot states
         live: '#E8482D',
         ok: '#4D7A50',
         warn: '#C5752E',
       },
       fontFamily: {
+        // Display = Fraunces serif (warmth, heritage)
+        // Body = Geist sans (modern, balanced)
+        display: ['var(--font-fraunces)', 'Tiempos', 'Georgia', 'serif'],
         sans: ['var(--font-geist-sans)', 'ui-sans-serif', 'system-ui'],
         mono: ['var(--font-geist-mono)', 'ui-monospace', 'monospace'],
-        display: ['var(--font-geist-sans)', 'ui-sans-serif', 'system-ui'],
       },
       letterSpacing: {
-        eyebrow: '0.14em',
-        tight: '-0.02em',
-        tighter: '-0.03em',
-        snug: '-0.04em',
+        eyebrow: '0.18em',
+        tight: '-0.015em',
+        tighter: '-0.025em',
+        snug: '-0.035em',
       },
       maxWidth: {
         editorial: '1320px',
         narrow: '780px',
+        prose: '64ch',
       },
       borderRadius: {
-        DEFAULT: '8px',
-        card: '12px',
+        DEFAULT: '4px',
+        card: '6px',
         pill: '9999px',
       },
       transitionTimingFunction: {
         out: 'cubic-bezier(0.16, 1, 0.3, 1)',
         snap: 'cubic-bezier(0.4, 0, 0.2, 1)',
-        bouncy: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
       animation: {
         marquee: 'marquee 50s linear infinite',

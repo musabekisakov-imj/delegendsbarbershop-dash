@@ -32,7 +32,7 @@ export default async function TeamPage() {
             <div className="eyebrow mb-4">Pasirinkite vienąi</div>
             <h2 className="display text-3xl sm:text-4xl tracking-snug">
               Užsisakykite vizitą pas{' '}
-              <span className="text-moss">jums tinkamą meistrą.</span>
+              <span className="text-oxblood">jums tinkamą meistrą.</span>
             </h2>
           </div>
           <div className="lg:col-span-5 lg:col-start-8 self-end">

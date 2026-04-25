@@ -316,7 +316,7 @@ function Section({
       <div className="eyebrow mb-4 tabular">{eyebrow}</div>
       <h2 className="display text-4xl sm:text-6xl mb-12 tracking-snug">
         {title}{' '}
-        {accent && <span className="text-moss">{accent}</span>}
+        {accent && <span className="text-oxblood">{accent}</span>}
       </h2>
       {disabled ? (
         <div className="text-sm uppercase tracking-eyebrow text-ink-subtle">{disabledLabel}</div>
@@ -641,7 +641,7 @@ function Field({
         type={type}
         autoComplete={autoComplete}
         className="w-full px-4 py-3.5 rounded-md border border-hairline-strong bg-bg-surface text-ink
-                   focus:border-ink focus:outline-none focus:ring-2 focus:ring-moss/30 transition-all text-base"
+                   focus:border-ink focus:outline-none focus:ring-2 focus:ring-oxblood/30 transition-all text-base"
       />
       {hint && <span className="text-[10px] uppercase tracking-eyebrow text-ink-subtle mt-2 block">{hint}</span>}
     </label>
