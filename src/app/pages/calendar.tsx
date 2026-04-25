@@ -46,7 +46,7 @@ import { DayAgenda } from '../components/calendar/day-agenda';
 import { WeekView } from '../components/calendar/week-view';
 import type { Appointment, AppointmentStatus, AppointmentWithDetails, Shift, Break, DayOfWeek, Client } from '../types';
 import type { TranslationKey } from '../i18n';
-import { AVATAR_GRADIENTS, hashToIndex } from '../lib/tokens';
+import { AVATAR_GRADIENTS, hashToIndex, STATUS_DOT, STATUS_LABEL } from '../lib/tokens';
 
 // ─── Grid constants ─────────────────────────────────────
 const DAY_START_HOUR = 8;
@@ -118,7 +118,9 @@ function AppointmentDetailModal({
   const end = parseISO(apt.endTime);
   const duration = differenceInMinutes(end, start);
   const colors = getStaffColor(staffColorMap.get(apt.staffId) ?? 0);
-  const status = statusMap[apt.status] || statusMap.scheduled;
+  // statusMap kept on the props interface for backward-compat with DayAgenda /
+  // WeekView, but the modal now reads STATUS_DOT / STATUS_LABEL from tokens.
+  void statusMap;
 
   const busy = isUpdating || isDeleting;
 
@@ -158,280 +160,258 @@ function AppointmentDetailModal({
           <DialogTitle>{t('calendar.appointmentDetails')}</DialogTitle>
         </DialogHeader>
 
-        <div className={cn('h-2 w-full', colors.dot)} />
-
-        <div className="px-6 pt-5 pb-6 space-y-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className={cn('flex h-12 w-12 items-center justify-center rounded-full text-base font-bold shrink-0', colors.light, colors.label)}>
-                {apt.client.firstName[0]}{apt.client.lastName[0]}
+        {/* ─── Editorial header — eyebrow + name ────────
+            No top color stripe (was demo-feel). Status moves
+            to the eyebrow as a tiny dot + label. Time becomes
+            secondary text in the same row. */}
+        <div className="px-6 pt-6 pb-5">
+          <div className="flex items-start gap-4">
+            <div className={cn('flex h-14 w-14 items-center justify-center rounded-full text-base font-bold shrink-0', colors.light, colors.label)}>
+              {apt.client.firstName[0]}{apt.client.lastName[0]}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[apt.status])} />
+                <span>{STATUS_LABEL[apt.status]}</span>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="normal-case tracking-normal tabular-nums">
+                  {formatTime(start, timeFormat)} – {formatTime(end, timeFormat)}
+                </span>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="normal-case tracking-normal tabular-nums">{duration} min</span>
               </div>
-              <div className="min-w-0">
-                <p className="text-lg font-bold text-foreground truncate">{apt.client.firstName} {apt.client.lastName}</p>
-                <a
-                  href={`tel:${apt.client.phone}`}
-                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mt-0.5 tabular-nums transition-colors"
-                >
-                  <PhoneIcon className="h-3.5 w-3.5" />
-                  {apt.client.phone}
-                </a>
+              <p className="mt-1 text-xl font-bold text-foreground tracking-tight truncate leading-tight">
+                {apt.client.firstName} {apt.client.lastName}
+              </p>
+              <a
+                href={`tel:${apt.client.phone}`}
+                className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground tabular-nums transition-colors"
+              >
+                <PhoneIcon className="h-3 w-3" />
+                {apt.client.phone}
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── Body — hairline rows OR edit form ────── */}
+        {isEditing ? (
+          <div className="border-t border-border px-6 py-5 space-y-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Edit</p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
+                <Input
+                  type="date"
+                  value={editForm.date}
+                  onChange={(e) => setEditForm(f => ({ ...f, date: e.target.value }))}
+                  className="mt-1.5 h-9 tabular-nums"
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Start</Label>
+                <Input
+                  type="time"
+                  step={300}
+                  value={editForm.time}
+                  onChange={(e) => setEditForm(f => ({ ...f, time: e.target.value }))}
+                  className="mt-1.5 h-9 tabular-nums"
+                />
               </div>
             </div>
-            <span className={cn('rounded-full px-3 py-1 text-xs font-semibold shrink-0', status.cls)}>{status.label}</span>
-          </div>
 
-          {/* ── Details: read-only view OR full-edit form ───────────── */}
-          {isEditing ? (
-            <div className="space-y-3 rounded-xl border border-primary/40 bg-primary/5 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Editing appointment</p>
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Duration (min)</Label>
+              <Input
+                type="number"
+                min={5}
+                max={480}
+                step={5}
+                value={editForm.durationMin}
+                onChange={(e) => setEditForm(f => ({ ...f, durationMin: parseInt(e.target.value) || 0 }))}
+                className="mt-1.5 h-9 tabular-nums"
+              />
+            </div>
 
-              {/* Date + time */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Date</label>
-                  <input
-                    type="date"
-                    value={editForm.date}
-                    onChange={(e) => setEditForm(f => ({ ...f, date: e.target.value }))}
-                    className="mt-1 w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Start</label>
-                  <input
-                    type="time"
-                    step={300}
-                    value={editForm.time}
-                    onChange={(e) => setEditForm(f => ({ ...f, time: e.target.value }))}
-                    className="mt-1 w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                  />
-                </div>
-              </div>
-
-              {/* Duration */}
-              <div>
-                <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Duration (min)</label>
-                <input
-                  type="number"
-                  min={5}
-                  max={480}
-                  step={5}
-                  value={editForm.durationMin}
-                  onChange={(e) => setEditForm(f => ({ ...f, durationMin: parseInt(e.target.value) || 0 }))}
-                  className="mt-1 w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                />
-              </div>
-
-              {/* Service */}
-              <div>
-                <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Service</label>
-                <select
-                  value={editForm.serviceId}
-                  onChange={(e) => {
-                    const svc = serviceList.find(s => s.id === e.target.value);
-                    setEditForm(f => ({
-                      ...f,
-                      serviceId: e.target.value,
-                      // Auto-adopt the new service's duration — owner can still override.
-                      durationMin: svc?.duration ?? f.durationMin,
-                    }));
-                  }}
-                  className="mt-1 w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                >
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Service</Label>
+              <Select
+                value={editForm.serviceId}
+                onValueChange={(v) => {
+                  const svc = serviceList.find(s => s.id === v);
+                  setEditForm(f => ({
+                    ...f,
+                    serviceId: v,
+                    durationMin: svc?.duration ?? f.durationMin,
+                  }));
+                }}
+              >
+                <SelectTrigger className="mt-1.5 h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
                   {serviceList.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} — €{s.price} · {s.duration}m</option>
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name} — €{s.price} · {s.duration}m
+                    </SelectItem>
                   ))}
-                </select>
-              </div>
+                </SelectContent>
+              </Select>
+            </div>
 
-              {/* Barber */}
-              <div>
-                <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Barber</label>
-                <select
-                  value={editForm.staffId}
-                  onChange={(e) => setEditForm(f => ({ ...f, staffId: e.target.value }))}
-                  className="mt-1 w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                >
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Barber</Label>
+              <Select
+                value={editForm.staffId}
+                onValueChange={(v) => setEditForm(f => ({ ...f, staffId: v }))}
+              >
+                <SelectTrigger className="mt-1.5 h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
                   {staffList.filter(s => s.isActive).map(s => (
-                    <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>
+                    <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
                   ))}
-                </select>
-              </div>
+                </SelectContent>
+              </Select>
+            </div>
 
-              {/* Notes */}
-              <div>
-                <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Notes</label>
-                <textarea
-                  rows={2}
-                  value={editForm.notes}
-                  onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                  placeholder="Preferences, allergies…"
-                  className="mt-1 w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                />
-              </div>
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Notes</Label>
+              <Textarea
+                rows={2}
+                value={editForm.notes}
+                onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Preferences, allergies…"
+                className="mt-1.5"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="divide-y divide-border border-y border-border">
+            <DetailRow icon={ScissorsIcon} label="Service" value={apt.service.name} secondary={`€${apt.service.price}`} />
+            <DetailRow
+              icon={ClockIcon}
+              label="Barber"
+              value={`${apt.staff.firstName} ${apt.staff.lastName}`}
+              dot={colors.dot}
+            />
+            {apt.notes && (
+              <DetailRow icon={ChatBubbleLeftIcon} label="Notes" value={apt.notes} multiline />
+            )}
+          </div>
+        )}
+
+        {/* ─── Footer — single row of icon-only quick actions
+            + Edit + Delete. No more 5-button colored stack. */}
+        <div className="px-6 py-4 space-y-3">
+          {isEditing ? (
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setIsEditing(false)} disabled={busy}>
+                {t('common.cancel')}
+              </Button>
+              <Button className="flex-1" onClick={saveEdit} disabled={busy}>
+                {t('common.saveChanges')}
+              </Button>
             </div>
           ) : (
-          <div className="space-y-3.5 rounded-xl border border-border bg-muted/50 p-4">
-            <div className="flex items-center gap-3">
-              <ClockIcon className="h-5 w-5 text-muted-foreground shrink-0" />
-              <span className="text-base font-semibold text-foreground tabular-nums">
-                {formatTime(start, timeFormat)} – {formatTime(end, timeFormat)}
-              </span>
-              <span className="text-sm text-muted-foreground">{duration}min</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <ScissorsIcon className="h-5 w-5 text-muted-foreground shrink-0" />
-              <span className="text-base font-semibold text-foreground truncate">{apt.service.name}</span>
-              <span className="ml-auto text-base font-semibold text-foreground tabular-nums">€{apt.service.price}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <Avatar className="h-6 w-6 shrink-0">
-                {apt.staff.avatarUrl && <AvatarImage src={apt.staff.avatarUrl} alt={apt.staff.firstName} />}
-                <AvatarFallback className={cn('text-[9px] font-bold', colors.light, colors.label)}>{apt.staff.firstName[0]}{apt.staff.lastName[0]}</AvatarFallback>
-              </Avatar>
-              <span className="text-base font-medium text-foreground truncate">{apt.staff.firstName} {apt.staff.lastName}</span>
-              <span className={cn('ml-auto h-2.5 w-2.5 rounded-full', colors.dot)} />
-            </div>
-          </div>
-          )}
-
-          {!isEditing && apt.notes && (
-            <div className="flex gap-3 text-sm">
-              <ChatBubbleLeftIcon className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-              <p className="text-muted-foreground leading-relaxed">{apt.notes}</p>
-            </div>
-          )}
-
-          {/* Action buttons — differ by mode */}
-          <div className="space-y-2 pt-1">
-            {isEditing ? (
-              <div className="grid grid-cols-2 gap-2">
-                <ActionButton
-                  tone="amber"
-                  icon={XCircleIcon}
-                  label={t('common.cancel')}
-                  onClick={() => setIsEditing(false)}
-                  disabled={busy}
-                />
-                <ActionButton
-                  tone="emerald"
-                  icon={CheckCircleIcon}
-                  label={t('common.saveChanges')}
-                  onClick={saveEdit}
-                  disabled={busy}
-                />
-              </div>
-            ) : (
-              <>
-                {/* Full edit — owner/manager only */}
-                {canEditFully && (
-                  <ActionButton
-                    tone="blue"
-                    icon={PencilSquareIcon}
-                    label={t('clients.edit').replace('client', 'appointment').replace('Client', 'Appointment') || 'Edit appointment'}
-                    onClick={() => setIsEditing(true)}
-                    disabled={busy}
-                    wide
-                  />
+            <>
+              {/* Status quick actions — neutral icon buttons, dot indicates target state */}
+              <div className="flex flex-wrap gap-1.5">
+                {apt.status === 'scheduled' && (
+                  <>
+                    <QuickAction icon={CheckCircleIcon} label={t('common.confirm')} dotClass="bg-emerald-500" onClick={() => onChangeStatus(apt.id, 'confirmed')} disabled={busy} />
+                    <QuickAction icon={CheckBadgeIcon} label={t('status.completed')} dotClass="bg-muted-foreground/50" onClick={() => onChangeStatus(apt.id, 'completed')} disabled={busy} />
+                    <QuickAction icon={XCircleIcon} label={t('common.cancel')} dotClass="bg-rose-500" onClick={() => onChangeStatus(apt.id, 'cancelled')} disabled={busy} />
+                  </>
                 )}
-            {apt.status === 'scheduled' && (
-              <div className="grid grid-cols-2 gap-2">
-                <ActionButton
-                  tone="emerald"
-                  icon={CheckCircleIcon}
-                  label={t('common.confirm')}
-                  onClick={() => onChangeStatus(apt.id, 'confirmed')}
-                  disabled={busy}
-                />
-                <ActionButton
-                  tone="blue"
-                  icon={CheckBadgeIcon}
-                  label={t('status.completed')}
-                  onClick={() => onChangeStatus(apt.id, 'completed')}
-                  disabled={busy}
-                />
+                {apt.status === 'confirmed' && (
+                  <>
+                    <QuickAction icon={CheckBadgeIcon} label={t('status.completed')} dotClass="bg-muted-foreground/50" onClick={() => onChangeStatus(apt.id, 'completed')} disabled={busy} />
+                    <QuickAction icon={XCircleIcon} label={t('common.cancel')} dotClass="bg-rose-500" onClick={() => onChangeStatus(apt.id, 'cancelled')} disabled={busy} />
+                  </>
+                )}
+                {apt.status === 'cancelled' && (
+                  <QuickAction icon={CheckCircleIcon} label={t('status.scheduled')} dotClass="bg-blue-500" onClick={() => onChangeStatus(apt.id, 'scheduled')} disabled={busy} />
+                )}
               </div>
-            )}
 
-            {apt.status === 'confirmed' && (
-              <ActionButton
-                tone="blue"
-                icon={CheckBadgeIcon}
-                label={t('status.completed')}
-                onClick={() => onChangeStatus(apt.id, 'completed')}
-                disabled={busy}
-                wide
-              />
-            )}
-
-            {apt.status === 'cancelled' && (
-              <ActionButton
-                tone="emerald"
-                icon={CheckCircleIcon}
-                label={t('status.scheduled')}
-                onClick={() => onChangeStatus(apt.id, 'scheduled')}
-                disabled={busy}
-                wide
-              />
-            )}
-
-            {(apt.status === 'scheduled' || apt.status === 'confirmed') && (
-              <ActionButton
-                tone="amber"
-                icon={XCircleIcon}
-                label={t('common.cancel')}
-                onClick={() => onChangeStatus(apt.id, 'cancelled')}
-                disabled={busy}
-                wide
-              />
-            )}
-
-            <ActionButton
-              tone="rose"
-              icon={TrashIcon}
-              label={t('common.delete')}
-              onClick={() => onDelete(apt.id, `${apt.client.firstName} ${apt.client.lastName}`)}
-              disabled={busy}
-              wide
-            />
-              </>
-            )}
-          </div>
+              {/* Manage row — Edit + Delete as subtle text-buttons */}
+              {(canEditFully || true) && (
+                <div className="flex items-center justify-between border-t border-border pt-3">
+                  {canEditFully ? (
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      disabled={busy}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-foreground/70 transition-colors disabled:opacity-50"
+                    >
+                      <PencilSquareIcon className="h-3.5 w-3.5" />
+                      {t('common.edit') || 'Edit appointment'}
+                    </button>
+                  ) : <span />}
+                  <button
+                    onClick={() => onDelete(apt.id, `${apt.client.firstName} ${apt.client.lastName}`)}
+                    disabled={busy}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 transition-colors disabled:opacity-50"
+                  >
+                    <TrashIcon className="h-3.5 w-3.5" />
+                    {t('common.delete')}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function ActionButton({
-  tone, icon: Icon, label, onClick, disabled, wide,
+// ─── Editorial primitives for the Detail modal ──────────────
+function DetailRow({
+  icon: Icon, label, value, secondary, dot, multiline,
 }: {
-  tone: 'emerald' | 'blue' | 'amber' | 'rose';
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  secondary?: string;
+  dot?: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="px-6 py-3 flex items-start gap-3">
+      <Icon className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+        <p className={cn(
+          'mt-0.5 text-sm font-medium text-foreground',
+          multiline ? 'leading-relaxed' : 'truncate flex items-center gap-2',
+        )}>
+          {dot && <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', dot)} />}
+          {value}
+        </p>
+      </div>
+      {secondary && (
+        <span className="text-sm font-semibold text-foreground tabular-nums shrink-0">{secondary}</span>
+      )}
+    </div>
+  );
+}
+
+function QuickAction({
+  icon: Icon, label, onClick, disabled, dotClass,
+}: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   onClick: () => void;
   disabled?: boolean;
-  wide?: boolean;
+  dotClass: string;
 }) {
-  // Tonal buttons — single source of color (tinted bg), no competing border.
-  // Refactoring UI: borders compete with color-filled backgrounds; pick one.
-  const tones = {
-    emerald: 'bg-emerald-100/70 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-200 hover:bg-emerald-200/70 dark:hover:bg-emerald-900/50',
-    blue:    'bg-blue-100/70 dark:bg-blue-950/50 text-blue-700 dark:text-blue-200 hover:bg-blue-200/70 dark:hover:bg-blue-900/50',
-    amber:   'bg-amber-100/70 dark:bg-amber-950/50 text-amber-700 dark:text-amber-200 hover:bg-amber-200/70 dark:hover:bg-amber-900/50',
-    rose:    'bg-rose-100/70 dark:bg-rose-950/50 text-rose-700 dark:text-rose-200 hover:bg-rose-200/70 dark:hover:bg-rose-900/50',
-  };
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={cn(
-        'flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-        tones[tone],
-        wide && 'w-full',
-      )}
+      className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:border-foreground/20 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
     >
-      <Icon className="h-4 w-4" />
+      <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', dotClass)} />
+      <Icon className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground" />
       {label}
     </button>
   );
@@ -1394,33 +1374,37 @@ export function CalendarPage() {
         />
       )}
 
-      {/* ─── Create Modal ─────────────────────────────── */}
+      {/* ─── Create Modal — editorial pattern ───────────
+          Eyebrow + display title. When/Service/Barber/Notes
+          as labelled fields with shadcn primitives (no native
+          inputs, no blue-tinted "When" panel). */}
       <Dialog open={isCreateOpen} onOpenChange={open => { if (!open) closeCreate(); }}>
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader><DialogTitle>{t('calendar.newAppointment')}</DialogTitle></DialogHeader>
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">New</p>
+            <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight">
+              {t('calendar.newAppointment')}
+            </DialogTitle>
+          </DialogHeader>
+
           <div className="space-y-4">
-            {/* Editable date + time — previously a static badge.
-                Owner/manager can retune either field before creating the
-                appointment; the barber column still drives the pre-selection. */}
-            <div className="rounded-lg border border-blue-100 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-950/40 p-3 space-y-2.5">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300">
-                <ClockIcon className="h-3.5 w-3.5 shrink-0" />
-                When
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input
+            {/* When — flat editorial pair, no tinted panel */}
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">When</Label>
+              <div className="mt-1.5 grid grid-cols-2 gap-2">
+                <Input
                   type="date"
                   value={createDate}
                   onChange={(e) => setCreateDate(e.target.value)}
-                  className="w-full rounded-md border border-blue-200 dark:border-blue-800 bg-card px-2.5 py-1.5 text-sm tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                  className="h-9 tabular-nums"
                   aria-label="Date"
                 />
-                <input
+                <Input
                   type="time"
                   step={300}
                   value={createTime}
                   onChange={(e) => setCreateTime(e.target.value)}
-                  className="w-full rounded-md border border-blue-200 dark:border-blue-800 bg-card px-2.5 py-1.5 text-sm tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                  className="h-9 tabular-nums"
                   aria-label="Start time"
                 />
               </div>
@@ -1429,7 +1413,7 @@ export function CalendarPage() {
                 if (!st) return null;
                 const c = getStaffColor(staffColorMap.get(st.id) ?? 0);
                 return (
-                  <div className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-300">
+                  <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
                     <Avatar className="h-4 w-4">
                       {st.avatarUrl && <AvatarImage src={st.avatarUrl} alt={st.firstName} />}
                       <AvatarFallback className={cn('text-[8px] font-bold', c.light, c.label)}>{st.firstName[0]}{st.lastName[0]}</AvatarFallback>
@@ -1440,10 +1424,7 @@ export function CalendarPage() {
               })()}
             </div>
 
-            {/* ── Client autocomplete (client review item #5) ──
-                Type a name / phone / email. If the system has this client in
-                history we surface them (with visit count + last-visit date).
-                If nothing matches, switch to the inline "new client" form. */}
+            {/* Client autocomplete */}
             <ClientAutocomplete
               t={t}
               clients={clients}
@@ -1479,15 +1460,15 @@ export function CalendarPage() {
             />
 
             <div>
-              <Label className="text-sm">{t('calendar.service')}</Label>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.service')}</Label>
               <Select value={formData.serviceId} onValueChange={v => setFormData(f => ({ ...f, serviceId: v }))}>
-                <SelectTrigger className="mt-1.5"><SelectValue placeholder={t('calendar.selectService')} /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 h-9"><SelectValue placeholder={t('calendar.selectService')} /></SelectTrigger>
                 <SelectContent>
                   {services.map(s => (
                     <SelectItem key={s.id} value={s.id}>
                       <span className="flex items-center gap-3 w-full">
                         <span>{s.name}</span>
-                        <span className="ml-auto text-xs text-muted-foreground">€{s.price} &middot; {s.duration}m</span>
+                        <span className="ml-auto text-xs text-muted-foreground tabular-nums">€{s.price} · {s.duration}m</span>
                       </span>
                     </SelectItem>
                   ))}
@@ -1496,9 +1477,9 @@ export function CalendarPage() {
             </div>
 
             <div>
-              <Label className="text-sm">{t('calendar.barber')}</Label>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
               <Select value={formData.staffId} onValueChange={v => setFormData(f => ({ ...f, staffId: v }))}>
-                <SelectTrigger className="mt-1.5"><SelectValue placeholder={t('calendar.selectBarber')} /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 h-9"><SelectValue placeholder={t('calendar.selectBarber')} /></SelectTrigger>
                 <SelectContent>
                   {activeStaff.map((m, i) => {
                     const c = getStaffColor(i);
@@ -1519,38 +1500,52 @@ export function CalendarPage() {
             </div>
 
             <div>
-              <Label className="text-sm">{t('calendar.notes')}</Label>
-              <Textarea value={formData.notes} onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))}
-                placeholder={t('calendar.specialRequests')} className="mt-1.5" rows={2} />
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.notes')}</Label>
+              <Textarea
+                value={formData.notes}
+                onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))}
+                placeholder={t('calendar.specialRequests')}
+                className="mt-1.5"
+                rows={2}
+              />
             </div>
 
             <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={closeCreate}>{t('common.cancel')}</Button>
               <Button onClick={handleSubmit} className="flex-1" disabled={createMutation.isPending}>
                 {createMutation.isPending ? t('calendar.creating') : t('calendar.createAppointment')}
               </Button>
-              <Button variant="outline" onClick={closeCreate}>{t('common.cancel')}</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ─── Conflict Dialog ─────────────────────────── */}
+      {/* ─── Conflict Dialog — editorial pattern ─────
+          Amber eyebrow signals exception state. Conflict
+          rows are hairline-divided list (no muted panels). */}
       <Dialog open={!!conflictState} onOpenChange={(open) => !open && setConflictState(null)}>
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>Scheduling conflict</DialogTitle>
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              Conflict
+            </p>
+            <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight">
+              Already booked
+            </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            This barber is already booked during this time at another location.
+            This barber is already booked at another location during this time.
           </p>
-          <div className="space-y-2">
+          <div className="divide-y divide-border border-y border-border -mx-6">
             {conflictState?.conflicts.map(({ appointment, office }) => (
-              <div key={appointment.id} className="rounded-lg border border-border bg-muted/50 p-3 text-sm">
-                <p className="font-medium text-foreground">
-                  {format(new Date(appointment.startTime), 'MMM d, h:mm a')} — {format(new Date(appointment.endTime), 'h:mm a')}
+              <div key={appointment.id} className="px-6 py-3">
+                <p className="text-sm font-semibold text-foreground tabular-nums">
+                  {format(new Date(appointment.startTime), 'MMM d, HH:mm')} — {format(new Date(appointment.endTime), 'HH:mm')}
                 </p>
-                <p className="text-muted-foreground">
-                  {office.name} ({office.address})
+                <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <MapPinIcon className="h-3 w-3 shrink-0" />
+                  {office.name} · {office.address}
                 </p>
               </div>
             ))}
