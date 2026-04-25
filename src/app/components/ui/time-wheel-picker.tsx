@@ -27,8 +27,8 @@ interface TimeWheelPickerProps {
   ariaLabel?: string;
 }
 
-const ITEM_HEIGHT = 36;
-const VISIBLE_BUFFER = 1; // 1 item above + 1 below selected
+const ITEM_HEIGHT = 52;
+const VISIBLE_BUFFER = 2; // 2 items above + selected + 2 below = 5 visible
 
 export function TimeWheelPicker({
   value,
@@ -57,7 +57,7 @@ export function TimeWheelPicker({
   return (
     <div
       className={cn(
-        'inline-flex items-stretch gap-1 rounded-xl border border-border bg-card p-1.5',
+        'inline-flex items-stretch gap-3 rounded-2xl border border-border bg-card p-3',
         className,
       )}
       aria-label={ariaLabel}
@@ -68,7 +68,7 @@ export function TimeWheelPicker({
         selected={hour}
         onSelect={setHour}
       />
-      <div className="flex items-center px-1 text-2xl font-bold tabular-nums text-muted-foreground/30 select-none">
+      <div className="flex items-center text-4xl font-bold tabular-nums text-muted-foreground/30 select-none">
         :
       </div>
       <WheelColumn
@@ -152,35 +152,35 @@ function WheelColumn({ label, items, selected, onSelect }: WheelColumnProps) {
   };
 
   return (
-    <div className="flex flex-col items-center gap-0.5">
+    <div className="flex flex-col items-center gap-1">
       {/* Up arrow */}
       <button
         type="button"
         onClick={() => step(-1)}
         aria-label={`Previous ${label}`}
-        className="flex h-5 w-12 items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
+        className="flex h-7 w-20 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
       >
-        <ChevronUpIcon className="h-3.5 w-3.5" />
+        <ChevronUpIcon className="h-4 w-4" />
       </button>
 
       {/* Scroll column with center highlight */}
-      <div className="relative w-12" role="listbox" aria-label={label}>
-        {/* Center highlight band */}
+      <div className="relative w-20" role="listbox" aria-label={label}>
+        {/* Center highlight band — stronger contrast */}
         <div
-          className="pointer-events-none absolute inset-x-0 rounded-md border border-foreground/15 bg-foreground/[0.04] z-0"
+          className="pointer-events-none absolute inset-x-0 rounded-lg border border-foreground/20 bg-foreground/[0.06] z-0"
           style={{ top: ITEM_HEIGHT * VISIBLE_BUFFER, height: ITEM_HEIGHT }}
           aria-hidden
         />
-        {/* Top + bottom fades for soft cut-off */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-card via-card/80 to-transparent" style={{ height: ITEM_HEIGHT }} aria-hidden />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-card via-card/80 to-transparent" style={{ height: ITEM_HEIGHT }} aria-hidden />
+        {/* Top + bottom fades — taller so outer items dim out */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-card via-card/90 to-transparent" style={{ height: ITEM_HEIGHT * 1.5 }} aria-hidden />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-card via-card/90 to-transparent" style={{ height: ITEM_HEIGHT * 1.5 }} aria-hidden />
 
         <div
           ref={scrollRef}
           onScroll={handleScroll}
           onKeyDown={handleKeyDown}
           tabIndex={0}
-          className="overflow-y-auto snap-y snap-mandatory focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 rounded-md [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+          className="overflow-y-auto snap-y snap-mandatory focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 rounded-lg [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           style={{ height: visibleHeight, scrollSnapType: 'y mandatory' }}
         >
           {/* Top spacer so first item can center */}
@@ -195,10 +195,10 @@ function WheelColumn({ label, items, selected, onSelect }: WheelColumnProps) {
                 aria-selected={isActive}
                 onClick={() => onSelect(item)}
                 className={cn(
-                  'flex w-full items-center justify-center text-base font-semibold tabular-nums transition-colors snap-center cursor-pointer',
+                  'flex w-full items-center justify-center text-3xl font-bold tabular-nums transition-all snap-center cursor-pointer',
                   isActive
-                    ? 'text-foreground'
-                    : 'text-muted-foreground/50 hover:text-muted-foreground',
+                    ? 'text-foreground scale-100'
+                    : 'text-muted-foreground/40 hover:text-muted-foreground scale-90',
                 )}
                 style={{ height: ITEM_HEIGHT, scrollSnapAlign: 'center' }}
                 tabIndex={-1}
@@ -217,10 +217,15 @@ function WheelColumn({ label, items, selected, onSelect }: WheelColumnProps) {
         type="button"
         onClick={() => step(1)}
         aria-label={`Next ${label}`}
-        className="flex h-5 w-12 items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
+        className="flex h-7 w-20 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
       >
-        <ChevronDownIcon className="h-3.5 w-3.5" />
+        <ChevronDownIcon className="h-4 w-4" />
       </button>
+
+      {/* Column label below */}
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70 mt-0.5">
+        {label}
+      </p>
     </div>
   );
 }

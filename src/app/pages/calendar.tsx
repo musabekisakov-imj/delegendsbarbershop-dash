@@ -156,7 +156,7 @@ function AppointmentDetailModal({
 
   return (
     <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="sm:max-w-[460px] p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden max-h-[92vh] overflow-y-auto">
         <DialogHeader className="sr-only">
           <DialogTitle>{t('calendar.appointmentDetails')}</DialogTitle>
         </DialogHeader>
@@ -165,9 +165,9 @@ function AppointmentDetailModal({
             No top color stripe (was demo-feel). Status moves
             to the eyebrow as a tiny dot + label. Time becomes
             secondary text in the same row. */}
-        <div className="px-6 pt-6 pb-5">
+        <div className="px-7 pt-7 pb-5">
           <div className="flex items-start gap-4">
-            <div className={cn('flex h-14 w-14 items-center justify-center rounded-full text-base font-bold shrink-0', colors.light, colors.label)}>
+            <div className={cn('flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold shrink-0', colors.light, colors.label)}>
               {apt.client.firstName[0]}{apt.client.lastName[0]}
             </div>
             <div className="min-w-0 flex-1">
@@ -181,7 +181,7 @@ function AppointmentDetailModal({
                 <span className="text-muted-foreground/40">·</span>
                 <span className="normal-case tracking-normal tabular-nums">{duration} min</span>
               </div>
-              <p className="mt-1 text-xl font-bold text-foreground tracking-tight truncate leading-tight">
+              <p className="mt-1 text-2xl sm:text-3xl font-bold text-foreground tracking-tight truncate leading-tight">
                 {apt.client.firstName} {apt.client.lastName}
               </p>
               <a
@@ -197,83 +197,85 @@ function AppointmentDetailModal({
 
         {/* ─── Body — hairline rows OR edit form ────── */}
         {isEditing ? (
-          <div className="border-t border-border px-6 py-5 space-y-4">
+          <div className="border-t border-border px-7 py-6 space-y-6">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Edit</p>
 
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
-              <Input
-                type="date"
-                value={editForm.date}
-                onChange={(e) => setEditForm(f => ({ ...f, date: e.target.value }))}
-                className="mt-1.5 h-9 tabular-nums"
+            {/* Wheel picker centered as the visual hero of edit mode */}
+            <div className="flex justify-center py-2">
+              <TimeWheelPicker
+                value={editForm.time}
+                onChange={(time) => setEditForm(f => ({ ...f, time }))}
+                startHour={DAY_START_HOUR}
+                endHour={DAY_END_HOUR}
+                minuteStep={5}
+                ariaLabel="Appointment start time"
               />
             </div>
 
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Start time</Label>
-              <div className="mt-1.5">
-                <TimeWheelPicker
-                  value={editForm.time}
-                  onChange={(time) => setEditForm(f => ({ ...f, time }))}
-                  startHour={DAY_START_HOUR}
-                  endHour={DAY_END_HOUR}
-                  minuteStep={5}
-                  ariaLabel="Appointment start time"
+            {/* Date + Duration in a 2-col grid below the picker */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
+                <Input
+                  type="date"
+                  value={editForm.date}
+                  onChange={(e) => setEditForm(f => ({ ...f, date: e.target.value }))}
+                  className="mt-1.5 h-10 tabular-nums"
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Duration (min)</Label>
+                <Input
+                  type="number"
+                  min={5}
+                  max={480}
+                  step={5}
+                  value={editForm.durationMin}
+                  onChange={(e) => setEditForm(f => ({ ...f, durationMin: parseInt(e.target.value) || 0 }))}
+                  className="mt-1.5 h-10 tabular-nums"
                 />
               </div>
             </div>
 
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Duration (min)</Label>
-              <Input
-                type="number"
-                min={5}
-                max={480}
-                step={5}
-                value={editForm.durationMin}
-                onChange={(e) => setEditForm(f => ({ ...f, durationMin: parseInt(e.target.value) || 0 }))}
-                className="mt-1.5 h-9 tabular-nums"
-              />
-            </div>
-
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Service</Label>
-              <Select
-                value={editForm.serviceId}
-                onValueChange={(v) => {
-                  const svc = serviceList.find(s => s.id === v);
-                  setEditForm(f => ({
-                    ...f,
-                    serviceId: v,
-                    durationMin: svc?.duration ?? f.durationMin,
-                  }));
-                }}
-              >
-                <SelectTrigger className="mt-1.5 h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {serviceList.map(s => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} — €{s.price} · {s.duration}m
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Barber</Label>
-              <Select
-                value={editForm.staffId}
-                onValueChange={(v) => setEditForm(f => ({ ...f, staffId: v }))}
-              >
-                <SelectTrigger className="mt-1.5 h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {staffList.filter(s => s.isActive).map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Service + Barber */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Service</Label>
+                <Select
+                  value={editForm.serviceId}
+                  onValueChange={(v) => {
+                    const svc = serviceList.find(s => s.id === v);
+                    setEditForm(f => ({
+                      ...f,
+                      serviceId: v,
+                      durationMin: svc?.duration ?? f.durationMin,
+                    }));
+                  }}
+                >
+                  <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {serviceList.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} — €{s.price} · {s.duration}m
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Barber</Label>
+                <Select
+                  value={editForm.staffId}
+                  onValueChange={(v) => setEditForm(f => ({ ...f, staffId: v }))}
+                >
+                  <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {staffList.filter(s => s.isActive).map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div>
@@ -288,7 +290,7 @@ function AppointmentDetailModal({
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-border border-y border-border">
+          <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border border-y border-border">
             <DetailRow icon={ScissorsIcon} label="Service" value={apt.service.name} secondary={`€${apt.service.price}`} />
             <DetailRow
               icon={ClockIcon}
@@ -297,14 +299,16 @@ function AppointmentDetailModal({
               dot={colors.dot}
             />
             {apt.notes && (
-              <DetailRow icon={ChatBubbleLeftIcon} label="Notes" value={apt.notes} multiline />
+              <div className="sm:col-span-2 border-t border-border">
+                <DetailRow icon={ChatBubbleLeftIcon} label="Notes" value={apt.notes} multiline />
+              </div>
             )}
           </div>
         )}
 
         {/* ─── Footer — single row of icon-only quick actions
             + Edit + Delete. No more 5-button colored stack. */}
-        <div className="px-6 py-4 space-y-3">
+        <div className="px-7 py-5 space-y-3">
           {isEditing ? (
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => setIsEditing(false)} disabled={busy}>
@@ -1382,45 +1386,31 @@ export function CalendarPage() {
           as labelled fields with shadcn primitives (no native
           inputs, no blue-tinted "When" panel). */}
       <Dialog open={isCreateOpen} onOpenChange={open => { if (!open) closeCreate(); }}>
-        <DialogContent className="sm:max-w-[460px]">
+        <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">New</p>
-            <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight">
+            <DialogTitle className="text-2xl sm:text-3xl font-bold tracking-tight">
               {t('calendar.newAppointment')}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
-            {/* When — date input + alarm-style wheel picker for the time */}
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
-              <Input
-                type="date"
-                value={createDate}
-                onChange={(e) => setCreateDate(e.target.value)}
-                className="mt-1.5 h-9 tabular-nums"
-                aria-label="Date"
+          <div className="space-y-6">
+            {/* Wheel picker centered as visual hero of the new-booking flow */}
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <TimeWheelPicker
+                value={createTime}
+                onChange={setCreateTime}
+                startHour={DAY_START_HOUR}
+                endHour={DAY_END_HOUR}
+                minuteStep={5}
+                ariaLabel="Appointment start time"
               />
-            </div>
-
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Start time</Label>
-              <div className="mt-1.5">
-                <TimeWheelPicker
-                  value={createTime}
-                  onChange={setCreateTime}
-                  startHour={DAY_START_HOUR}
-                  endHour={DAY_END_HOUR}
-                  minuteStep={5}
-                  ariaLabel="Appointment start time"
-                />
-              </div>
               {selectedSlot?.staffId && (() => {
                 const st = activeStaff.find(s => s.id === selectedSlot.staffId);
                 if (!st) return null;
                 const c = getStaffColor(staffColorMap.get(st.id) ?? 0);
                 return (
-                  <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
                     <Avatar className="h-4 w-4">
                       {st.avatarUrl && <AvatarImage src={st.avatarUrl} alt={st.firstName} />}
                       <AvatarFallback className={cn('text-[8px] font-bold', c.light, c.label)}>{st.firstName[0]}{st.lastName[0]}</AvatarFallback>
@@ -1429,6 +1419,17 @@ export function CalendarPage() {
                   </div>
                 );
               })()}
+            </div>
+
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
+              <Input
+                type="date"
+                value={createDate}
+                onChange={(e) => setCreateDate(e.target.value)}
+                className="mt-1.5 h-10 tabular-nums"
+                aria-label="Date"
+              />
             </div>
 
             {/* Client autocomplete */}
@@ -1466,44 +1467,46 @@ export function CalendarPage() {
               isSubmittingClient={createClientMut.isPending}
             />
 
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.service')}</Label>
-              <Select value={formData.serviceId} onValueChange={v => setFormData(f => ({ ...f, serviceId: v }))}>
-                <SelectTrigger className="mt-1.5 h-9"><SelectValue placeholder={t('calendar.selectService')} /></SelectTrigger>
-                <SelectContent>
-                  {services.map(s => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span className="flex items-center gap-3 w-full">
-                        <span>{s.name}</span>
-                        <span className="ml-auto text-xs text-muted-foreground tabular-nums">€{s.price} · {s.duration}m</span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
-              <Select value={formData.staffId} onValueChange={v => setFormData(f => ({ ...f, staffId: v }))}>
-                <SelectTrigger className="mt-1.5 h-9"><SelectValue placeholder={t('calendar.selectBarber')} /></SelectTrigger>
-                <SelectContent>
-                  {activeStaff.map((m, i) => {
-                    const c = getStaffColor(i);
-                    return (
-                      <SelectItem key={m.id} value={m.id}>
-                        <span className="flex items-center gap-2">
-                          <Avatar className="h-5 w-5">
-                            {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.firstName} />}
-                            <AvatarFallback className={cn('text-[8px]', c.light, c.label)}>{m.firstName[0]}{m.lastName[0]}</AvatarFallback>
-                          </Avatar>
-                          {m.firstName} {m.lastName}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.service')}</Label>
+                <Select value={formData.serviceId} onValueChange={v => setFormData(f => ({ ...f, serviceId: v }))}>
+                  <SelectTrigger className="mt-1.5 h-10"><SelectValue placeholder={t('calendar.selectService')} /></SelectTrigger>
+                  <SelectContent>
+                    {services.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="flex items-center gap-3 w-full">
+                          <span>{s.name}</span>
+                          <span className="ml-auto text-xs text-muted-foreground tabular-nums">€{s.price} · {s.duration}m</span>
                         </span>
                       </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
+                <Select value={formData.staffId} onValueChange={v => setFormData(f => ({ ...f, staffId: v }))}>
+                  <SelectTrigger className="mt-1.5 h-10"><SelectValue placeholder={t('calendar.selectBarber')} /></SelectTrigger>
+                  <SelectContent>
+                    {activeStaff.map((m, i) => {
+                      const c = getStaffColor(i);
+                      return (
+                        <SelectItem key={m.id} value={m.id}>
+                          <span className="flex items-center gap-2">
+                            <Avatar className="h-5 w-5">
+                              {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.firstName} />}
+                              <AvatarFallback className={cn('text-[8px]', c.light, c.label)}>{m.firstName[0]}{m.lastName[0]}</AvatarFallback>
+                            </Avatar>
+                            {m.firstName} {m.lastName}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div>
