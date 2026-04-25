@@ -14,15 +14,18 @@ import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
  * design language matters more than raw input speed (booking dialogs).
  */
 interface TimeWheelPickerProps {
-  /** "HH:MM" 24-hour format, e.g. "10:30" */
+  /** "HH:MM" 24-hour format ALWAYS (canonical), e.g. "10:30" or "14:00".
+      The picker handles 12h display internally if `format === '12h'`. */
   value: string;
   onChange: (value: string) => void;
   /** Minutes increment — 5 (default) or 15. */
   minuteStep?: 5 | 15;
-  /** First selectable hour (0-23). */
+  /** First selectable hour in canonical 24h (0-23). 24h mode only. */
   startHour?: number;
-  /** Last selectable hour (0-23, inclusive). */
+  /** Last selectable hour in canonical 24h (0-23, inclusive). 24h mode only. */
   endHour?: number;
+  /** Display format. 24h shows 0-23. 12h shows 1-12 + AM/PM column. */
+  format?: '24h' | '12h';
   className?: string;
   ariaLabel?: string;
 }
@@ -30,29 +33,97 @@ interface TimeWheelPickerProps {
 const ITEM_HEIGHT = 52;
 const VISIBLE_BUFFER = 2; // 2 items above + selected + 2 below = 5 visible
 
+// Canonical 24h hour (0-23) → display hour (1-12) + period
+function to12h(h24: number): { hour12: number; period: 'AM' | 'PM' } {
+  const period = h24 < 12 ? 'AM' : 'PM';
+  const hour12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return { hour12, period };
+}
+
+// Display hour (1-12) + period → canonical 24h
+function to24h(hour12: number, period: 'AM' | 'PM'): number {
+  if (period === 'AM') return hour12 === 12 ? 0 : hour12;
+  return hour12 === 12 ? 12 : hour12 + 12;
+}
+
 export function TimeWheelPicker({
   value,
   onChange,
   minuteStep = 5,
   startHour = 0,
   endHour = 23,
+  format = '24h',
   className,
   ariaLabel = 'Time',
 }: TimeWheelPickerProps) {
   const [hourStr = '00', minuteStr = '00'] = value.split(':');
-  const hour = parseInt(hourStr, 10) || 0;
+  const hour24 = parseInt(hourStr, 10) || 0;
   const minute = parseInt(minuteStr, 10) || 0;
 
   // Snap minute to nearest valid step (handles HH:23 -> HH:25 if step=5)
   const snappedMinute = Math.round(minute / minuteStep) * minuteStep;
 
-  const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
   const minutes = Array.from({ length: 60 / minuteStep }, (_, i) => i * minuteStep);
-
   const pad = (n: number) => String(n).padStart(2, '0');
 
+  if (format === '12h') {
+    // 12h mode: 1..12 hour wheel + AM/PM column. Bounds (startHour/endHour)
+    // are intentionally relaxed in 12h — picker shows the full clock and
+    // the parent validates if needed.
+    const hours12 = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    const { hour12, period } = to12h(hour24);
+
+    const setHour12 = (h: number) => {
+      const newH24 = to24h(h, period);
+      onChange(`${pad(newH24)}:${pad(snappedMinute)}`);
+    };
+    const setMinute = (m: number) => {
+      onChange(`${pad(hour24)}:${pad(m)}`);
+    };
+    const setPeriod = (p: number) => {
+      const newPeriod = p === 0 ? 'AM' : 'PM';
+      const newH24 = to24h(hour12, newPeriod);
+      onChange(`${pad(newH24)}:${pad(snappedMinute)}`);
+    };
+
+    return (
+      <div
+        className={cn(
+          'inline-flex items-stretch gap-3 rounded-2xl border border-border bg-card p-3',
+          className,
+        )}
+        aria-label={ariaLabel}
+      >
+        <WheelColumn
+          label="hour"
+          items={hours12}
+          selected={hour12}
+          onSelect={setHour12}
+        />
+        <div className="flex items-center text-4xl font-bold tabular-nums text-muted-foreground/30 select-none">
+          :
+        </div>
+        <WheelColumn
+          label="minute"
+          items={minutes}
+          selected={snappedMinute}
+          onSelect={setMinute}
+        />
+        <WheelColumn
+          label="period"
+          items={[0, 1]}
+          selected={period === 'AM' ? 0 : 1}
+          onSelect={setPeriod}
+          formatItem={(n) => (n === 0 ? 'AM' : 'PM')}
+        />
+      </div>
+    );
+  }
+
+  // 24h mode (default)
+  const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
   const setHour = (h: number) => onChange(`${pad(h)}:${pad(snappedMinute)}`);
-  const setMinute = (m: number) => onChange(`${pad(hour)}:${pad(m)}`);
+  const setMinute = (m: number) => onChange(`${pad(hour24)}:${pad(m)}`);
 
   return (
     <div
@@ -65,7 +136,7 @@ export function TimeWheelPicker({
       <WheelColumn
         label="hour"
         items={hours}
-        selected={hour}
+        selected={hour24}
         onSelect={setHour}
       />
       <div className="flex items-center text-4xl font-bold tabular-nums text-muted-foreground/30 select-none">
@@ -86,9 +157,11 @@ interface WheelColumnProps {
   items: number[];
   selected: number;
   onSelect: (n: number) => void;
+  /** Optional custom formatter — e.g. AM/PM column shows "AM"/"PM" instead of 0/1. */
+  formatItem?: (n: number) => string;
 }
 
-function WheelColumn({ label, items, selected, onSelect }: WheelColumnProps) {
+function WheelColumn({ label, items, selected, onSelect, formatItem }: WheelColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef<number | null>(null);
@@ -203,7 +276,7 @@ function WheelColumn({ label, items, selected, onSelect }: WheelColumnProps) {
                 style={{ height: ITEM_HEIGHT, scrollSnapAlign: 'center' }}
                 tabIndex={-1}
               >
-                {String(item).padStart(2, '0')}
+                {formatItem ? formatItem(item) : String(item).padStart(2, '0')}
               </button>
             );
           })}

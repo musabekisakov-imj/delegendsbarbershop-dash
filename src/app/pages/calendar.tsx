@@ -208,6 +208,7 @@ function AppointmentDetailModal({
                 startHour={DAY_START_HOUR}
                 endHour={DAY_END_HOUR}
                 minuteStep={5}
+                format={timeFormat}
                 ariaLabel="Appointment start time"
               />
             </div>
@@ -1403,6 +1404,7 @@ export function CalendarPage() {
                 startHour={DAY_START_HOUR}
                 endHour={DAY_END_HOUR}
                 minuteStep={5}
+                format={timeFormat}
                 ariaLabel="Appointment start time"
               />
               {selectedSlot?.staffId && (() => {

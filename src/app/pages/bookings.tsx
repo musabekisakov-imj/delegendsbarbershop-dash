@@ -6,6 +6,7 @@ import { useOfficeStore } from '../store/office-store';
 import { useAuthStore } from '../store/auth-store';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { useNavigate } from 'react-router';
 import {
@@ -23,7 +24,8 @@ import {
 import { usePermission } from '../hooks/use-permission';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
-import { useT } from '../hooks/use-t';
+import { useT, useTimeFormat } from '../hooks/use-t';
+import { TimeWheelPicker } from '../components/ui/time-wheel-picker';
 import { CardSkeleton, TableSkeleton } from '../components/shared/page-skeleton';
 import { exportCsv } from '../lib/csv';
 import { useConfirm } from '../hooks/use-confirm';
@@ -43,6 +45,7 @@ export function BookingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const t = useT();
+  const [timeFormat] = useTimeFormat();
   const confirm = useConfirm();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<AppointmentStatus | 'all'>('all');
@@ -934,20 +937,28 @@ export function BookingsPage() {
                     )}
                   </div>
                   {canReschedule && rescheduleDraft ? (
-                    <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-                      <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Reschedule
+                      </p>
+                      <div className="flex justify-center">
+                        <TimeWheelPicker
+                          value={rescheduleDraft.time}
+                          onChange={(time) => setRescheduleDraft({ ...rescheduleDraft, time })}
+                          startHour={8}
+                          endHour={21}
+                          minuteStep={5}
+                          format={timeFormat}
+                          ariaLabel="New appointment time"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
                         <Input
                           type="date"
                           value={rescheduleDraft.date}
                           onChange={(e) => setRescheduleDraft({ ...rescheduleDraft, date: e.target.value })}
-                          className="tabular-nums"
-                        />
-                        <Input
-                          type="time"
-                          step={300}
-                          value={rescheduleDraft.time}
-                          onChange={(e) => setRescheduleDraft({ ...rescheduleDraft, time: e.target.value })}
-                          className="tabular-nums"
+                          className="mt-1.5 h-10 tabular-nums"
                         />
                       </div>
                       <div className="mt-2 flex items-center justify-end gap-2">
