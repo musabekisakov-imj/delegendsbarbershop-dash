@@ -81,6 +81,18 @@ This is the right setup for a demo, training, or a single receptionist on one de
 
 ---
 
+## Companion projects (server + customer site)
+
+This repo now hosts three deployable projects:
+
+| Folder | What | Stack | Port (dev) |
+|---|---|---|---|
+| `/` (this) | Staff dashboard | React + Vite | 5173 |
+| [`server/`](./server) | Backend API (auth, domain modules, public booking endpoints) | NestJS + Prisma + Postgres + Resend | 3001 |
+| [`customer-site/`](./customer-site) | Customer-facing booking website ("Atelier" design system, Lithuanian-first) | Next.js 14 + Tailwind + Framer Motion | 3000 |
+
+The dashboard reads/writes `src/app/lib/api.ts` against localStorage by default; setting `VITE_API_URL` flips it to talk to the NestJS server. The customer site always talks to `/public/*` endpoints (no auth) and renders SSR with revalidated catalog data.
+
 ## Backend (Phase 2 — in progress)
 
 A NestJS + Prisma + PostgreSQL backend lives in [`server/`](./server). Status: **Phase 0 scaffold** — schema, auth, email, and the appointments module are in place. The frontend still reads/writes `src/app/lib/api.ts` against localStorage; the swap to real REST is Phase 1.

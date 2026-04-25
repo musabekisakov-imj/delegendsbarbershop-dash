@@ -14,6 +14,7 @@ import { ClientsModule } from './clients/clients.module';
 import { StaffModule } from './staff/staff.module';
 import { SchedulesModule } from './schedules/schedules.module';
 import { AccountsModule } from './accounts/accounts.module';
+import { PublicModule } from './public/public.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { AccountsModule } from './accounts/accounts.module';
     StaffModule,
     SchedulesModule,
     AccountsModule,
+    PublicModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

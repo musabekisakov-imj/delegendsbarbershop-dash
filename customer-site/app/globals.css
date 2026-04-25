@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Atelier — base layer ──────────────────────────────────────── */
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    font-feature-settings: 'ss01', 'ss02', 'cv11';
+  }
+
+  body {
+    @apply bg-bg text-ink antialiased;
+    font-family: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: 'ss01', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    @apply bg-accent text-bg;
+  }
+
+  /* Tabular nums for prices, durations, times */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Display headlines use Fraunces with an editorial optical size + soft axis */
+  .display {
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-optical-sizing: auto;
+    font-variation-settings: 'opsz' 144, 'SOFT' 50;
+    letter-spacing: -0.02em;
+    line-height: 0.95;
+  }
+
+  /* Eyebrow — uppercase tracking label, always above a section title */
+  .eyebrow {
+    @apply text-xs uppercase tracking-eyebrow text-ink-muted font-medium;
+  }
+}
+
+@layer components {
+  /* Hairline divider — the single line that separates editorial sections */
+  .hairline {
+    @apply border-t border-hairline;
+  }
+
+  /* Editorial container — fixed max width with breathing margins */
+  .editorial {
+    @apply mx-auto w-full max-w-editorial px-6 sm:px-10;
+  }
+
+  /* Primary CTA — terracotta, the only filled button on the marketing site */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-[3px]
+           bg-ink text-bg-surface px-6 py-3 text-sm font-medium tracking-wide
+           transition-all duration-200 ease-out
+           hover:bg-accent hover:-translate-y-px
+           active:scale-[0.98] active:translate-y-0
+           disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  /* Secondary CTA — ghost with a hairline border */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-[3px]
+           bg-transparent text-ink border border-ink/15 px-6 py-3 text-sm font-medium tracking-wide
+           transition-all duration-200 ease-out
+           hover:border-ink hover:bg-ink/[0.03]
+           active:scale-[0.98]
+           disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  /* Tile button — used for slot picking, service cards, etc. */
+  .tile {
+    @apply rounded-[3px] border border-hairline bg-bg-surface
+           transition-all duration-200 ease-out cursor-pointer
+           hover:border-ink/30
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg;
+  }
+  .tile-selected {
+    @apply border-ink bg-ink text-bg;
+  }
+}
