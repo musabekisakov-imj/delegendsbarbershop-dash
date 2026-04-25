@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popove
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { Avatar, AvatarImage, AvatarFallback } from '../components/ui/avatar';
+import { TimeWheelPicker } from '../components/ui/time-wheel-picker';
 import {
   format, parseISO, setHours, setMinutes, startOfDay,
   isToday, isBefore, differenceInMinutes, addDays, subDays,
@@ -199,24 +200,26 @@ function AppointmentDetailModal({
           <div className="border-t border-border px-6 py-5 space-y-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Edit</p>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
-                <Input
-                  type="date"
-                  value={editForm.date}
-                  onChange={(e) => setEditForm(f => ({ ...f, date: e.target.value }))}
-                  className="mt-1.5 h-9 tabular-nums"
-                />
-              </div>
-              <div>
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Start</Label>
-                <Input
-                  type="time"
-                  step={300}
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
+              <Input
+                type="date"
+                value={editForm.date}
+                onChange={(e) => setEditForm(f => ({ ...f, date: e.target.value }))}
+                className="mt-1.5 h-9 tabular-nums"
+              />
+            </div>
+
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Start time</Label>
+              <div className="mt-1.5">
+                <TimeWheelPicker
                   value={editForm.time}
-                  onChange={(e) => setEditForm(f => ({ ...f, time: e.target.value }))}
-                  className="mt-1.5 h-9 tabular-nums"
+                  onChange={(time) => setEditForm(f => ({ ...f, time }))}
+                  startHour={DAY_START_HOUR}
+                  endHour={DAY_END_HOUR}
+                  minuteStep={5}
+                  ariaLabel="Appointment start time"
                 />
               </div>
             </div>
@@ -1388,24 +1391,28 @@ export function CalendarPage() {
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* When — flat editorial pair, no tinted panel */}
+            {/* When — date input + alarm-style wheel picker for the time */}
             <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">When</Label>
-              <div className="mt-1.5 grid grid-cols-2 gap-2">
-                <Input
-                  type="date"
-                  value={createDate}
-                  onChange={(e) => setCreateDate(e.target.value)}
-                  className="h-9 tabular-nums"
-                  aria-label="Date"
-                />
-                <Input
-                  type="time"
-                  step={300}
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
+              <Input
+                type="date"
+                value={createDate}
+                onChange={(e) => setCreateDate(e.target.value)}
+                className="mt-1.5 h-9 tabular-nums"
+                aria-label="Date"
+              />
+            </div>
+
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Start time</Label>
+              <div className="mt-1.5">
+                <TimeWheelPicker
                   value={createTime}
-                  onChange={(e) => setCreateTime(e.target.value)}
-                  className="h-9 tabular-nums"
-                  aria-label="Start time"
+                  onChange={setCreateTime}
+                  startHour={DAY_START_HOUR}
+                  endHour={DAY_END_HOUR}
+                  minuteStep={5}
+                  ariaLabel="Appointment start time"
                 />
               </div>
               {selectedSlot?.staffId && (() => {
