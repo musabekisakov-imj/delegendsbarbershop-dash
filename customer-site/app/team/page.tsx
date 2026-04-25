@@ -24,19 +24,19 @@ export default async function TeamPage() {
         sub="Kiekvienas mūsų meistras dirba bent penkerius metus. Trumpas sąrašas, kruopščiai suformuotas. Pasirinkite tą, su kuriuo norite leisti keturiasdešimt penkias minutes."
       />
 
-      <section className="editorial pb-32">
+      <section className="page pb-32">
         <TeamGrid staff={staff} />
 
-        <div className="mt-24 pt-12 border-t border-hairline grid lg:grid-cols-12 gap-10">
+        <div className="mt-24 pt-12 border-t border-border grid lg:grid-cols-12 gap-10">
           <div className="lg:col-span-6">
             <div className="eyebrow mb-4">Pasirinkite vienąi</div>
-            <h2 className="display text-3xl sm:text-4xl tracking-snug">
+            <h2 className="font-bold tracking-tight text-3xl sm:text-4xl tracking-tight">
               Užsisakykite vizitą pas{' '}
-              <span className="text-oxblood">jums tinkamą meistrą.</span>
+              <span className="text-primary">jums tinkamą meistrą.</span>
             </h2>
           </div>
           <div className="lg:col-span-5 lg:col-start-8 self-end">
-            <Link href="/book" className="btn-mark-lg">
+            <Link href="/book" className="btn-primary-lg">
               Pradėti rezervaciją
               <ArrowUpRightIcon className="h-4 w-4" />
             </Link>

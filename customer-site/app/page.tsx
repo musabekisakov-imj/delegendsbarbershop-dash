@@ -1,10 +1,17 @@
 import Link from 'next/link';
-import { ArrowUpRightIcon, MapPinIcon } from '@heroicons/react/24/outline';
-import { Photo } from '@/components/shared/photo';
-import { HeroPhoto, RevealOnScroll } from '@/components/home/home-anim';
+import {
+  ArrowRightIcon,
+  ScissorsIcon,
+  ClockIcon,
+  MapPinIcon,
+  CheckCircleIcon,
+  CalendarIcon,
+  UsersIcon,
+} from '@heroicons/react/24/outline';
 import { publicApi } from '@/lib/api';
-import { PHOTOS, GRADIENTS } from '@/lib/photos';
+import { gradientFor, serviceGradientFor } from '@/lib/tokens';
 import type { Service, Office, PublicStaff } from '@/lib/types';
+import { HeroIntro, RevealOnScroll, StaggerChildren, StaggerChild } from '@/components/home/home-anim';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,253 +31,347 @@ export default async function HomePage() {
         .catch(() => [] as string[])
     : [];
 
-  const featured = services.slice(0, 3);
-  const officeA = offices[0];
-  const officeB = offices[1];
+  const featured = (services.length ? services : FALLBACK_SERVICES).slice(0, 4);
+  const officeA = offices[0] ?? FALLBACK_OFFICES[0];
+  const officeB = offices[1] ?? FALLBACK_OFFICES[1];
 
   return (
     <>
-      <HeroPhoto />
-      <Manifesto />
-      <ServicesPreview services={featured.length ? featured : FALLBACK_SERVICES} />
-      <Atmosfera />
+      <Hero todaySlots={todaySlots} sampleStaff={sampleStaff} services={featured} />
+      <KpiBand staffCount={staff.length || 4} servicesCount={services.length || 5} />
+      <ServicesSection services={featured} />
+      <TeamPreview staff={staff.length ? staff : []} />
       <LocationsPreview officeA={officeA} officeB={officeB} />
-      <LiveBookingStrip slots={todaySlots} sampleStaff={sampleStaff} />
-      <ClosingCTA />
+      <BookCTA />
     </>
   );
 }
 
-// ─── Manifesto — narrative intro after the hero (Hawthorne pattern) ─
+// ─── Hero — split layout: intro left, live availability card right ─
 
-function Manifesto() {
+function Hero({
+  todaySlots,
+  sampleStaff,
+  services,
+}: {
+  todaySlots: string[];
+  sampleStaff?: PublicStaff;
+  services: Service[];
+}) {
   return (
-    <section className="border-t border-hairline">
-      <div className="editorial py-24 sm:py-32">
-        <RevealOnScroll>
-          <div className="grid lg:grid-cols-12 gap-10">
-            <div className="lg:col-span-6">
-              <div className="eyebrow-brass mb-4">Filosofija · Mūsų darbas</div>
-              <h2 className="display text-4xl sm:text-6xl tracking-snug">
-                Trumpas sąrašas.{' '}
-                <span className="display-italic text-oxblood">Ilga praktika.</span>
-              </h2>
-            </div>
-            <div className="lg:col-span-5 lg:col-start-8 self-end">
-              <p className="text-ink-muted text-lg leading-relaxed">
-                Mes nedirbame su devyniomis paslaugomis ir trimis franšizėmis.
-                Du salonai, keturi meistrai, vienas standartas — kruopštumas.
+    <section className="border-b border-border">
+      <div className="page py-12 sm:py-20">
+        <HeroIntro>
+          <div className="grid gap-12 lg:grid-cols-12 items-end">
+            {/* Left — copy */}
+            <div className="lg:col-span-7">
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 text-[11px] font-medium mb-6">
+                <span className="live-dot" />
+                Atviri dabar · Užsisakymas online
+              </div>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
+                Vyriški kirpimai{' '}
+                <span className="text-primary">be skubėjimo.</span>
+              </h1>
+              <p className="mt-5 text-base sm:text-lg text-muted-foreground max-w-xl leading-relaxed">
+                Du salonai Vilniuje, keturi patyrę meistrai. Užsisakykite vizitą
+                online — patvirtinimo el. laišką gausite per minutę.
               </p>
-              <p className="mt-4 text-ink-muted text-lg leading-relaxed">
-                Vidutinis vizitas — keturiasdešimt penkios minutės. Per tą laiką
-                nesusiformuoja vaikiškas šokių pamokos ritmas — tik kirpimas,
-                pokalbis ir, jei reikia, tylos minutė.
-              </p>
-              <Link
-                href="/story"
-                className="mt-8 inline-flex items-center gap-2 text-sm tracking-wide text-ink hover:text-oxblood transition-colors"
-              >
-                Skaityti istoriją
-                <ArrowUpRightIcon className="h-3.5 w-3.5 transition-transform group-hover:rotate-45" />
-              </Link>
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Link href="/book" className="btn-primary-lg">
+                  Susitarti laiką
+                  <ArrowRightIcon className="h-4 w-4" />
+                </Link>
+                <Link href="/services" className="btn-ghost px-6 py-3">
+                  Žiūrėti paslaugas
+                </Link>
+              </div>
+
+              {/* Inline trust indicators */}
+              <div className="mt-10 flex flex-wrap items-center gap-6 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-600" />
+                  Be išankstinio mokėjimo
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-600" />
+                  Atšaukti galima paskambinus
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-600" />
+                  Patvirtinimas per minutę
+                </span>
+              </div>
             </div>
-          </div>
-        </RevealOnScroll>
-      </div>
-    </section>
-  );
-}
 
-// ─── Services preview — 3 featured services as photo cards ────────
-
-function ServicesPreview({ services }: { services: Service[] }) {
-  return (
-    <section className="border-t border-hairline">
-      <div className="editorial py-24 sm:py-32">
-        <RevealOnScroll>
-          <div className="flex items-end justify-between gap-8 mb-16 flex-wrap">
-            <div>
-              <div className="eyebrow-brass mb-4">Paslaugos · Trys populiariausios</div>
-              <h2 className="display text-4xl sm:text-5xl tracking-snug">
-                Tai, ką darome geriausiai.
-              </h2>
-            </div>
-            <Link
-              href="/services"
-              className="text-sm tracking-wide text-ink hover:text-oxblood transition-colors inline-flex items-center gap-2 group"
-            >
-              Visas kainoraštis
-              <ArrowUpRightIcon className="h-4 w-4 transition-transform group-hover:rotate-45 duration-300" />
-            </Link>
-          </div>
-        </RevealOnScroll>
-
-        <div className="grid gap-6 md:grid-cols-3">
-          {services.slice(0, 3).map((s, i) => (
-            <RevealOnScroll key={s.id} delay={i * 0.1}>
-              <Link href="/book" className="group block">
-                <Photo
-                  src={PHOTOS.atmosfera[i % PHOTOS.atmosfera.length].url}
-                  fallback={[GRADIENTS.warm, GRADIENTS.amber, GRADIENTS.earth][i % 3]}
-                  alt={s.name}
-                  className="aspect-[4/5] overflow-hidden rounded-card mb-5 transition-transform duration-700 group-hover:scale-[1.02]"
-                />
-                <div className="flex items-baseline justify-between gap-4">
-                  <h3 className="display text-2xl sm:text-3xl tracking-tight group-hover:text-oxblood transition-colors">
-                    {s.name}
-                  </h3>
-                  <span className="display text-2xl tabular text-oxblood">€{s.price}</span>
-                </div>
-                <div className="mt-1.5 text-xs uppercase tracking-eyebrow text-ink-muted tabular">
-                  {s.duration} min
-                </div>
-                {s.description && (
-                  <p className="mt-3 text-sm text-ink-muted leading-relaxed">{s.description}</p>
-                )}
-              </Link>
-            </RevealOnScroll>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─── Atmosfera — magazine spread (Hawthorne / Pankhurst pattern) ──
-
-function Atmosfera() {
-  const [a, b, c, d] = PHOTOS.atmosfera;
-  return (
-    <section className="border-t border-hairline">
-      <div className="editorial py-24 sm:py-32">
-        <RevealOnScroll>
-          <div className="grid lg:grid-cols-12 gap-10 mb-16">
+            {/* Right — live availability card */}
             <div className="lg:col-span-5">
-              <div className="eyebrow-brass mb-4">Atmosfera · Mūsų pasaulis</div>
-              <h2 className="display text-4xl sm:text-5xl tracking-snug">
-                Vieta,{' '}
-                <span className="display-italic text-oxblood">kurioje neskubama.</span>
-              </h2>
-            </div>
-            <div className="lg:col-span-5 lg:col-start-8 self-end">
-              <p className="text-ink-muted text-lg leading-relaxed">
-                Vienas šviesos židinys, sena oda, šukos, gerai galąsti įrankiai.
-                Tikras barbershop&apos;as Vilniaus centre — toks, koks turi būti.
-              </p>
+              <div className="card p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <div className="eyebrow">Šiandien laisva</div>
+                    <div className="mt-1.5 text-base font-semibold">
+                      Su {sampleStaff?.firstName ?? 'meistru'}
+                    </div>
+                  </div>
+                  <span className="pill-emerald">
+                    <span className="live-dot" />
+                    Live
+                  </span>
+                </div>
+
+                {todaySlots.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      {todaySlots.slice(0, 6).map((t) => (
+                        <Link
+                          key={t}
+                          href="/book"
+                          className="slot text-center"
+                        >
+                          {t}
+                        </Link>
+                      ))}
+                    </div>
+                    <Link
+                      href="/book"
+                      className="flex items-center justify-between text-sm font-medium text-primary hover:underline group"
+                    >
+                      Visi laisvi laikai ({todaySlots.length})
+                      <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                    </Link>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Šiandien viskas užsakyta. Susitarkime kitai dienai.
+                  </p>
+                )}
+
+                <div className="mt-5 pt-5 border-t border-border grid grid-cols-2 gap-3 text-xs">
+                  <Detail icon={<ScissorsIcon className="h-3.5 w-3.5" />} label="Paslauga" value={services[0]?.name ?? 'Vyriškas kirpimas'} />
+                  <Detail icon={<ClockIcon className="h-3.5 w-3.5" />} label="Trukmė" value={`${services[0]?.duration ?? 45} min`} />
+                </div>
+              </div>
             </div>
           </div>
-        </RevealOnScroll>
-
-        <div className="grid grid-cols-12 gap-3 sm:gap-4">
-          <RevealOnScroll>
-            <div className="col-span-12 lg:col-span-7">
-              <Photo
-                src={a.url}
-                fallback={GRADIENTS.warm}
-                alt={a.alt}
-                className="aspect-[4/5] lg:aspect-[5/7] rounded-card overflow-hidden"
-              />
-              <Caption text={a.caption} />
-            </div>
-          </RevealOnScroll>
-
-          <div className="col-span-12 lg:col-span-5 grid grid-cols-1 gap-3 sm:gap-4">
-            <RevealOnScroll delay={0.1}>
-              <Photo
-                src={b.url}
-                fallback={GRADIENTS.amber}
-                alt={b.alt}
-                className="aspect-[4/3] rounded-card overflow-hidden"
-              />
-              <Caption text={b.caption} />
-            </RevealOnScroll>
-            <RevealOnScroll delay={0.2}>
-              <Photo
-                src={c.url}
-                fallback={GRADIENTS.earth}
-                alt={c.alt}
-                className="aspect-[4/3] rounded-card overflow-hidden"
-              />
-              <Caption text={c.caption} />
-            </RevealOnScroll>
-          </div>
-
-          <RevealOnScroll delay={0.3}>
-            <div className="col-span-12 mt-1 sm:mt-2">
-              <Photo
-                src={d.url}
-                fallback={GRADIENTS.cool}
-                alt={d.alt}
-                className="aspect-[16/7] rounded-card overflow-hidden"
-              />
-              <Caption text={d.caption} />
-            </div>
-          </RevealOnScroll>
-        </div>
+        </HeroIntro>
       </div>
     </section>
   );
 }
 
-function Caption({ text }: { text: string }) {
+function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="mt-3 flex items-center justify-between">
-      <span className="eyebrow">{text}</span>
-      <span className="text-[10px] uppercase tracking-eyebrow text-ink-subtle tabular">35mm · Vilnius</span>
+    <div>
+      <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+        {icon}
+        <span className="font-medium">{label}</span>
+      </div>
+      <div className="text-foreground font-medium tabular truncate">{value}</div>
     </div>
   );
 }
 
-// ─── Locations preview — two photo cards ──────────────────────────
+// ─── KPI band — dashboard pattern ────────────────────────────────
 
-function LocationsPreview({ officeA, officeB }: { officeA?: Office; officeB?: Office }) {
-  const items = [
-    { office: officeA ?? FALLBACK_OFFICES[0], idx: 0 },
-    { office: officeB ?? FALLBACK_OFFICES[1], idx: 1 },
+function KpiBand({ staffCount, servicesCount }: { staffCount: number; servicesCount: number }) {
+  const kpis = [
+    { icon: <MapPinIcon className="h-4 w-4" />, label: 'Salonai', value: '02', sub: 'Senamiestis · Naujamiestis' },
+    { icon: <UsersIcon className="h-4 w-4" />, label: 'Meistrai', value: String(staffCount).padStart(2, '0'), sub: '5+ metų patirties' },
+    { icon: <ScissorsIcon className="h-4 w-4" />, label: 'Paslaugos', value: String(servicesCount).padStart(2, '0'), sub: 'Kirpimai · Barzdos' },
+    { icon: <CalendarIcon className="h-4 w-4" />, label: 'Atviri', value: '6/7', sub: 'Pirm — Šešt' },
   ];
+
   return (
-    <section className="border-t border-hairline">
-      <div className="editorial py-24 sm:py-32">
+    <section className="border-b border-border bg-muted/30">
+      <div className="page py-8">
+        <StaggerChildren>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {kpis.map((k) => (
+              <StaggerChild key={k.label}>
+                <div className="card p-5">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-3">
+                    {k.icon}
+                    <span className="text-xs font-medium uppercase tracking-wider">{k.label}</span>
+                  </div>
+                  <div className="text-2xl font-bold tabular tracking-tight">{k.value}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{k.sub}</div>
+                </div>
+              </StaggerChild>
+            ))}
+          </div>
+        </StaggerChildren>
+      </div>
+    </section>
+  );
+}
+
+// ─── Services — gradient-hero cards (dashboard SERVICE_GRADIENTS pattern) ─
+
+function ServicesSection({ services }: { services: Service[] }) {
+  return (
+    <section className="border-b border-border">
+      <div className="page py-16 sm:py-20">
         <RevealOnScroll>
-          <div className="flex items-end justify-between gap-8 mb-16 flex-wrap">
+          <div className="flex items-end justify-between gap-4 mb-8">
             <div>
-              <div className="eyebrow-brass mb-4">Salonai · Du adresai</div>
-              <h2 className="display text-4xl sm:text-5xl tracking-snug">
-                Pasirinkite{' '}
-                <span className="display-italic">tą, kuris arčiau.</span>
+              <div className="eyebrow mb-2">Paslaugos · Populiariausios</div>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+                Trumpas sąrašas, ilga praktika.
               </h2>
             </div>
-            <Link
-              href="/locations"
-              className="text-sm tracking-wide text-ink hover:text-oxblood transition-colors inline-flex items-center gap-2 group"
-            >
-              Visos salonų detalės
-              <ArrowUpRightIcon className="h-4 w-4 transition-transform group-hover:rotate-45 duration-300" />
+            <Link href="/services" className="btn-link">
+              Visas kainoraštis
+              <ArrowRightIcon className="h-4 w-4" />
             </Link>
           </div>
         </RevealOnScroll>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          {items.map(({ office, idx }) => (
-            <RevealOnScroll key={office.id} delay={idx * 0.1}>
-              <Link href="/locations" className="group block">
-                <Photo
-                  src={PHOTOS.locationByIndex[idx]}
-                  fallback={idx === 0 ? GRADIENTS.warm : GRADIENTS.amber}
-                  alt={office.name}
-                  className="aspect-[16/10] rounded-card overflow-hidden mb-6 transition-transform duration-700 group-hover:scale-[1.01]"
-                />
-                <div className="flex items-baseline justify-between gap-4">
-                  <h3 className="display text-3xl sm:text-4xl tracking-tight group-hover:text-oxblood transition-colors">
-                    {office.name}
-                  </h3>
-                  <span className="text-[10px] uppercase tracking-eyebrow text-brass tabular">
-                    № {String(idx + 1).padStart(2, '0')}
+        <StaggerChildren>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {services.map((s) => (
+              <StaggerChild key={s.id}>
+                <ServiceCard service={s} />
+              </StaggerChild>
+            ))}
+          </div>
+        </StaggerChildren>
+      </div>
+    </section>
+  );
+}
+
+function ServiceCard({ service }: { service: Service }) {
+  return (
+    <Link href="/book" className="card card-hover overflow-hidden flex flex-col group">
+      {/* Gradient hero — matches dashboard service tiles */}
+      <div className={`aspect-[4/3] bg-gradient-to-br ${serviceGradientFor(service.id)} relative`}>
+        <div className="absolute top-3 left-3 inline-flex items-center px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-white text-[10px] font-medium">
+          {service.duration} min
+        </div>
+        <div className="absolute bottom-3 right-3 text-white text-2xl font-bold tabular drop-shadow">
+          €{service.price}
+        </div>
+      </div>
+      <div className="p-4 flex-1 flex flex-col">
+        <h3 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors">
+          {service.name}
+        </h3>
+        {service.description && (
+          <p className="mt-1 text-xs text-muted-foreground leading-relaxed line-clamp-2">
+            {service.description}
+          </p>
+        )}
+      </div>
+    </Link>
+  );
+}
+
+// ─── Team preview — gradient avatar cards (dashboard pattern) ──
+
+function TeamPreview({ staff }: { staff: PublicStaff[] }) {
+  if (staff.length === 0) return null;
+
+  return (
+    <section className="border-b border-border bg-muted/30">
+      <div className="page py-16 sm:py-20">
+        <RevealOnScroll>
+          <div className="flex items-end justify-between gap-4 mb-8">
+            <div>
+              <div className="eyebrow mb-2">Meistrai · Mūsų komanda</div>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+                Pasirinkite tą, su kuriuo jaučiatės gerai.
+              </h2>
+            </div>
+            <Link href="/team" className="btn-link">
+              Visi meistrai
+              <ArrowRightIcon className="h-4 w-4" />
+            </Link>
+          </div>
+        </RevealOnScroll>
+
+        <StaggerChildren>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {staff.slice(0, 4).map((s) => (
+              <StaggerChild key={s.id}>
+                <Link href="/book" className="card card-hover p-5 flex items-center gap-4 group">
+                  <div
+                    className={`h-14 w-14 rounded-full bg-gradient-to-br ${gradientFor(s.id)} flex items-center justify-center text-white font-bold tabular shrink-0`}
+                    style={s.avatarUrl ? { background: `url(${s.avatarUrl}) center/cover` } : undefined}
+                  >
+                    {!s.avatarUrl && `${s.firstName[0]}${s.lastName[0]}`}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-base font-semibold group-hover:text-primary transition-colors">
+                      {s.firstName} {s.lastName}
+                    </div>
+                    <div className="text-xs text-muted-foreground">5+ metų patirties</div>
+                  </div>
+                </Link>
+              </StaggerChild>
+            ))}
+          </div>
+        </StaggerChildren>
+      </div>
+    </section>
+  );
+}
+
+// ─── Locations preview — two card spread ─────────────────────────
+
+function LocationsPreview({ officeA, officeB }: { officeA: Office; officeB: Office }) {
+  return (
+    <section className="border-b border-border">
+      <div className="page py-16 sm:py-20">
+        <RevealOnScroll>
+          <div className="flex items-end justify-between gap-4 mb-8">
+            <div>
+              <div className="eyebrow mb-2">Salonai · Du adresai</div>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+                Pasirinkite tą, kuris arčiau.
+              </h2>
+            </div>
+            <Link href="/locations" className="btn-link">
+              Salonų detalės
+              <ArrowRightIcon className="h-4 w-4" />
+            </Link>
+          </div>
+        </RevealOnScroll>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {[officeA, officeB].map((o, i) => (
+            <RevealOnScroll key={o.id} delay={i * 0.05}>
+              <Link
+                href={`/book?office=${o.id}`}
+                className="card card-hover p-6 flex flex-col group"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground tabular mb-2">
+                      № {String(i + 1).padStart(2, '0')}
+                    </div>
+                    <h3 className="text-2xl font-bold tracking-tight group-hover:text-primary transition-colors">
+                      {o.name}
+                    </h3>
+                  </div>
+                  <span className="pill-blue">
+                    <MapPinIcon className="h-3 w-3" />
+                    {String(i + 1)} aukštas
                   </span>
                 </div>
-                <div className="mt-2 inline-flex items-center gap-1.5 text-sm text-ink-muted">
-                  <MapPinIcon className="h-3.5 w-3.5" />
-                  {office.address}
+                <div className="flex items-start gap-2 text-sm text-muted-foreground mb-3">
+                  <MapPinIcon className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{o.address}</span>
+                </div>
+                {o.phone && (
+                  <div className="flex items-center gap-2 text-sm text-foreground tabular mb-4">
+                    <span>{o.phone}</span>
+                  </div>
+                )}
+                <div className="mt-auto pt-4 border-t border-border grid grid-cols-3 gap-3 text-xs">
+                  <Hours day="P—K" hours="09—20" />
+                  <Hours day="Pen" hours="09—21" />
+                  <Hours day="Šeš" hours="10—18" />
                 </div>
               </Link>
             </RevealOnScroll>
@@ -281,82 +382,38 @@ function LocationsPreview({ officeA, officeB }: { officeA?: Office; officeB?: Of
   );
 }
 
-// ─── Live booking strip — keeps the "real availability" insight ──
-
-function LiveBookingStrip({ slots, sampleStaff }: { slots: string[]; sampleStaff?: PublicStaff }) {
+function Hours({ day, hours }: { day: string; hours: string }) {
   return (
-    <section className="border-t border-hairline inverse">
-      <div className="editorial py-20 sm:py-24">
-        <RevealOnScroll>
-          <div className="grid lg:grid-cols-12 gap-10 items-center">
-            <div className="lg:col-span-6">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="live-dot" />
-                <span className="text-[10px] uppercase tracking-eyebrow text-bg/60">
-                  Šiandien laisva · Su {sampleStaff?.firstName ?? 'meistru'}
-                </span>
-              </div>
-              <h3 className="display text-3xl sm:text-5xl text-bg tracking-snug">
-                {slots.length > 0
-                  ? `${slots.length} laisvi laikai`
-                  : 'Visi laikai užimti'}
-              </h3>
-            </div>
-
-            <div className="lg:col-span-6 lg:col-start-7">
-              {slots.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {slots.slice(0, 8).map((t) => (
-                    <Link
-                      key={t}
-                      href="/book"
-                      className="px-4 py-2 rounded-DEFAULT border border-hairline-inverse-strong tabular text-sm text-bg hover:bg-bg hover:text-ink transition-all"
-                    >
-                      {t}
-                    </Link>
-                  ))}
-                  <Link
-                    href="/book"
-                    className="px-4 py-2 rounded-DEFAULT bg-bg text-ink text-sm font-medium hover:bg-oxblood hover:text-bg transition-all inline-flex items-center gap-2"
-                  >
-                    Visi
-                    <ArrowUpRightIcon className="h-3.5 w-3.5" />
-                  </Link>
-                </div>
-              ) : (
-                <p className="text-bg/70 text-base">
-                  Susitarkime kitai dienai — pasirinkimas dar platus.
-                </p>
-              )}
-            </div>
-          </div>
-        </RevealOnScroll>
-      </div>
-    </section>
+    <div>
+      <div className="text-muted-foreground font-medium uppercase tracking-wider mb-1 text-[10px]">{day}</div>
+      <div className="text-foreground tabular">{hours}</div>
+    </div>
   );
 }
 
-// ─── Closing CTA ────────────────────────────────────────────────
+// ─── Booking CTA ────────────────────────────────────────────────
 
-function ClosingCTA() {
+function BookCTA() {
   return (
-    <section className="border-t border-hairline">
-      <div className="editorial py-32 sm:py-40 text-center">
+    <section className="border-b border-border">
+      <div className="page py-20 sm:py-28">
         <RevealOnScroll>
-          <div className="eyebrow-brass mb-6">Užsisakykite šiandien</div>
-          <h2 className="display text-5xl sm:text-7xl lg:text-8xl tracking-snug max-w-4xl mx-auto leading-[0.92]">
-            Devyniasdešimt sekundžių,{' '}
-            <span className="display-italic text-oxblood">ir laikas — jūsų.</span>
-          </h2>
-          <p className="mt-10 text-ink-muted max-w-xl mx-auto text-lg leading-relaxed">
-            Pasirinkite paslaugą, meistrą ir laiką. Patvirtinimo el. laišką
-            gausite per minutę.
-          </p>
-          <div className="mt-12">
-            <Link href="/book" className="btn-mark-lg">
-              Pradėti rezervaciją
-              <ArrowUpRightIcon className="h-4 w-4" />
-            </Link>
+          <div className="card p-10 sm:p-14 text-center bg-gradient-to-br from-primary/5 via-transparent to-violet-500/5">
+            <div className="eyebrow mb-3">Užsisakykite šiandien</div>
+            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight max-w-3xl mx-auto leading-[1.05]">
+              Devyniasdešimt sekundžių,{' '}
+              <span className="text-primary">ir laikas — jūsų.</span>
+            </h2>
+            <p className="mt-5 text-muted-foreground max-w-xl mx-auto">
+              Pasirinkite paslaugą, meistrą ir laiką. Patvirtinimo el. laišką
+              gausite per minutę.
+            </p>
+            <div className="mt-8">
+              <Link href="/book" className="btn-primary-lg">
+                Pradėti rezervaciją
+                <ArrowRightIcon className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         </RevealOnScroll>
       </div>
@@ -370,6 +427,7 @@ const FALLBACK_SERVICES: Service[] = [
   { id: '1', name: 'Vyriškas kirpimas', description: 'Klasikinis arba modernus', price: 25, duration: 45, officeId: '', categoryId: '' },
   { id: '2', name: 'Barzdos formavimas', description: 'Su karštu rankšluosčiu', price: 18, duration: 30, officeId: '', categoryId: '' },
   { id: '3', name: 'Kirpimas + barzda', description: 'Kombinuota paslauga', price: 38, duration: 70, officeId: '', categoryId: '' },
+  { id: '4', name: 'Skutimas peiliu', description: 'Tradicinis skutimas', price: 22, duration: 35, officeId: '', categoryId: '' },
 ];
 
 const FALLBACK_OFFICES: Office[] = [

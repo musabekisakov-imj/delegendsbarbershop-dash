@@ -15,7 +15,7 @@ export function TeamGrid({ staff }: { staff: PublicStaff[] }) {
   if (staff.length === 0) {
     return (
       <div className="py-24 text-center">
-        <p className="text-ink-muted text-sm">Komandos sąrašas šiuo metu nepasiekiamas.</p>
+        <p className="text-muted-foreground text-sm">Komandos sąrašas šiuo metu nepasiekiamas.</p>
       </div>
     );
   }
@@ -61,22 +61,22 @@ function StaffCard({
           }}
         >
           {!staff.avatarUrl && (
-            <span className="display text-7xl text-ink-inverse/40 tabular">{initials}</span>
+            <span className="font-bold tracking-tight text-7xl text-background/40 tabular">{initials}</span>
           )}
-          <div className="absolute top-4 left-4 text-[10px] uppercase tracking-eyebrow text-ink-inverse/60 tabular">
+          <div className="absolute top-4 left-4 text-[10px] uppercase tracking-eyebrow text-background/60 tabular">
             № {String(index + 1).padStart(2, '0')}
           </div>
         </div>
 
         <div className="p-6 flex flex-col flex-1">
-          <div className="display text-2xl tracking-tight group-hover:text-oxblood transition-colors">
+          <div className="font-bold tracking-tight text-2xl tracking-tight group-hover:text-primary transition-colors">
             {staff.firstName}
           </div>
           <div className="eyebrow mt-1 mb-auto">{staff.lastName}</div>
 
-          <div className="mt-6 pt-4 border-t border-hairline flex items-center justify-between text-xs text-ink-muted">
+          <div className="mt-6 pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
             <span className="tabular">5+ metų patirtis</span>
-            <ArrowUpRightIcon className="h-3.5 w-3.5 group-hover:rotate-45 group-hover:text-ink transition-all duration-300" />
+            <ArrowUpRightIcon className="h-3.5 w-3.5 group-hover:rotate-45 group-hover:text-foreground transition-all duration-300" />
           </div>
         </div>
       </Link>

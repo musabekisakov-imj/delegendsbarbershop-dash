@@ -24,11 +24,11 @@ export default function ConfirmationPage() {
 
   if (!booking) {
     return (
-      <main className="min-h-screen flex items-center justify-center px-6 bg-bg">
+      <main className="min-h-screen flex items-center justify-center px-6 bg-background">
         <div className="text-center">
           <div className="eyebrow mb-5">Nieko nerasta</div>
-          <h1 className="display text-4xl mb-8">Vizitas neaptiktas.</h1>
-          <Link href="/book" className="btn-mark">Užsisakyti naują</Link>
+          <h1 className="font-bold tracking-tight text-4xl mb-8">Vizitas neaptiktas.</h1>
+          <Link href="/book" className="btn-primary">Užsisakyti naują</Link>
         </div>
       </main>
     );
@@ -37,7 +37,7 @@ export default function ConfirmationPage() {
   const start = new Date(booking.startTime);
 
   return (
-    <main className="min-h-screen bg-bg relative overflow-hidden">
+    <main className="min-h-screen bg-background relative overflow-hidden">
       <div
         aria-hidden
         className="absolute inset-0 -z-10"
@@ -47,7 +47,7 @@ export default function ConfirmationPage() {
         }}
       />
 
-      <div className="editorial pt-20 sm:pt-28 pb-32">
+      <div className="page pt-20 sm:pt-28 pb-32">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -58,21 +58,21 @@ export default function ConfirmationPage() {
             initial={{ scale: 0.7, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.1, ease: EASE }}
-            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-oxblood text-ink-inverse mb-10"
+            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary text-background mb-10"
           >
             <CheckIcon className="h-7 w-7" />
           </motion.div>
 
           <div className="eyebrow mb-6">Patvirtinta · Iki greito</div>
 
-          <h1 className="display text-5xl sm:text-7xl lg:text-8xl tracking-snug mb-6 leading-[0.92]">
+          <h1 className="font-bold tracking-tight text-5xl sm:text-7xl lg:text-8xl tracking-tight mb-6 leading-[0.92]">
             Lauksime jūsų{' '}
-            <span className="text-oxblood">
+            <span className="text-primary">
               {formatDateLT(start)} {formatTime(start)}.
             </span>
           </h1>
 
-          <p className="mt-8 text-ink-muted text-lg max-w-xl leading-relaxed">
+          <p className="mt-8 text-muted-foreground text-lg max-w-xl leading-relaxed">
             Patvirtinimo el. laišką netrukus išsiuntėme. Jei reikia atšaukti
             ar perkelti vizitą — paskambinkite į saloną.
           </p>
@@ -88,9 +88,9 @@ export default function ConfirmationPage() {
             <Row label="Salonas" value={booking.officeName} />
             <Row label="Adresas" value={booking.officeAddress} />
             <Row label="Data" value={`${formatLongDateLT(start)} · ${formatTime(start)}`} mono />
-            <div className="hairline mt-6 pt-6 flex items-center justify-between">
+            <div className="border-t border-border mt-6 pt-6 flex items-center justify-between">
               <span className="eyebrow">Rezervacijos Nr.</span>
-              <span className="font-mono text-sm tabular text-ink">
+              <span className="font-mono text-sm tabular text-foreground">
                 #{booking.appointmentId.slice(-8).toUpperCase()}
               </span>
             </div>
@@ -105,7 +105,7 @@ export default function ConfirmationPage() {
             <a
               href={icsHref(booking)}
               download={`vizitas-${booking.appointmentId.slice(-6)}.ics`}
-              className="btn-mark"
+              className="btn-primary"
             >
               <ArrowDownTrayIcon className="h-4 w-4" />
               Įsidėti į kalendorių
@@ -123,9 +123,9 @@ export default function ConfirmationPage() {
 
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="grid grid-cols-[120px_1fr] gap-4 py-3 border-b border-hairline last:border-b-0">
+    <div className="grid grid-cols-[120px_1fr] gap-4 py-3 border-b border-border last:border-b-0">
       <div className="eyebrow !text-[9px] mt-1.5">{label}</div>
-      <div className={mono ? 'tabular text-base text-ink' : 'text-base text-ink'}>{value}</div>
+      <div className={mono ? 'tabular text-base text-foreground' : 'text-base text-foreground'}>{value}</div>
     </div>
   );
 }

@@ -1,95 +1,82 @@
 import type { Config } from 'tailwindcss';
 
-// "PARLOUR" — boutique heritage-modern.
-// Researched against Murdock London, Hawthorne NYC, Ruffians Edinburgh,
-// Pall Mall Barbers, Persons of Interest, Pankhurst London. Palette and
-// type pairing draws from leather-chair-and-mahogany barbershop tradition.
+// Customer site — matches the staff dashboard's design system.
+// Plus Jakarta Sans, blue primary accent, OKLCH-derived neutrals,
+// rounded-xl cards with shadow-sm. Status pills + gradient avatars.
+//
+// Colors are baked as oklch(...) literals with <alpha-value> placeholder
+// so Tailwind opacity modifiers (e.g. bg-primary/10) work correctly.
 
 const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // Surfaces — warm cream, slight peach undertone
-        bg: {
-          DEFAULT: '#F4EFE5',
-          raised: '#EAE3D4',
-          surface: '#FFFFFF',
+        background: '#ffffff',
+        foreground: 'oklch(0.145 0 0 / <alpha-value>)',
+        card: {
+          DEFAULT: '#ffffff',
+          foreground: 'oklch(0.145 0 0 / <alpha-value>)',
         },
-        ink: {
-          DEFAULT: '#1A1714',
-          soft: '#2A2522',
-          muted: '#5A5147',
-          subtle: '#8A8073',
-          inverse: '#F4EFE5',
+        popover: {
+          DEFAULT: '#ffffff',
+          foreground: 'oklch(0.145 0 0 / <alpha-value>)',
         },
-        hairline: {
-          DEFAULT: '#D7D0C3',
-          strong: '#B8B0A0',
-          inverse: 'rgba(244,239,229,0.10)',
-          'inverse-strong': 'rgba(244,239,229,0.20)',
+        primary: {
+          DEFAULT: 'oklch(0.58 0.22 260 / <alpha-value>)',
+          foreground: 'oklch(1 0 0 / <alpha-value>)',
         },
-        // Primary action — oxblood (leather chair / stained mahogany)
-        oxblood: {
-          DEFAULT: '#7C2630',
-          dim: '#5A1A22',
-          light: '#9C3340',
+        secondary: {
+          DEFAULT: 'oklch(0.95 0.0058 264.53 / <alpha-value>)',
+          foreground: 'oklch(0.145 0 0 / <alpha-value>)',
         },
-        // Secondary detail — brass (vintage hardware)
-        brass: {
-          DEFAULT: '#A87E3A',
-          dim: '#826230',
-          light: '#C39955',
+        muted: {
+          DEFAULT: '#ececf0',
+          foreground: '#717182',
         },
-        // Reserved for live/hot states
-        live: '#E8482D',
-        ok: '#4D7A50',
-        warn: '#C5752E',
+        accent: {
+          DEFAULT: '#e9ebef',
+          foreground: 'oklch(0.145 0 0 / <alpha-value>)',
+        },
+        destructive: {
+          DEFAULT: '#d4183d',
+          foreground: '#ffffff',
+        },
+        border: 'rgba(0, 0, 0, 0.1)',
+        input: 'transparent',
+        ring: 'oklch(0.58 0.22 260 / <alpha-value>)',
       },
       fontFamily: {
-        // Display = Fraunces serif (warmth, heritage)
-        // Body = Geist sans (modern, balanced)
-        display: ['var(--font-fraunces)', 'Tiempos', 'Georgia', 'serif'],
-        sans: ['var(--font-geist-sans)', 'ui-sans-serif', 'system-ui'],
+        sans: ['var(--font-jakarta)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['var(--font-geist-mono)', 'ui-monospace', 'monospace'],
       },
-      letterSpacing: {
-        eyebrow: '0.18em',
-        tight: '-0.015em',
-        tighter: '-0.025em',
-        snug: '-0.035em',
+      borderRadius: {
+        DEFAULT: '0.5rem',
+        sm: '0.25rem',
+        md: '0.375rem',
+        lg: '0.625rem',
+        xl: '0.75rem',
       },
       maxWidth: {
-        editorial: '1320px',
+        page: '1320px',
         narrow: '780px',
-        prose: '64ch',
-      },
-      borderRadius: {
-        DEFAULT: '4px',
-        card: '6px',
-        pill: '9999px',
       },
       transitionTimingFunction: {
-        out: 'cubic-bezier(0.16, 1, 0.3, 1)',
         snap: 'cubic-bezier(0.4, 0, 0.2, 1)',
+        spring: 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
       animation: {
-        marquee: 'marquee 50s linear infinite',
-        'pulse-slow': 'pulse-slow 2.4s ease-in-out infinite',
         'live-dot': 'live-dot 1.6s ease-in-out infinite',
+        'pulse-slow': 'pulse-slow 2.4s ease-in-out infinite',
       },
       keyframes: {
-        marquee: {
-          '0%': { transform: 'translateX(0%)' },
-          '100%': { transform: 'translateX(-50%)' },
+        'live-dot': {
+          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+          '50%': { opacity: '0.5', transform: 'scale(1.4)' },
         },
         'pulse-slow': {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.55' },
-        },
-        'live-dot': {
-          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
-          '50%': { opacity: '0.5', transform: 'scale(1.4)' },
         },
       },
     },

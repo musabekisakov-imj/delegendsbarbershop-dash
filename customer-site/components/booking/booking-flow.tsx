@@ -99,22 +99,22 @@ export function BookingFlow({ offices, services, staff }: Props) {
   }
 
   return (
-    <div className="bg-bg min-h-screen">
+    <div className="bg-background min-h-screen">
       {/* Booking-specific compact header (global nav is hidden on /book/*) */}
-      <header className="sticky top-0 z-40 border-b border-hairline bg-bg/85 backdrop-blur-md">
-        <div className="editorial flex h-16 items-center justify-between gap-6">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm text-ink-muted hover:text-ink transition-colors">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
+        <div className="page flex h-16 items-center justify-between gap-6">
+          <Link href="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeftIcon className="h-4 w-4" />
-            <span className="display text-[18px] tracking-snug text-ink">Kirpykla</span>
+            <span className="font-bold tracking-tight text-[18px] tracking-tight text-foreground">Kirpykla</span>
           </Link>
           <Progress state={state} />
-          <span className="hidden md:inline text-[10px] uppercase tracking-eyebrow text-ink-subtle tabular">
+          <span className="hidden md:inline text-[10px] uppercase tracking-eyebrow text-muted-foreground/70 tabular">
             Susitarimas · 4 žingsniai
           </span>
         </div>
       </header>
 
-      <main className="editorial pt-12 pb-32">
+      <main className="page pt-12 pb-32">
         {/* ── Step 1: Service ── */}
         <Section eyebrow="01 / 04" title="Pasirinkite paslaugą.">
           {offices.length > 1 && (
@@ -232,12 +232,12 @@ export function BookingFlow({ offices, services, staff }: Props) {
                   type="button"
                   disabled={!canSubmit || submitting}
                   onClick={handleSubmit}
-                  className="btn-mark-lg mt-6 w-full"
+                  className="btn-primary-lg mt-6 w-full"
                 >
                   {submitting ? 'Užsakoma…' : 'Patvirtinti vizitą'}
                   {!submitting && <ArrowUpRightIcon className="h-4 w-4" />}
                 </button>
-                <p className="mt-3 text-[10px] uppercase tracking-eyebrow text-ink-subtle text-center">
+                <p className="mt-3 text-[10px] uppercase tracking-eyebrow text-muted-foreground/70 text-center">
                   Be išankstinio mokėjimo · Atšaukti galima paskambinus
                 </p>
               </aside>
@@ -268,16 +268,16 @@ function Progress({ state }: { state: BookingState }) {
             className={cn(
               'flex h-5 w-5 items-center justify-center rounded-full border tabular text-[10px] transition-all duration-300',
               s.done
-                ? 'border-ink bg-ink text-ink-inverse'
-                : 'border-hairline-strong text-ink-subtle',
+                ? 'border-ink bg-ink text-background'
+                : 'border-border text-muted-foreground/70',
             )}
           >
             {s.done ? <CheckIcon className="h-3 w-3" /> : i + 1}
           </span>
-          <span className="hidden md:inline text-[10px] uppercase tracking-eyebrow text-ink-muted">
+          <span className="hidden md:inline text-[10px] uppercase tracking-eyebrow text-muted-foreground">
             {s.label}
           </span>
-          {i < steps.length - 1 && <span className="hidden md:inline text-ink-subtle/40 mx-1">—</span>}
+          {i < steps.length - 1 && <span className="hidden md:inline text-muted-foreground/70/40 mx-1">—</span>}
         </li>
       ))}
     </ol>
@@ -314,12 +314,12 @@ function Section({
       )}
     >
       <div className="eyebrow mb-4 tabular">{eyebrow}</div>
-      <h2 className="display text-4xl sm:text-6xl mb-12 tracking-snug">
+      <h2 className="font-bold tracking-tight text-4xl sm:text-6xl mb-12 tracking-tight">
         {title}{' '}
-        {accent && <span className="text-oxblood">{accent}</span>}
+        {accent && <span className="text-primary">{accent}</span>}
       </h2>
       {disabled ? (
-        <div className="text-sm uppercase tracking-eyebrow text-ink-subtle">{disabledLabel}</div>
+        <div className="text-sm uppercase tracking-eyebrow text-muted-foreground/70">{disabledLabel}</div>
       ) : (
         children
       )}
@@ -349,7 +349,7 @@ function ServiceCard({
         <span
           className={cn(
             'text-[10px] uppercase tracking-eyebrow',
-            selected ? 'text-ink-inverse/60' : 'text-ink-muted',
+            selected ? 'text-background/60' : 'text-muted-foreground',
           )}
         >
           {service.category?.name ?? 'Paslauga'}
@@ -357,7 +357,7 @@ function ServiceCard({
         <span
           className={cn(
             'tabular text-[10px] uppercase tracking-eyebrow',
-            selected ? 'text-ink-inverse/60' : 'text-ink-subtle',
+            selected ? 'text-background/60' : 'text-muted-foreground/70',
           )}
         >
           {service.duration} min
@@ -367,7 +367,7 @@ function ServiceCard({
       <h3
         className={cn(
           'display text-2xl sm:text-3xl tracking-tight mb-2',
-          selected ? 'text-ink-inverse' : 'text-ink',
+          selected ? 'text-background' : 'text-foreground',
         )}
       >
         {service.name}
@@ -376,7 +376,7 @@ function ServiceCard({
         <p
           className={cn(
             'text-sm mb-6 line-clamp-2',
-            selected ? 'text-ink-inverse/70' : 'text-ink-muted',
+            selected ? 'text-background/70' : 'text-muted-foreground',
           )}
         >
           {service.description}
@@ -385,13 +385,13 @@ function ServiceCard({
       <div
         className={cn(
           'mt-auto pt-4 border-t flex items-baseline justify-between',
-          selected ? 'border-ink-inverse/15' : 'border-hairline',
+          selected ? 'border-ink-inverse/15' : 'border-border',
         )}
       >
         <span
           className={cn(
             'display text-3xl tabular',
-            selected ? 'text-ink-inverse' : 'text-ink',
+            selected ? 'text-background' : 'text-foreground',
           )}
         >
           €{service.price}
@@ -399,7 +399,7 @@ function ServiceCard({
         <span
           className={cn(
             'flex h-6 w-6 items-center justify-center rounded-full border transition-all',
-            selected ? 'border-ink-inverse bg-ink-inverse text-ink' : 'border-hairline-strong',
+            selected ? 'border-ink-inverse bg-ink-inverse text-foreground' : 'border-border',
           )}
         >
           {selected && <CheckIcon className="h-3.5 w-3.5" />}
@@ -430,20 +430,20 @@ function StaffTile({
       <div
         className={cn(
           'h-14 w-14 rounded-full flex items-center justify-center display text-lg shrink-0',
-          selected ? 'bg-ink-inverse text-ink' : 'bg-bg-raised text-ink',
+          selected ? 'bg-ink-inverse text-foreground' : 'bg-muted text-foreground',
         )}
         style={staff.avatarUrl ? { background: `url(${staff.avatarUrl}) center/cover` } : undefined}
       >
         {!staff.avatarUrl && initials}
       </div>
       <div>
-        <div className={cn('display text-2xl', selected ? 'text-ink-inverse' : 'text-ink')}>
+        <div className={cn('display text-2xl', selected ? 'text-background' : 'text-foreground')}>
           {staff.firstName}
         </div>
         <div
           className={cn(
             'text-[10px] uppercase tracking-eyebrow mt-1',
-            selected ? 'text-ink-inverse/60' : 'text-ink-muted',
+            selected ? 'text-background/60' : 'text-muted-foreground',
           )}
         >
           {staff.lastName}
@@ -507,14 +507,14 @@ function SlotPicker({
                 onClick={() => onDate(d.iso)}
                 className={cn(
                   'shrink-0 w-16 sm:w-20 py-3 rounded-md border text-center transition-all duration-200',
-                  sel ? 'bg-ink text-ink-inverse border-ink' : 'border-hairline text-ink hover:border-ink/40',
+                  sel ? 'bg-ink text-background border-ink' : 'border-border text-foreground hover:border-ink/40',
                 )}
               >
-                <div className={cn('text-[9px] uppercase tracking-eyebrow', sel ? 'text-ink-inverse/60' : 'text-ink-subtle')}>
+                <div className={cn('text-[9px] uppercase tracking-eyebrow', sel ? 'text-background/60' : 'text-muted-foreground/70')}>
                   {d.dow}
                 </div>
-                <div className="display text-2xl tabular mt-0.5">{d.day}</div>
-                <div className={cn('text-[10px] mt-0.5', sel ? 'text-ink-inverse/60' : 'text-ink-subtle')}>
+                <div className="font-bold tracking-tight text-2xl tabular mt-0.5">{d.day}</div>
+                <div className={cn('text-[10px] mt-0.5', sel ? 'text-background/60' : 'text-muted-foreground/70')}>
                   {d.month}
                 </div>
               </button>
@@ -523,18 +523,18 @@ function SlotPicker({
         </div>
       </div>
 
-      <div className="hairline pt-8">
+      <div className="border-t border-border pt-8">
         <div className="eyebrow mb-5 tabular">Laisvi laikai · {duration} min vizitas</div>
 
         {loading && (
-          <div className="text-sm text-ink-muted flex items-center gap-3">
+          <div className="text-sm text-muted-foreground flex items-center gap-3">
             <span className="live-dot" />
             Tikrinama…
           </div>
         )}
         {error && <div className="text-sm text-live">{error}</div>}
         {!loading && slots && slots.length === 0 && (
-          <div className="text-sm text-ink-muted">
+          <div className="text-sm text-muted-foreground">
             Šią dieną pasirinktam meistrui laisvų laikų nėra. Pabandykite kitą dieną.
           </div>
         )}
@@ -640,10 +640,10 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         type={type}
         autoComplete={autoComplete}
-        className="w-full px-4 py-3.5 rounded-md border border-hairline-strong bg-bg-surface text-ink
-                   focus:border-ink focus:outline-none focus:ring-2 focus:ring-oxblood/30 transition-all text-base"
+        className="w-full px-4 py-3.5 rounded-md border border-border bg-card text-foreground
+                   focus:border-ink focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all text-base"
       />
-      {hint && <span className="text-[10px] uppercase tracking-eyebrow text-ink-subtle mt-2 block">{hint}</span>}
+      {hint && <span className="text-[10px] uppercase tracking-eyebrow text-muted-foreground/70 mt-2 block">{hint}</span>}
     </label>
   );
 }
@@ -675,7 +675,7 @@ function Summary({
       <Row label="Adresas" value={office?.address} />
       <Row label="Data" value={date ? formatDateLT(date) : undefined} />
       <Row label="Laikas" value={startTime && service ? `${startTime} · ${service.duration} min` : undefined} mono />
-      <div className="hairline mt-6 pt-6 flex items-baseline justify-between">
+      <div className="border-t border-border mt-6 pt-6 flex items-baseline justify-between">
         <span className="eyebrow">Kaina</span>
         <AnimatedPrice price={service?.price} />
       </div>
@@ -685,7 +685,7 @@ function Summary({
 
 function Row({ label, value, mono }: { label: string; value?: string; mono?: boolean }) {
   return (
-    <div className="grid grid-cols-[100px_1fr] gap-4 py-2.5 border-b border-hairline last:border-b-0">
+    <div className="grid grid-cols-[100px_1fr] gap-4 py-2.5 border-b border-border last:border-b-0">
       <div className="eyebrow !text-[9px] mt-1.5">{label}</div>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
@@ -694,7 +694,7 @@ function Row({ label, value, mono }: { label: string; value?: string; mono?: boo
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 4 }}
           transition={{ duration: 0.2 }}
-          className={cn('text-sm', mono && 'tabular', !value && 'text-ink-subtle')}
+          className={cn('text-sm', mono && 'tabular', !value && 'text-muted-foreground/70')}
         >
           {value ?? '—'}
         </motion.div>
@@ -712,7 +712,7 @@ function AnimatedPrice({ price }: { price?: number }) {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.95 }}
         transition={{ duration: 0.3, ease: EASE }}
-        className="display text-4xl tabular text-ink"
+        className="font-bold tracking-tight text-4xl tabular text-foreground"
       >
         {price !== undefined ? `€${price}` : '€—'}
       </motion.span>

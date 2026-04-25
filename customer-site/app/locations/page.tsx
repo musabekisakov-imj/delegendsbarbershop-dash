@@ -38,7 +38,7 @@ export default async function LocationsPage() {
         sub="Senamiestyje ir Naujamiestyje — pasirinkite tą, kuris arčiau jūsų pasivaikščiojimo maršruto. Abiem dirba ta pati komanda, ta pati kruopštumo kultūra."
       />
 
-      <section className="editorial pb-32">
+      <section className="page pb-32">
         <div className="grid gap-8 lg:gap-10">
           {items.slice(0, 2).map((o, i) => (
             <LocationBlock key={o.id} office={o} index={i} />
@@ -70,17 +70,17 @@ function LocationBlock({ office, index }: { office: Office; index: number }) {
         <div className={`lg:col-span-5 p-8 sm:p-10 lg:p-14 flex flex-col ${index % 2 !== 0 ? 'lg:order-1' : ''}`}>
           <div className="eyebrow mb-4 tabular">№ {String(index + 1).padStart(2, '0')} · Salonas</div>
 
-          <h2 className="display text-5xl sm:text-6xl tracking-snug mb-6">{office.name}</h2>
+          <h2 className="font-bold tracking-tight text-5xl sm:text-6xl tracking-tight mb-6">{office.name}</h2>
 
           <div className="space-y-3 mb-10">
-            <div className="flex items-start gap-3 text-ink">
-              <MapPinIcon className="h-4 w-4 mt-1 text-ink-subtle shrink-0" />
+            <div className="flex items-start gap-3 text-foreground">
+              <MapPinIcon className="h-4 w-4 mt-1 text-muted-foreground/70 shrink-0" />
               <span className="text-sm leading-relaxed">{office.address}</span>
             </div>
             {office.phone && (
               <div className="flex items-center gap-3">
-                <PhoneIcon className="h-4 w-4 text-ink-subtle shrink-0" />
-                <a href={`tel:${office.phone}`} className="text-sm tabular text-ink hover:text-oxblood transition-colors">
+                <PhoneIcon className="h-4 w-4 text-muted-foreground/70 shrink-0" />
+                <a href={`tel:${office.phone}`} className="text-sm tabular text-foreground hover:text-primary transition-colors">
                   {office.phone}
                 </a>
               </div>
@@ -88,20 +88,20 @@ function LocationBlock({ office, index }: { office: Office; index: number }) {
           </div>
 
           {/* Hours */}
-          <div className="hairline pt-6">
+          <div className="border-t border-border pt-6">
             <div className="eyebrow mb-4">Darbo laikas</div>
             <dl className="space-y-2.5">
               {HOURS_GRID.map((h) => (
                 <div key={h.day} className="flex items-baseline justify-between gap-4 py-1">
-                  <dt className={`text-xs ${h.muted ? 'text-ink-subtle' : 'text-ink-muted'}`}>{h.day}</dt>
-                  <dd className={`tabular text-sm ${h.muted ? 'text-ink-subtle' : 'text-ink'}`}>{h.hours}</dd>
+                  <dt className={`text-xs ${h.muted ? 'text-muted-foreground/70' : 'text-muted-foreground'}`}>{h.day}</dt>
+                  <dd className={`tabular text-sm ${h.muted ? 'text-muted-foreground/70' : 'text-foreground'}`}>{h.hours}</dd>
                 </div>
               ))}
             </dl>
           </div>
 
           <div className="mt-10">
-            <Link href={`/book?office=${office.id}`} className="btn-mark">
+            <Link href={`/book?office=${office.id}`} className="btn-primary">
               Susitarti šiame salone
               <ArrowUpRightIcon className="h-4 w-4" />
             </Link>

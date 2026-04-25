@@ -26,7 +26,7 @@ export default async function BookPage() {
         <div className="text-center max-w-md">
           <div className="eyebrow mb-4">Sistemos pranešimas</div>
           <h1 className="display text-3xl mb-4">Užsakymai laikinai nepasiekiami.</h1>
-          <p className="text-sm text-ink-muted">
+          <p className="text-sm text-muted-foreground">
             Pabandykite vėliau arba paskambinkite tiesiogiai į saloną.
           </p>
         </div>

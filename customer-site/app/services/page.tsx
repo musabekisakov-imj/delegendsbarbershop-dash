@@ -36,11 +36,11 @@ export default async function ServicesPage({
         sub="Trumpas sąrašas, ilga praktika. Visos kainos eurais — be paslėptų mokesčių, be staigmenų sąskaitoje."
       />
 
-      <section className="editorial pb-32">
+      <section className="page pb-32">
         {/* Filter bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-12">
           <OfficeFilter offices={offices} active={searchParams.office} />
-          <div className="hidden sm:flex items-center gap-2 text-xs text-ink-muted tabular">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground tabular">
             <ClockIcon className="h-3.5 w-3.5" />
             Atnaujinta dabar · {services.length} paslaugos
           </div>
@@ -49,16 +49,16 @@ export default async function ServicesPage({
         <ServicesGrid services={services} officeFilter={searchParams.office} />
 
         {/* Closing block */}
-        <div className="mt-24 pt-12 border-t border-hairline grid lg:grid-cols-12 gap-10">
+        <div className="mt-24 pt-12 border-t border-border grid lg:grid-cols-12 gap-10">
           <div className="lg:col-span-6">
             <div className="eyebrow mb-4">Pasirengę?</div>
-            <h2 className="display text-3xl sm:text-4xl tracking-snug">
+            <h2 className="font-bold tracking-tight text-3xl sm:text-4xl tracking-tight">
               Pasirinkite paslaugą ir{' '}
-              <span className="text-oxblood">susitarkime laiką.</span>
+              <span className="text-primary">susitarkime laiką.</span>
             </h2>
           </div>
           <div className="lg:col-span-5 lg:col-start-8 self-end">
-            <Link href="/book" className="btn-mark-lg">
+            <Link href="/book" className="btn-primary-lg">
               Pradėti rezervaciją
               <ArrowUpRightIcon className="h-4 w-4" />
             </Link>

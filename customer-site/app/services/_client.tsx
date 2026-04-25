@@ -60,7 +60,7 @@ export function ServicesGrid({
   if (filtered.length === 0) {
     return (
       <div className="py-24 text-center">
-        <p className="text-ink-muted text-sm">
+        <p className="text-muted-foreground text-sm">
           Šiame salone paslaugų sąrašas tuščias. Pabandykite kitą.
         </p>
       </div>
@@ -93,24 +93,24 @@ function ServiceCard({ service }: { service: Service }) {
         {/* Eyebrow */}
         <div className="flex items-center justify-between mb-6">
           <span className="eyebrow">{service.category?.name ?? 'Paslauga'}</span>
-          <span className="tabular text-[10px] uppercase tracking-eyebrow text-ink-subtle">
+          <span className="tabular text-[10px] uppercase tracking-eyebrow text-muted-foreground/70">
             {service.duration} min
           </span>
         </div>
 
         {/* Title */}
-        <h3 className="display text-3xl sm:text-4xl tracking-snug mb-3 group-hover:text-oxblood transition-colors">
+        <h3 className="font-bold tracking-tight text-3xl sm:text-4xl tracking-tight mb-3 group-hover:text-primary transition-colors">
           {service.name}
         </h3>
 
         {service.description && (
-          <p className="text-sm text-ink-muted leading-relaxed mb-8">{service.description}</p>
+          <p className="text-sm text-muted-foreground leading-relaxed mb-8">{service.description}</p>
         )}
 
         {/* Price + arrow */}
-        <div className="mt-auto flex items-baseline justify-between pt-4 border-t border-hairline">
-          <span className="display text-4xl tabular text-ink">€{service.price}</span>
-          <span className="inline-flex items-center gap-2 text-xs uppercase tracking-eyebrow text-ink-muted group-hover:text-ink transition-colors">
+        <div className="mt-auto flex items-baseline justify-between pt-4 border-t border-border">
+          <span className="font-bold tracking-tight text-4xl tabular text-foreground">€{service.price}</span>
+          <span className="inline-flex items-center gap-2 text-xs uppercase tracking-eyebrow text-muted-foreground group-hover:text-foreground transition-colors">
             Užsisakyti
             <ArrowUpRightIcon className="h-3.5 w-3.5 group-hover:rotate-45 transition-transform duration-300" />
           </span>

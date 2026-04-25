@@ -1,51 +1,43 @@
-'use client';
-
-// Reusable page header — eyebrow + display title + optional sub.
-// Animated entrance via Framer (page transitions are wired at template.tsx).
-
-import { motion } from 'framer-motion';
-
-const EASE = [0.16, 1, 0.3, 1] as const;
+// Dashboard-style page header — eyebrow + title + optional description + action.
+// Mirrors src/app/components/shared/page-header.tsx in the dashboard.
 
 interface Props {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
+  /** Optional highlighted phrase appended to the title in the primary color. */
   accent?: string;
+  description?: string;
+  /** Alias for description — kept for compatibility with older call sites. */
   sub?: string;
+  action?: React.ReactNode;
+  size?: 'display' | 'default' | 'subtle';
 }
 
-export function PageHeader({ eyebrow, title, accent, sub }: Props) {
+const TITLE_CLASS: Record<NonNullable<Props['size']>, string> = {
+  display: 'text-3xl sm:text-4xl font-bold tracking-tight text-foreground',
+  default: 'text-2xl font-bold tracking-tight text-foreground',
+  subtle: 'text-lg font-semibold text-foreground',
+};
+
+export function PageHeader({ eyebrow, title, accent, description, sub, action, size = 'display' }: Props) {
+  const desc = description ?? sub;
   return (
-    <div className="editorial pt-16 sm:pt-24 pb-16">
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: EASE }}
-        className="eyebrow mb-5"
-      >
-        {eyebrow}
-      </motion.div>
-
-      <motion.h1
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, delay: 0.05, ease: EASE }}
-        className="display text-5xl sm:text-7xl lg:text-8xl tracking-snug max-w-4xl"
-      >
-        {title}{' '}
-        {accent && <span className="text-oxblood">{accent}</span>}
-      </motion.h1>
-
-      {sub && (
-        <motion.p
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.15, ease: EASE }}
-          className="mt-8 text-lg text-ink-muted max-w-2xl leading-relaxed"
-        >
-          {sub}
-        </motion.p>
-      )}
+    <div className="page pt-10 pb-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          {eyebrow && (
+            <div className="eyebrow mb-2">{eyebrow}</div>
+          )}
+          <h1 className={TITLE_CLASS[size]}>
+            {title}
+            {accent && <span className="text-primary"> {accent}</span>}
+          </h1>
+          {desc && (
+            <p className="mt-2 text-sm text-muted-foreground max-w-2xl">{desc}</p>
+          )}
+        </div>
+        {action && <div className="flex-shrink-0">{action}</div>}
+      </div>
     </div>
   );
 }

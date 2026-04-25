@@ -3,64 +3,67 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { ArrowRightIcon } from '@heroicons/react/24/outline';
+import { ArrowRightIcon, ScissorsIcon } from '@heroicons/react/24/outline';
 
 export function SiteFooter() {
   const pathname = usePathname() ?? '/';
   if (pathname.startsWith('/book')) return null;
 
   return (
-    <footer id="contact" className="border-t border-hairline mt-32 bg-bg">
+    <footer id="contact" className="border-t border-border mt-24 bg-background">
       <NewsletterBlock />
 
-      <div className="editorial py-20 sm:py-24">
-        <div className="grid gap-16 lg:grid-cols-12">
-          {/* Brand block */}
+      <div className="page py-16">
+        <div className="grid gap-12 lg:grid-cols-12">
           <div className="lg:col-span-5">
-            <div className="display text-4xl tracking-tight text-ink mb-4">Kirpykla</div>
-            <div className="brass-rule mb-5" />
-            <p className="text-ink-muted text-sm leading-relaxed max-w-sm">
-              Vyriški kirpimai Vilniuje. Du salonai. Patyrę meistrai.
-              Atviri šešias dienas per savaitę.
+            <Link href="/" className="inline-flex items-center gap-2.5 mb-4">
+              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <ScissorsIcon className="h-3.5 w-3.5" />
+              </span>
+              <span className="text-base font-bold tracking-tight">Kirpykla Vilnius</span>
+            </Link>
+            <p className="text-muted-foreground text-sm leading-relaxed max-w-sm">
+              Vyriški kirpimai Vilniuje. Du salonai, patyrę meistrai,
+              atviri šešias dienas per savaitę.
             </p>
           </div>
 
           <div className="lg:col-span-2">
-            <div className="eyebrow mb-4">Naršyti</div>
-            <ul className="space-y-2.5 text-sm">
-              <li><Link href="/services" className="text-ink-muted hover:text-ink">Paslaugos</Link></li>
-              <li><Link href="/team" className="text-ink-muted hover:text-ink">Meistrai</Link></li>
-              <li><Link href="/locations" className="text-ink-muted hover:text-ink">Salonai</Link></li>
-              <li><Link href="/story" className="text-ink-muted hover:text-ink">Istorija</Link></li>
-              <li><Link href="/book" className="text-oxblood font-medium hover:text-oxblood-dim">Susitarti laiką →</Link></li>
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Naršyti</div>
+            <ul className="space-y-2 text-sm">
+              <li><Link href="/services" className="text-foreground hover:text-primary">Paslaugos</Link></li>
+              <li><Link href="/team" className="text-foreground hover:text-primary">Meistrai</Link></li>
+              <li><Link href="/locations" className="text-foreground hover:text-primary">Salonai</Link></li>
+              <li><Link href="/story" className="text-foreground hover:text-primary">Apie mus</Link></li>
+              <li><Link href="/book" className="text-primary font-medium hover:underline">Susitarti laiką →</Link></li>
             </ul>
           </div>
 
           <div className="lg:col-span-2">
-            <div className="eyebrow mb-4">Senamiestis</div>
-            <address className="not-italic text-sm leading-7 text-ink-muted">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Senamiestis</div>
+            <address className="not-italic text-sm leading-7 text-muted-foreground">
               Pilies g. 12<br />
               LT-01123 Vilnius<br />
-              <a href="tel:+37060000001" className="tabular text-ink hover:text-oxblood">+370 600 00001</a>
+              <a href="tel:+37060000001" className="tabular text-foreground hover:text-primary">+370 600 00001</a>
             </address>
           </div>
 
           <div className="lg:col-span-2 lg:col-start-11">
-            <div className="eyebrow mb-4">Naujamiestis</div>
-            <address className="not-italic text-sm leading-7 text-ink-muted">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Naujamiestis</div>
+            <address className="not-italic text-sm leading-7 text-muted-foreground">
               Gedimino pr. 45<br />
               LT-01103 Vilnius<br />
-              <a href="tel:+37060000002" className="tabular text-ink hover:text-oxblood">+370 600 00002</a>
+              <a href="tel:+37060000002" className="tabular text-foreground hover:text-primary">+370 600 00002</a>
             </address>
           </div>
         </div>
 
-        <div className="hairline mt-16 pt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-[10px] uppercase tracking-eyebrow text-ink-subtle">
+        <div className="mt-12 pt-6 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-muted-foreground">
           <span>© {new Date().getFullYear()} Kirpykla Vilnius</span>
-          <div className="flex items-center gap-6">
-            <a href="mailto:hello@kirpykla.lt" className="hover:text-ink">hello@kirpykla.lt</a>
-            <a href="https://instagram.com" target="_blank" rel="noopener" className="hover:text-ink">Instagram</a>
-            <span className="tabular text-ink-subtle/60">v0.4 · PARLOUR</span>
+          <div className="flex items-center gap-5">
+            <a href="mailto:hello@kirpykla.lt" className="hover:text-foreground">hello@kirpykla.lt</a>
+            <a href="https://instagram.com" target="_blank" rel="noopener" className="hover:text-foreground">Instagram</a>
+            <span className="tabular">v0.5</span>
           </div>
         </div>
       </div>
@@ -74,25 +77,20 @@ function NewsletterBlock() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Wire to a mailing service later (ConvertKit, Buttondown, etc.).
-    if (email.includes('@')) {
-      setDone(true);
-    }
+    if (email.includes('@')) setDone(true);
   }
 
   return (
-    <section className="border-b border-hairline">
-      <div className="editorial py-16 sm:py-20">
-        <div className="grid lg:grid-cols-12 gap-10 items-center">
+    <section className="border-b border-border bg-muted/30">
+      <div className="page py-12">
+        <div className="grid lg:grid-cols-12 gap-8 items-center">
           <div className="lg:col-span-6">
-            <div className="eyebrow-brass mb-3">Naujienlaiškis · Karta per mėnesį</div>
-            <h3 className="display text-3xl sm:text-4xl tracking-tight">
-              Žinokite, kada{' '}
-              <span className="display-italic text-oxblood">atsiranda laisvi laikai.</span>
+            <div className="text-xs font-semibold uppercase tracking-wider text-primary mb-2">Naujienlaiškis</div>
+            <h3 className="text-2xl font-bold tracking-tight">
+              Žinokite, kada atsiranda laisvi laikai.
             </h3>
-            <p className="mt-4 text-ink-muted text-sm leading-relaxed max-w-md">
-              Jokio spamo. Trumpas laiškas — naujos paslaugos, ypatingi vakarai,
-              sezoninės akcijos.
+            <p className="mt-2 text-sm text-muted-foreground max-w-md">
+              Karta per mėnesį. Jokio spamo — tik nauji meistrai, sezoninės akcijos.
             </p>
           </div>
 
@@ -101,7 +99,7 @@ function NewsletterBlock() {
             className="lg:col-span-6 lg:col-start-7 flex gap-2"
           >
             {done ? (
-              <p className="display text-2xl text-oxblood">
+              <p className="text-base font-medium text-emerald-700">
                 Dėkui — laukite pirmojo laiško.
               </p>
             ) : (
@@ -111,10 +109,10 @@ function NewsletterBlock() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="jūsų@elpaštas.lt"
-                  className="flex-1 px-5 py-3.5 rounded-DEFAULT border border-hairline-strong bg-bg-surface text-ink placeholder:text-ink-subtle focus:border-ink focus:outline-none focus:ring-2 focus:ring-oxblood/20 transition-all text-sm"
+                  className="input flex-1"
                   required
                 />
-                <button type="submit" className="btn-mark shrink-0">
+                <button type="submit" className="btn-primary shrink-0">
                   Užsiprenumeruoti
                   <ArrowRightIcon className="h-4 w-4" />
                 </button>

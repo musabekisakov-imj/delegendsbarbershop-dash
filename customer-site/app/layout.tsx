@@ -1,27 +1,24 @@
 import type { Metadata, Viewport } from 'next';
-import { Fraunces } from 'next/font/google';
-import { GeistSans } from 'geist/font/sans';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 import { MainNav } from '@/components/shared/main-nav';
 import { SiteFooter } from '@/components/shared/site-footer';
 
-// Fraunces — display serif (Murdock / Hawthorne pairing).
-// SOFT axis pushed at large sizes for warmth.
-const fraunces = Fraunces({
+// Plus Jakarta Sans — exact pairing with the staff dashboard.
+const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin', 'latin-ext'],
-  variable: '--font-fraunces',
+  variable: '--font-jakarta',
   display: 'swap',
-  axes: ['SOFT', 'opsz'],
+  weight: ['400', '500', '600', '700', '800'],
 });
 
 export const metadata: Metadata = {
   title: {
-    default: 'Kirpykla Vilnius — vyriški kirpimai senamiestyje ir naujamiestyje',
+    default: 'Kirpykla Vilnius',
     template: '%s · Kirpykla Vilnius',
   },
-  description:
-    'Du salonai Vilniuje. Patyrę meistrai. Užsisakykite vizitą per minutę.',
+  description: 'Du salonai Vilniuje. Patyrę meistrai. Užsisakykite vizitą per minutę.',
   openGraph: {
     type: 'website',
     locale: 'lt_LT',
@@ -30,13 +27,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#F4EFE5',
+  themeColor: '#ffffff',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="lt" className={`${fraunces.variable} ${GeistSans.variable} ${GeistMono.variable}`}>
-      <body className="flex min-h-screen flex-col">
+    <html lang="lt" className={`${jakarta.variable} ${GeistMono.variable}`}>
+      <body className="flex min-h-screen flex-col bg-background text-foreground">
         <MainNav />
         <main className="flex-1">{children}</main>
         <SiteFooter />
