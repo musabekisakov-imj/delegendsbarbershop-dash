@@ -13,7 +13,6 @@ import { formatTime } from '../lib/time';
 import { AVATAR_GRADIENTS, hashToIndex } from '../lib/tokens';
 import type { Appointment } from '../types';
 
-import { PageHeader } from '../components/shared/page-header';
 import { SectionHeading } from '../components/shared/section-heading';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -256,11 +255,34 @@ export function NewBookingPage() {
 
   // ─── Render ─────────────────────────────────
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader
-        title="New Booking"
-        description={`Step ${step + 1} of ${STEPS.length} · ${STEPS[step].label}`}
-      />
+    <div className="mx-auto max-w-5xl space-y-5">
+      {/* ─── Editorial hero ──────────────────────────
+          Matches the family pattern used across the
+          dashboard. Eyebrow carries office context +
+          step count; current step name is the title. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <span>New booking</span>
+            {currentOffice && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
+                  <MapPinIcon className="h-3 w-3" />
+                  {currentOffice.name}
+                </span>
+              </>
+            )}
+            <span className="text-muted-foreground/40">·</span>
+            <span className="normal-case tracking-normal tabular-nums">
+              Step {step + 1} of {STEPS.length}
+            </span>
+          </div>
+          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none">
+            {STEPS[step].label}
+          </h1>
+        </div>
+      </div>
 
       {/* Stepper */}
       <Stepper step={step} onJump={(i) => i < step && setStep(i)} />
@@ -687,13 +709,13 @@ export function NewBookingPage() {
           </div>
         </div>
 
-        {/* Sticky summary */}
+        {/* Sticky summary — editorial card without drop shadow */}
         <aside className="lg:sticky lg:top-6 lg:self-start">
-          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="rounded-xl border border-border bg-card p-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Your booking
             </p>
-            <h3 className="mt-1 text-base font-bold text-foreground">{currentOffice?.name ?? 'Shop'}</h3>
+            <h3 className="mt-1 text-base font-bold text-foreground tracking-tight">{currentOffice?.name ?? 'Shop'}</h3>
             {currentOffice?.address && (
               <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <MapPinIcon className="h-3 w-3" />
@@ -719,12 +741,12 @@ export function NewBookingPage() {
             </div>
 
             {selectedService && (
-              <div className="mt-5 flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2.5">
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="mt-5 flex items-baseline justify-between border-t border-border pt-4">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   <CurrencyEuroIcon className="h-3.5 w-3.5" />
                   Total
                 </span>
-                <span className="text-base font-bold tabular-nums text-foreground">€{selectedService.price}</span>
+                <span className="text-2xl font-bold tabular-nums text-foreground tracking-tight leading-none">€{selectedService.price}</span>
               </div>
             )}
           </div>
@@ -773,7 +795,7 @@ function StepCard({
   title, subtitle, children,
 }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm">
+    <div className="rounded-xl border border-border bg-card">
       <div className="p-6">
         <SectionHeading title={title} subtitle={subtitle} />
         {children}
@@ -835,12 +857,12 @@ function Stepper({ step, onJump }: { step: number; onJump: (i: number) => void }
 function SummaryRow({ label, value }: { label: string; value: React.ReactNode | null }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
       <span className={cn(
         'text-sm text-right truncate',
-        value ? 'font-semibold text-foreground' : 'italic text-muted-foreground/60',
+        value ? 'font-semibold text-foreground' : 'text-muted-foreground/50',
       )}>
-        {value ?? 'Not selected'}
+        {value ?? 'Not set'}
       </span>
     </div>
   );

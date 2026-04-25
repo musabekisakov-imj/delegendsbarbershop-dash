@@ -24,7 +24,6 @@ import { useT } from '../hooks/use-t';
 import { CardSkeleton, TableSkeleton } from '../components/shared/page-skeleton';
 import { EmptyState } from '../components/shared/empty-state';
 import { gradientFor } from '../lib/tokens';
-import { FilterChip } from '../components/ui/filter-chip';
 import { Field, Readonly } from '../components/ui/field';
 import { ClientForm } from '../components/clients/client-form';
 import { exportCsv } from '../lib/csv';

@@ -1008,10 +1008,10 @@ export function CalendarPage() {
             <MiniCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} appointments={appointments} />
           </div>
 
-          {/* ─── Day summary (Studio Score) ─────────────
-              Editorial treatment: uppercase eyebrow, display-size
-              revenue number, hairline-divided breakdowns. No
-              gradients, no tinted panels — typography carries it. */}
+          {/* ─── Day summary (editorial — Studio Score) ─
+              Hairline-divided typography. No gradients,
+              no tinted panels. Consistent с другими страницами
+              в editorial-семье (Clients, Staff, Services, etc). */}
           <div className="rounded-xl border border-border bg-card p-4 space-y-4">
             <div className="flex items-baseline justify-between gap-2">
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.18em]">
@@ -1047,7 +1047,7 @@ export function CalendarPage() {
               </div>
             </div>
 
-            {/* Staff roll — names scribbled in the appointment book */}
+            {/* Staff roll — names с подсчётом appointments */}
             <div>
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.18em] mb-2">
                 On duty
@@ -1196,11 +1196,9 @@ export function CalendarPage() {
                 className="overflow-auto"
                 style={{ maxHeight: 'calc(100vh - 300px)' }}
               >
-                {/* Sticky staff header */}
-                {/* Sticky staff header — Studio Score treatment:
-                    hairline column divider, a single thin accent rule
-                    under each head in the staff's color, uppercase
-                    tabular eyebrow with shift window + count. */}
+                {/* Sticky staff header — Studio Score: hairline column
+                    divider + uppercase tabular eyebrow + thin staff-tinted
+                    accent rule under each header (color без ring-halo). */}
                 <div className="sticky top-0 z-20 flex border-b border-border bg-card/95 backdrop-blur-sm">
                   <div className="shrink-0 border-r border-border bg-card/95 backdrop-blur-sm" style={{ width: `${TIME_GUTTER_W}px` }} />
                   {activeStaff.map((m, i) => {

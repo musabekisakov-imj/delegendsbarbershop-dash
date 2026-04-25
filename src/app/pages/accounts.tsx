@@ -314,14 +314,22 @@ export function AccountsPage() {
         </div>
       </div>
 
-      {/* ─── Grouped account list ────────────────────────
-          When viewing All, accounts group into role sections
-          in hierarchy order (Owner → Manager → Receptionist
-          → Barber). Owners get feature-sized cards; the rest
-          stay in a 2-up grid. Framer Motion stagger on mount. */}
+      {/* ─── Members table ───────────────────────────────
+          Admin pages use tables, not cards. Columns align vertically
+          so scanning roles / last-seen / offices across 20 members
+          is a single glance. Grouped by role (with inline subheaders)
+          when viewing All; flat sorted list otherwise. */}
       {isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 border-b border-border last:border-b-0 px-5 py-3">
+              <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3 w-32 rounded bg-muted animate-pulse" />
+                <div className="h-2.5 w-48 rounded bg-muted/60 animate-pulse" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -329,47 +337,18 @@ export function AccountsPage() {
           title="No accounts match"
           description="Try a different search or clear the role filter."
         />
-      ) : roleFilter === 'all' ? (
-        <div className="space-y-6">
-          {(['owner', 'manager', 'receptionist', 'barber'] as StaffRole[]).map(r => {
-            const sectionAccounts = filtered.filter(a => a.role === r);
-            if (sectionAccounts.length === 0) return null;
-            return (
-              <RoleSection
-                key={r}
-                role={r}
-                accounts={sectionAccounts}
-                offices={offices}
-                currentUserId={currentUser?.id}
-                canManage={can('accounts.manage')}
-                resolveAvatar={resolveAvatar}
-                onToggleStatus={toggleStatus}
-                onEdit={openEdit}
-                onRemove={handleRemove}
-              />
-            );
-          })}
-        </div>
       ) : (
-        <motion.div layout className="grid gap-3 sm:grid-cols-2">
-          <AnimatePresence initial={false}>
-            {filtered.map((a, i) => (
-              <AccountCard
-                key={a.id}
-                account={a}
-                index={i}
-                variant={a.role === 'owner' ? 'feature' : 'standard'}
-                offices={offices}
-                currentUserId={currentUser?.id}
-                canManage={can('accounts.manage')}
-                resolveAvatar={resolveAvatar}
-                onToggleStatus={toggleStatus}
-                onEdit={openEdit}
-                onRemove={handleRemove}
-              />
-            ))}
-          </AnimatePresence>
-        </motion.div>
+        <MembersTable
+          accounts={filtered}
+          groupByRole={roleFilter === 'all'}
+          offices={offices}
+          currentUserId={currentUser?.id}
+          canManage={can('accounts.manage')}
+          resolveAvatar={resolveAvatar}
+          onToggleStatus={toggleStatus}
+          onEdit={openEdit}
+          onRemove={handleRemove}
+        />
       )}
 
       <AccountDialog
@@ -747,71 +726,121 @@ interface CardActionProps {
   onRemove: (a: Account) => void | Promise<void>;
 }
 
-// ─── Role section ─────────────────────────────────────────
-// Groups accounts under a role header when viewing "All".
-// Owner section renders full-width feature cards; other
-// roles use a 2-up grid. AnimatePresence wraps the children
-// so role changes animate cleanly when filter shifts.
-function RoleSection({
-  role, accounts, offices, currentUserId, canManage,
+// ─── Members table ────────────────────────────────────────
+// Admin pages use tables. One row per member, columns align
+// vertically so scanning roles / offices / last-seen across
+// 5 or 50 rows stays scannable. Group-by-role insets subheader
+// rows inline when viewing All.
+const TABLE_COLS =
+  'grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2fr)_7rem_8rem_auto] lg:grid-cols-[minmax(0,2fr)_7rem_minmax(0,1.2fr)_8rem_6.5rem_auto]';
+
+function MembersTable({
+  accounts, groupByRole, offices, currentUserId, canManage,
   resolveAvatar, onToggleStatus, onEdit, onRemove,
 }: CardActionProps & {
-  role: StaffRole;
   accounts: Account[];
+  groupByRole: boolean;
 }) {
-  const isOwner = role === 'owner';
-  const label = ROLE_STYLE[role].label;
+  // Flatten rows with inline group headers when viewing All so
+  // stagger indexing is continuous (no restart at each group).
+  type Row =
+    | { kind: 'header'; role: StaffRole; count: number }
+    | { kind: 'member'; account: Account };
+
+  const rows: Row[] = [];
+  if (groupByRole) {
+    (['owner', 'manager', 'receptionist', 'barber'] as StaffRole[]).forEach(r => {
+      const group = accounts.filter(a => a.role === r);
+      if (group.length === 0) return;
+      rows.push({ kind: 'header', role: r, count: group.length });
+      group.forEach(a => rows.push({ kind: 'member', account: a }));
+    });
+  } else {
+    accounts.forEach(a => rows.push({ kind: 'member', account: a }));
+  }
 
   return (
-    <section className="space-y-3">
-      <header className="flex items-center gap-2">
-        <span className={cn('h-1.5 w-1.5 rounded-full', ROLE_STYLE[role].dot)} />
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          {label}{accounts.length === 1 ? '' : 's'}
-        </p>
-        <span className="text-[11px] tabular-nums text-muted-foreground/80">
-          {accounts.length}
-        </span>
-        <span className="flex-1 border-b border-border/60 ml-2" />
-      </header>
-      <motion.div
-        layout
-        className={cn('grid gap-3', isOwner ? 'grid-cols-1' : 'sm:grid-cols-2')}
-      >
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      {/* Column header */}
+      <div className={cn(
+        TABLE_COLS,
+        'gap-4 border-b border-border bg-muted/20 px-5 py-2.5',
+      )}>
+        <ColHeader>Member</ColHeader>
+        <ColHeader className="hidden md:block">Role</ColHeader>
+        <ColHeader className="hidden lg:block">Offices</ColHeader>
+        <ColHeader className="hidden md:block">Last seen</ColHeader>
+        <ColHeader className="hidden lg:block">Status</ColHeader>
+        <span />
+      </div>
+
+      {/* Body */}
+      <ul className="divide-y divide-border">
         <AnimatePresence initial={false}>
-          {accounts.map((a, i) => (
-            <AccountCard
-              key={a.id}
-              account={a}
-              index={i}
-              variant={isOwner ? 'feature' : 'standard'}
-              offices={offices}
-              currentUserId={currentUserId}
-              canManage={canManage}
-              resolveAvatar={resolveAvatar}
-              onToggleStatus={onToggleStatus}
-              onEdit={onEdit}
-              onRemove={onRemove}
-            />
-          ))}
+          {rows.map((row, i) => {
+            if (row.kind === 'header') {
+              return <GroupHeader key={`h-${row.role}`} role={row.role} count={row.count} index={i} />;
+            }
+            return (
+              <MemberRow
+                key={row.account.id}
+                account={row.account}
+                index={i}
+                offices={offices}
+                currentUserId={currentUserId}
+                canManage={canManage}
+                resolveAvatar={resolveAvatar}
+                onToggleStatus={onToggleStatus}
+                onEdit={onEdit}
+                onRemove={onRemove}
+              />
+            );
+          })}
         </AnimatePresence>
-      </motion.div>
-    </section>
+      </ul>
+    </div>
   );
 }
 
-// ─── Account card ─────────────────────────────────────────
-// Framer Motion: staggered fade+rise entry (capped at 250ms),
-// hover lift with spring, actions slide in from right. A user
-// seen in the last hour gets a breathing emerald ring around
-// their avatar — meaningful presence signal, not decoration.
-function AccountCard({
-  account: a, index, variant, offices, currentUserId, canManage,
+function ColHeader({ children, className }: { children?: React.ReactNode; className?: string }) {
+  return (
+    <span className={cn('text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground', className)}>
+      {children}
+    </span>
+  );
+}
+
+// ─── Inline group header (Owners, Managers, Receptionists, Barbers) ─
+function GroupHeader({ role, count, index }: { role: StaffRole; count: number; index: number }) {
+  const reducedMotion = useReducedMotion();
+  const style = ROLE_STYLE[role];
+  return (
+    <motion.li
+      initial={reducedMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2, delay: reducedMotion ? 0 : Math.min(index * 0.02, 0.2) }}
+      className="flex items-center gap-2 bg-muted/40 px-5 py-1.5"
+    >
+      <span className={cn('h-1.5 w-1.5 rounded-full', style.dot)} />
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        {style.label}{count === 1 ? '' : 's'}
+      </p>
+      <span className="text-[11px] tabular-nums text-muted-foreground/80">{count}</span>
+    </motion.li>
+  );
+}
+
+// ─── Member row ─────────────────────────────────────────────
+// Dense, scannable. Columns collapse gracefully on smaller screens.
+// Recently-active users (< 1 hour) get a breathing emerald dot in the
+// Last seen cell. Actions slide in from right on row hover (CSS, no
+// Framer Motion for this — hover behavior must work on touch too).
+function MemberRow({
+  account: a, index, offices, currentUserId, canManage,
   resolveAvatar, onToggleStatus, onEdit, onRemove,
 }: CardActionProps & {
   account: Account;
   index: number;
-  variant: 'standard' | 'feature';
 }) {
   const reducedMotion = useReducedMotion();
   const role = ROLE_STYLE[a.role];
@@ -821,130 +850,125 @@ function AccountCard({
   const photoUrl = resolveAvatar(a);
   const gradient = AVATAR_GRADIENTS[hashToIndex(a.id, AVATAR_GRADIENTS.length)];
   const seenLabel = a.lastLoginAt
-    ? `Seen ${formatDistanceToNow(new Date(a.lastLoginAt), { addSuffix: true })}`
-    : 'Never signed in';
+    ? formatDistanceToNow(new Date(a.lastLoginAt), { addSuffix: true })
+    : 'Never';
   const isRecentlyActive = a.status === 'active' && a.lastLoginAt
     ? differenceInMinutes(new Date(), new Date(a.lastLoginAt)) < 60
     : false;
-  const isFeature = variant === 'feature';
 
   return (
-    <motion.article
+    <motion.li
       layout
-      initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+      initial={reducedMotion ? false : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4, transition: { duration: 0.15 } }}
+      exit={{ opacity: 0, transition: { duration: 0.12 } }}
       transition={{
-        duration: 0.32,
-        delay: reducedMotion ? 0 : Math.min(index * 0.04, 0.25),
+        duration: 0.22,
+        delay: reducedMotion ? 0 : Math.min(index * 0.02, 0.2),
         ease: [0.16, 1, 0.3, 1],
       }}
-      whileHover={reducedMotion ? undefined : { y: -2 }}
       className={cn(
-        'group relative flex flex-col rounded-xl border border-border bg-card transition-colors hover:border-foreground/20 hover:bg-accent/20',
-        isFeature ? 'p-5 sm:p-6' : 'p-4',
+        TABLE_COLS,
+        'group gap-4 items-center px-5 py-3 transition-colors hover:bg-accent/30',
       )}
     >
-      <div className={cn('flex items-start', isFeature ? 'gap-5' : 'gap-4')}>
-        {/* Avatar — photo / linked-staff photo / gradient initials */}
+      {/* Member — avatar + name + email */}
+      <div className="flex items-center gap-3 min-w-0">
         <div className="relative shrink-0">
           {photoUrl ? (
             <img
               src={photoUrl}
               alt={`${a.firstName} ${a.lastName}`}
-              className={cn('rounded-full object-cover', isFeature ? 'h-16 w-16' : 'h-12 w-12')}
+              className="h-9 w-9 rounded-full object-cover"
             />
           ) : (
             <div className={cn(
-              'flex items-center justify-center rounded-full bg-gradient-to-br font-bold text-white',
-              isFeature ? 'h-16 w-16 text-lg' : 'h-12 w-12 text-sm',
+              'flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br text-xs font-bold text-white',
               gradient,
             )}>
-              {initials || <UserCircleIcon className="h-6 w-6 text-white/90" />}
+              {initials || <UserCircleIcon className="h-5 w-5 text-white/90" />}
             </div>
           )}
-          {/* Presence — breathing ring + solid dot for users seen in last hour */}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="font-medium text-foreground truncate">
+              {a.firstName} {a.lastName}
+            </p>
+            {isSelf && (
+              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground border border-border rounded px-1.5 py-px shrink-0">
+                you
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground truncate">{a.email}</p>
+          {/* Mobile-only: role + last seen folded into the Member cell */}
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground md:hidden">
+            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', role.dot)} />
+            <span>{role.label}</span>
+            <span className="text-muted-foreground/40">·</span>
+            <span className="tabular-nums">{seenLabel}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Role — md+ */}
+      <div className="hidden md:flex items-center gap-1.5 min-w-0">
+        <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', role.dot)} />
+        <span className="text-sm text-foreground truncate">{role.label}</span>
+      </div>
+
+      {/* Offices — lg+ */}
+      <div className="hidden lg:flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground">
+        <MapPinIcon className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">
+          {officeNames.length === 0 ? '—' : officeNames.length <= 1 ? officeNames[0] : `${officeNames[0]} +${officeNames.length - 1}`}
+        </span>
+      </div>
+
+      {/* Last seen — md+ */}
+      <div className="hidden md:flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground">
+        <div className="relative shrink-0">
+          <ClockIcon className="h-3.5 w-3.5" />
           {isRecentlyActive && (
             <>
+              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-card" aria-label="Active in the last hour" />
               {!reducedMotion && (
                 <motion.span
-                  className="absolute inset-0 rounded-full ring-2 ring-emerald-500"
-                  initial={{ opacity: 0.55, scale: 1 }}
-                  animate={{ opacity: 0, scale: 1.25 }}
+                  className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-emerald-500"
+                  initial={{ opacity: 0.6, scale: 1 }}
+                  animate={{ opacity: 0, scale: 2.2 }}
                   transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
                   aria-hidden
                 />
               )}
-              <span
-                className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-card"
-                aria-label="Active in the last hour"
-              />
             </>
           )}
         </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', role.dot)} />
-            {role.label}
-            {isSelf && (
-              <>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="normal-case tracking-normal font-medium">you</span>
-              </>
-            )}
-          </div>
-          <p className={cn(
-            'mt-0.5 font-semibold text-foreground truncate leading-tight tracking-tight',
-            isFeature ? 'text-lg sm:text-xl' : 'text-base',
-          )}>
-            {a.firstName} {a.lastName}
-          </p>
-          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground truncate">
-            <EnvelopeIcon className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{a.email}</span>
-          </p>
-        </div>
+        <span className="tabular-nums truncate">{seenLabel}</span>
       </div>
 
-      {/* Secondary line — offices + seen + exception status */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-        {officeNames.length > 0 && (
-          <span className="inline-flex items-center gap-1">
-            <MapPinIcon className="h-3 w-3 shrink-0" />
-            <span className="truncate">{officeNames.join(', ')}</span>
+      {/* Status — lg+ (only shown when non-active; otherwise empty) */}
+      <div className="hidden lg:flex items-center min-w-0">
+        {a.status === 'invited' ? (
+          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            Pending
           </span>
-        )}
-        <span className="text-muted-foreground/40">·</span>
-        <span className="inline-flex items-center gap-1 tabular-nums">
-          <ClockIcon className="h-3 w-3 shrink-0" />
-          {seenLabel}
-        </span>
-        {a.status === 'invited' && (
-          <>
-            <span className="text-muted-foreground/40">·</span>
-            <span className="inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-              Pending invite
-            </span>
-          </>
-        )}
-        {a.status === 'disabled' && (
-          <>
-            <span className="text-muted-foreground/40">·</span>
-            <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
-              <LockClosedIcon className="h-3 w-3" />
-              Disabled
-            </span>
-          </>
+        ) : a.status === 'disabled' ? (
+          <span className="inline-flex items-center gap-1 rounded-md bg-muted text-muted-foreground px-2 py-0.5 text-[11px] font-medium">
+            <LockClosedIcon className="h-3 w-3" />
+            Disabled
+          </span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground/40">Active</span>
         )}
       </div>
 
-      {/* Actions — always faintly visible, slide in from right and
-          full-opacity on card hover. Works on touch (no hover) too
-          because the base state is already readable at 60%. */}
-      {canManage && (
-        <div className="absolute top-3 right-3 flex items-center gap-0.5 opacity-60 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200">
+      {/* Actions — slide in from right on row hover. Always visible at
+          60% opacity so touch devices (iPad) can tap without hover. */}
+      {canManage ? (
+        <div className="flex items-center gap-0.5 justify-end opacity-60 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200">
           <button
             onClick={() => onToggleStatus(a)}
             disabled={isSelf}
@@ -972,7 +996,9 @@ function AccountCard({
             <TrashIcon className="h-4 w-4" />
           </button>
         </div>
+      ) : (
+        <span />
       )}
-    </motion.article>
+    </motion.li>
   );
 }
