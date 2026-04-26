@@ -9,7 +9,8 @@ import { ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Photo } from '@/components/shared/photo';
 import { AvatarStack } from '@/components/shared/avatar-stack';
-import { StatsMarquee, defaultStats } from '@/components/shared/stats-marquee';
+import { StatsMarquee } from '@/components/shared/stats-marquee';
+import { useT } from '@/lib/use-t';
 import { PHOTOS, GRADIENTS } from '@/lib/photos';
 import type { PublicStaff } from '@/lib/types';
 
@@ -22,20 +23,24 @@ interface Props {
 }
 
 export function Hero({ staff, servicesCount, officesCount }: Props) {
-  const stats = defaultStats({
-    staffCount: staff.length,
-    servicesCount,
-    officesCount,
-  });
+  const t = useT();
+  const stats = [
+    { value: String(officesCount).padStart(2, '0'), label: `${t.stats.salons} · ${t.stats.salons_sub}` },
+    { value: String(staff.length || 4).padStart(2, '0'), label: `${t.stats.masters} · ${t.stats.masters_sub}` },
+    { value: String(servicesCount).padStart(2, '0'), label: `${t.stats.services} · ${t.stats.services_sub}` },
+    { value: t.stats.days, label: t.stats.days_sub },
+    { value: t.stats.est, label: t.stats.est_sub },
+    { value: t.stats.booking, label: t.stats.booking_sub },
+  ];
 
   return (
     <section className="relative flex h-screen min-h-[680px] w-full flex-col items-start justify-end overflow-hidden">
-      {/* Background photo — covers the full viewport. */}
+      {/* Background photo */}
       <div className="absolute inset-0">
         <Photo
           src={PHOTOS.hero}
           fallback={GRADIENTS.warm}
-          alt="Vilniaus kirpykla — vakaro atmosfera"
+          alt="Vilnius barbershop interior"
           className="h-full w-full"
           treated={false}
         />
@@ -56,20 +61,21 @@ export function Hero({ staff, servicesCount, officesCount }: Props) {
         </div>
       </div>
 
-      {/* Spacer pushes the title group to the bottom */}
       <div className="flex-1" />
 
       {/* Bottom zone — split title + descriptive paragraph */}
       <div className="relative z-10 w-full px-4 pb-16 sm:px-8 sm:pb-24 lg:px-16 lg:pb-32">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end">
           <div className="w-full space-y-6 sm:w-1/2">
-            <h1 className="font-medium text-4xl text-foreground leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
+            <h1 className="font-medium text-4xl text-white leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
               <RevealLine delay={0.15}>
-                Vyriška <span className="text-primary">KIRPYKLA</span>,
+                {t.hero.line1}
+                <span className="text-primary">{t.hero.accent1}</span>,
               </RevealLine>
               <RevealLine delay={0.25}>
-                du <span className="text-primary">SALONAI</span>
-                <span className="text-foreground"> Vilniuje.</span>
+                {t.hero.line2}
+                <span className="text-primary">{t.hero.accent2}</span>
+                <span> Vilnius.</span>
               </RevealLine>
             </h1>
 
@@ -78,8 +84,8 @@ export function Hero({ staff, servicesCount, officesCount }: Props) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.55 }}
             >
-              <Link href="/book" className="inline-flex items-center bg-primary text-primary-foreground pl-5 py-0 pr-0 text-base font-medium hover:bg-foreground hover:text-background transition-colors duration-200">
-                <span>Užsakyti vizitą</span>
+              <Link href="/book" className="inline-flex items-center bg-primary text-primary-foreground pl-5 py-0 pr-0 text-base font-medium hover:bg-white hover:text-black transition-colors duration-200">
+                <span>{t.nav.book}</span>
                 <span className="border-l border-black/30 p-3 ml-5 inline-flex items-center">
                   <ArrowRight className="h-5 w-5" />
                 </span>
@@ -94,8 +100,7 @@ export function Hero({ staff, servicesCount, officesCount }: Props) {
             className="w-full sm:w-1/2"
           >
             <p className="text-base text-primary italic sm:text-right md:text-2xl leading-relaxed">
-              Senamiestyje ir Naujamiestyje. Užsisakykite vizitą per minutę —
-              patvirtinimą gausite el. paštu, be išankstinio mokėjimo.
+              {t.hero.paragraph}
             </p>
           </motion.div>
         </div>
@@ -104,7 +109,6 @@ export function Hero({ staff, servicesCount, officesCount }: Props) {
   );
 }
 
-/** Animates a single hero headline line in from below. */
 function RevealLine({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   return (
     <motion.span

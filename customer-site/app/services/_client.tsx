@@ -11,7 +11,17 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 
 // ─── Office filter pills ────────────────────────────────────────
 
-export function OfficeFilter({ offices, active }: { offices: Office[]; active?: string }) {
+export function OfficeFilter({
+  offices,
+  active,
+  filterLabel,
+  allLabel,
+}: {
+  offices: Office[];
+  active?: string;
+  filterLabel?: string;
+  allLabel?: string;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -24,20 +34,20 @@ export function OfficeFilter({ offices, active }: { offices: Office[]; active?: 
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="eyebrow mr-2">Filtras</span>
+      <span className="eyebrow mr-2">{filterLabel ?? 'Filter'}</span>
       <button
         type="button"
         onClick={() => setOffice(undefined)}
-        className={cn('pill', !active && 'pill-active')}
+        className={cn('chip', !active && 'chip-active')}
       >
-        Visi salonai
+        {allLabel ?? 'All'}
       </button>
       {offices.map((o) => (
         <button
           key={o.id}
           type="button"
           onClick={() => setOffice(o.id)}
-          className={cn('pill', active === o.id && 'pill-active')}
+          className={cn('chip', active === o.id && 'chip-active')}
         >
           {o.name}
         </button>

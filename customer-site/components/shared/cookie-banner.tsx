@@ -8,10 +8,12 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useT } from '@/lib/use-t';
 
 const STORAGE_KEY = 'barberpro_cookie_consent';
 
 export function CookieBanner() {
+  const t = useT();
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
@@ -52,37 +54,36 @@ export function CookieBanner() {
           <div className="bg-surface-2 border border-border-strong p-5 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)]">
             <div className="flex items-start justify-between gap-4 mb-3">
               <span className="text-[10px] uppercase tracking-[0.18em] text-primary font-mono font-medium">
-                Slapukai
+                {t.cookie.eyebrow}
               </span>
               <button
                 onClick={() => dismiss('rejected')}
-                aria-label="Uždaryti pranešimą"
+                aria-label={t.cookie.close_label}
                 className="text-foreground/40 hover:text-foreground transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
             <p className="text-sm text-foreground/80 leading-relaxed mb-5">
-              Naudojame techninius slapukus svetainės veikimui. Jokių
-              reklaminių ar sekimo slapukų. Daugiau —{' '}
+              {t.cookie.body_a}
               <Link href="/privacy" className="text-primary hover:underline">
-                privatumo politika
+                {t.cookie.body_link}
               </Link>
-              .
+              {t.cookie.body_b}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => dismiss('accepted')}
                 className="inline-flex items-center bg-primary text-primary-foreground pl-4 py-0 pr-0 text-xs font-medium hover:bg-foreground hover:text-background transition-colors"
               >
-                <span>Sutinku</span>
-                <span className="border-l border-black/30 px-3 py-2.5 ml-4">OK</span>
+                <span>{t.cookie.accept}</span>
+                <span className="border-l border-black/30 px-3 py-2.5 ml-4">{t.cookie.accept_short}</span>
               </button>
               <button
                 onClick={() => dismiss('rejected')}
                 className="px-4 py-2 text-xs font-medium text-foreground/60 hover:text-foreground transition-colors"
               >
-                Tik būtini
+                {t.cookie.reject}
               </button>
             </div>
           </div>

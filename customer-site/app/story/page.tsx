@@ -3,20 +3,25 @@ import { ArrowUpRightIcon } from '@heroicons/react/24/outline';
 import { PageHeader } from '@/components/shared/page-header';
 import { Photo } from '@/components/shared/photo';
 import { PHOTOS, GRADIENTS } from '@/lib/photos';
+import { getServerT } from '@/lib/i18n';
 
-export const metadata = {
-  title: 'Istorija',
-  description: 'Kaip atsirado Kirpykla Vilnius. Filosofija, meistrai, kruopštumo standartas.',
-};
+export async function generateMetadata() {
+  const t = getServerT();
+  return {
+    title: t.page.story.eyebrow.split(' · ')[0],
+    description: t.page.story.sub,
+  };
+}
 
 export default function StoryPage() {
+  const t = getServerT();
   return (
     <>
       <PageHeader
-        eyebrow="Istorija · Mūsų darbas"
-        title="Du salonai,"
-        accent="vienas standartas."
-        sub="Atvyko į Vilnių 2026-ųjų pavasarį — ne iš galios troškimo, o todėl, kad senasis miesto centras nusipelnė tikro barbershop'o. Be lozungų, be paspaudimų, be konvejerinio kirpimo."
+        eyebrow={t.page.story.eyebrow}
+        title={t.page.story.title}
+        accent={t.page.story.accent}
+        sub={t.page.story.sub}
       />
 
       <section className="page pb-32">

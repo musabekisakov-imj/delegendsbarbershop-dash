@@ -1,8 +1,9 @@
 import type { Config } from 'tailwindcss';
 
-// HALL — dark brutalist editorial system for the customer site.
-// Lime accent (oklch(0.95 0.16 118.89)) used surgically on key headline
-// words and primary CTAs. Dark across all 7 routes.
+// HALL — dark/light system. Colors live as CSS custom properties in
+// globals.css so `:root` (light) vs `.dark` (dark) toggles the entire
+// palette via next-themes' class swap. Tailwind reads `oklch(var(--…) /
+// <alpha-value>)` so opacity modifiers (bg-primary/10) keep working.
 
 const config: Config = {
   darkMode: 'class',
@@ -10,49 +11,49 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Surface tiers (dark)
-        background: 'oklch(0.06 0 0 / <alpha-value>)',
+        // Surface tiers
+        background: 'oklch(var(--bg) / <alpha-value>)',
         surface: {
-          DEFAULT: 'oklch(0.10 0 0 / <alpha-value>)',
-          2: 'oklch(0.14 0 0 / <alpha-value>)',
+          DEFAULT: 'oklch(var(--surface) / <alpha-value>)',
+          2: 'oklch(var(--surface-2) / <alpha-value>)',
         },
         // Foreground tiers
-        foreground: 'oklch(0.96 0 0 / <alpha-value>)',
+        foreground: 'oklch(var(--fg) / <alpha-value>)',
         muted: {
-          DEFAULT: 'oklch(0.14 0 0 / <alpha-value>)',
-          foreground: 'oklch(0.62 0 0 / <alpha-value>)',
+          DEFAULT: 'oklch(var(--surface-2) / <alpha-value>)',
+          foreground: 'oklch(var(--fg-muted) / <alpha-value>)',
         },
-        subtle: 'oklch(0.42 0 0 / <alpha-value>)',
-        // Brand — lime (pattern signature)
+        subtle: 'oklch(var(--fg-subtle) / <alpha-value>)',
+        // Brand — lime stays in both modes
         primary: {
-          DEFAULT: 'oklch(0.95 0.16 118.89 / <alpha-value>)',
-          foreground: 'oklch(0.10 0 0 / <alpha-value>)',
+          DEFAULT: 'oklch(var(--primary) / <alpha-value>)',
+          foreground: 'oklch(var(--primary-fg) / <alpha-value>)',
         },
-        // Card / popover surfaces (radix-style API for ported components)
+        // Card / popover surfaces
         card: {
-          DEFAULT: 'oklch(0.10 0 0 / <alpha-value>)',
-          foreground: 'oklch(0.96 0 0 / <alpha-value>)',
+          DEFAULT: 'oklch(var(--surface) / <alpha-value>)',
+          foreground: 'oklch(var(--fg) / <alpha-value>)',
         },
         popover: {
-          DEFAULT: 'oklch(0.14 0 0 / <alpha-value>)',
-          foreground: 'oklch(0.96 0 0 / <alpha-value>)',
+          DEFAULT: 'oklch(var(--surface-2) / <alpha-value>)',
+          foreground: 'oklch(var(--fg) / <alpha-value>)',
         },
         secondary: {
-          DEFAULT: 'oklch(0.14 0 0 / <alpha-value>)',
-          foreground: 'oklch(0.96 0 0 / <alpha-value>)',
+          DEFAULT: 'oklch(var(--surface-2) / <alpha-value>)',
+          foreground: 'oklch(var(--fg) / <alpha-value>)',
         },
         accent: {
-          DEFAULT: 'oklch(0.18 0 0 / <alpha-value>)',
-          foreground: 'oklch(0.96 0 0 / <alpha-value>)',
+          DEFAULT: 'oklch(var(--surface-2) / <alpha-value>)',
+          foreground: 'oklch(var(--fg) / <alpha-value>)',
         },
         destructive: {
           DEFAULT: 'oklch(0.62 0.21 25 / <alpha-value>)',
           foreground: 'oklch(0.96 0 0 / <alpha-value>)',
         },
-        border: 'rgba(255, 255, 255, 0.10)',
-        'border-strong': 'rgba(255, 255, 255, 0.20)',
-        input: 'rgba(255, 255, 255, 0.06)',
-        ring: 'oklch(0.95 0.16 118.89 / <alpha-value>)',
+        border: 'rgb(var(--border-rgb) / <alpha-value>)',
+        'border-strong': 'rgb(var(--border-strong-rgb) / <alpha-value>)',
+        input: 'rgb(var(--border-rgb) / <alpha-value>)',
+        ring: 'oklch(var(--primary) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['var(--font-jakarta)', 'ui-sans-serif', 'system-ui', 'sans-serif'],

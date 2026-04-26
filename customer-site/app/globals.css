@@ -2,13 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── HALL — base layer ──────────────────────────────────────── */
+/* ─── HALL — base layer (dark + light) ─────────────────────── */
+
+/* Default = LIGHT theme. .dark class on <html> flips to dark.
+   Color values are L C H components — Tailwind builds the oklch()
+   wrapper around them so opacity modifiers work. */
+:root {
+  /* Surfaces */
+  --bg: 0.99 0.005 80;
+  --surface: 0.96 0.005 80;
+  --surface-2: 0.93 0.005 80;
+  /* Foreground */
+  --fg: 0.13 0 0;
+  --fg-muted: 0.42 0 0;
+  --fg-subtle: 0.62 0 0;
+  /* Brand — lime stays the same in both modes */
+  --primary: 0.78 0.18 130;
+  --primary-fg: 0.10 0 0;
+  /* Borders (rgb to support /<alpha-value>) */
+  --border-rgb: 0 0 0;
+  --border-strong-rgb: 0 0 0;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: 0.06 0 0;
+  --surface: 0.10 0 0;
+  --surface-2: 0.14 0 0;
+  --fg: 0.96 0 0;
+  --fg-muted: 0.62 0 0;
+  --fg-subtle: 0.42 0 0;
+  --primary: 0.95 0.16 118.89;
+  --primary-fg: 0.10 0 0;
+  --border-rgb: 255 255 255;
+  --border-strong-rgb: 255 255 255;
+  color-scheme: dark;
+}
+
+/* Border opacity differs between modes — keep utility classes consistent
+   by exposing them as Tailwind tokens above; the opacity is applied via
+   `border` / `border-border` (default ~10%) and `border-border-strong`. */
+.border-border { border-color: rgb(var(--border-rgb) / 0.10); }
+.dark .border-border { border-color: rgb(var(--border-rgb) / 0.10); }
+.border-border-strong { border-color: rgb(var(--border-strong-rgb) / 0.20); }
 
 @layer base {
-  :root {
-    color-scheme: dark;
-  }
-
   html {
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
@@ -22,8 +60,8 @@
   }
 
   ::selection {
-    background: oklch(0.95 0.16 118.89);
-    color: oklch(0.10 0 0);
+    background: oklch(var(--primary));
+    color: oklch(var(--primary-fg));
   }
 
   .tabular {

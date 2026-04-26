@@ -8,6 +8,7 @@ import { ArrowUpRightIcon, ArrowLeftIcon, CheckIcon } from '@heroicons/react/24/
 import { publicApi, ApiError } from '@/lib/api';
 import type { Office, Service, PublicStaff } from '@/lib/types';
 import { cn } from '@/lib/cn';
+import { useT, useLang } from '@/lib/use-t';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -33,6 +34,7 @@ interface Props {
 }
 
 export function BookingFlow({ offices, services, staff }: Props) {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const officeFromUrl = searchParams?.get('office');
@@ -87,11 +89,11 @@ export function BookingFlow({ offices, services, staff }: Props) {
       router.push('/book/confirmation');
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        setSubmitError('Šis laikas ką tik buvo užimtas. Pasirinkite kitą.');
+        setSubmitError(t.booking.error_conflict);
         setState((s) => ({ ...s, startTime: undefined }));
         scrollSoft(refTime);
       } else {
-        setSubmitError('Nepavyko užsakyti. Pabandykite dar kartą arba paskambinkite.');
+        setSubmitError(t.booking.error_generic);
       }
     } finally {
       setSubmitting(false);
@@ -105,21 +107,21 @@ export function BookingFlow({ offices, services, staff }: Props) {
         <div className="page flex h-16 items-center justify-between gap-6">
           <Link href="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeftIcon className="h-4 w-4" />
-            <span className="font-bold tracking-tight text-[18px] tracking-tight text-foreground">Kirpykla</span>
+            <span className="font-medium tracking-tight text-[18px] text-foreground">Kirpykla</span>
           </Link>
-          <Progress state={state} />
+          <Progress state={state} t={t} />
           <span className="hidden md:inline text-[10px] uppercase tracking-eyebrow text-muted-foreground/70 tabular">
-            Susitarimas · 4 žingsniai
+            {t.booking.flow_subtitle}
           </span>
         </div>
       </header>
 
       <main className="page pt-12 pb-32">
         {/* ── Step 1: Service ── */}
-        <Section eyebrow="01 / 04" title="Pasirinkite paslaugą.">
+        <Section eyebrow={t.booking.step_label(1, 4)} title={t.booking.step1_title}>
           {offices.length > 1 && (
             <div className="mb-10">
-              <div className="eyebrow mb-3">Salonas</div>
+              <div className="eyebrow mb-3">{t.booking.salon_label}</div>
               <div className="flex flex-wrap gap-2">
                 {offices.map((o) => (
                   <button
@@ -128,7 +130,7 @@ export function BookingFlow({ offices, services, staff }: Props) {
                     onClick={() =>
                       setState((s) => ({ ...s, officeId: o.id, serviceId: undefined, staffId: undefined }))
                     }
-                    className={cn('pill', state.officeId === o.id && 'pill-active')}
+                    className={cn('chip', state.officeId === o.id && 'chip-active')}
                   >
                     {o.name}
                   </button>
@@ -142,6 +144,7 @@ export function BookingFlow({ offices, services, staff }: Props) {
               <ServiceCard
                 key={s.id}
                 service={s}
+                durationUnit={t.ui.duration_min}
                 selected={state.serviceId === s.id}
                 onSelect={() => {
                   setState((st) => ({ ...st, serviceId: s.id, staffId: undefined, startTime: undefined }));
@@ -155,10 +158,10 @@ export function BookingFlow({ offices, services, staff }: Props) {
         {/* ── Step 2: Staff ── */}
         <div ref={refStaff}>
           <Section
-            eyebrow="02 / 04"
-            title="Pas kurį meistrą norėtumėte?"
+            eyebrow={t.booking.step_label(2, 4)}
+            title={t.booking.step2_title}
             disabled={!state.serviceId}
-            disabledLabel="Pirma pasirinkite paslaugą"
+            disabledLabel={t.booking.step2_disabled}
           >
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {staff.map((s) => (
@@ -179,10 +182,10 @@ export function BookingFlow({ offices, services, staff }: Props) {
         {/* ── Step 3: Date + Time ── */}
         <div ref={refTime}>
           <Section
-            eyebrow="03 / 04"
-            title="Pasirinkite laiką."
+            eyebrow={t.booking.step_label(3, 4)}
+            title={t.booking.step3_title}
             disabled={!state.staffId || !state.serviceId}
-            disabledLabel="Pirma pasirinkite meistrą"
+            disabledLabel={t.booking.step3_disabled}
           >
             {state.staffId && service && (
               <SlotPicker
@@ -191,8 +194,8 @@ export function BookingFlow({ offices, services, staff }: Props) {
                 date={state.date}
                 startTime={state.startTime}
                 onDate={(d) => setState((s) => ({ ...s, date: d, startTime: undefined }))}
-                onSlot={(t) => {
-                  setState((s) => ({ ...s, startTime: t }));
+                onSlot={(time) => {
+                  setState((s) => ({ ...s, startTime: time }));
                   scrollSoft(refContact);
                 }}
               />
@@ -203,11 +206,11 @@ export function BookingFlow({ offices, services, staff }: Props) {
         {/* ── Step 4: Contact + Summary ── */}
         <div ref={refContact} id="summary">
           <Section
-            eyebrow="04 / 04"
-            title="Patvirtinkite vizitą."
-            accent="Lauksime jūsų."
+            eyebrow={t.booking.step_label(4, 4)}
+            title={t.booking.step4_title}
+            accent={t.booking.step4_accent}
             disabled={!state.startTime}
-            disabledLabel="Pirma pasirinkite laiką"
+            disabledLabel={t.booking.step4_disabled}
           >
             <div className="grid lg:grid-cols-12 gap-10 lg:gap-16">
               <div className="lg:col-span-7">
@@ -232,13 +235,19 @@ export function BookingFlow({ offices, services, staff }: Props) {
                   type="button"
                   disabled={!canSubmit || submitting}
                   onClick={handleSubmit}
-                  className="btn-primary-lg mt-6 w-full"
+                  className="inline-flex items-center justify-center w-full bg-primary text-primary-foreground pl-7 py-0 pr-0 text-base font-medium hover:bg-foreground hover:text-background transition-colors duration-200 mt-6 disabled:opacity-40 disabled:pointer-events-none"
                 >
-                  {submitting ? 'Užsakoma…' : 'Užsakyti vizitą'}
-                  {!submitting && <ArrowUpRightIcon className="h-4 w-4" />}
+                  <span className="flex-1 text-center">
+                    {submitting ? t.booking.submitting : t.booking.submit}
+                  </span>
+                  {!submitting && (
+                    <span className="border-l border-black/30 p-4 ml-7 inline-flex items-center">
+                      <ArrowUpRightIcon className="h-4 w-4" />
+                    </span>
+                  )}
                 </button>
-                <p className="mt-3 text-[10px] uppercase tracking-eyebrow text-muted-foreground/70 text-center">
-                  Be išankstinio mokėjimo · Atšaukti galima paskambinus
+                <p className="mt-3 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 text-center font-mono">
+                  {t.booking.fineprint}
                 </p>
               </aside>
             </div>
@@ -253,12 +262,12 @@ const pad = (n: number) => String(n).padStart(2, '0');
 
 // ─── Sub-components ──────────────────────────────────────────────
 
-function Progress({ state }: { state: BookingState }) {
+function Progress({ state, t }: { state: BookingState; t: ReturnType<typeof useT> }) {
   const steps = [
-    { done: !!state.serviceId, label: 'Paslauga' },
-    { done: !!state.staffId, label: 'Meistras' },
-    { done: !!state.startTime, label: 'Laikas' },
-    { done: state.contact.firstName.length > 0, label: 'Kontaktai' },
+    { done: !!state.serviceId, label: t.booking.progress_step1 },
+    { done: !!state.staffId, label: t.booking.progress_step2 },
+    { done: !!state.startTime, label: t.booking.progress_step3 },
+    { done: state.contact.firstName.length > 0, label: t.booking.progress_step4 },
   ];
   return (
     <ol className="flex items-center gap-3">
@@ -330,10 +339,12 @@ function Section({
 function ServiceCard({
   service,
   selected,
+  durationUnit,
   onSelect,
 }: {
   service: Service;
   selected: boolean;
+  durationUnit: string;
   onSelect: () => void;
 }) {
   return (
@@ -352,7 +363,7 @@ function ServiceCard({
             selected ? 'text-background/60' : 'text-muted-foreground',
           )}
         >
-          {service.category?.name ?? 'Paslauga'}
+          {service.category?.name ?? '—'}
         </span>
         <span
           className={cn(
@@ -360,7 +371,7 @@ function ServiceCard({
             selected ? 'text-background/60' : 'text-muted-foreground/70',
           )}
         >
-          {service.duration} min
+          {service.duration} {durationUnit}
         </span>
       </div>
 
@@ -470,7 +481,9 @@ function SlotPicker({
   onDate: (d: string) => void;
   onSlot: (t: string) => void;
 }) {
-  const days = useMemo(() => nextDays(14), []);
+  const t = useT();
+  const { lang } = useLang();
+  const days = useMemo(() => nextDays(14, lang), [lang]);
   const [slots, setSlots] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -487,12 +500,12 @@ function SlotPicker({
     publicApi
       .availability({ staffId, date, duration })
       .then((s) => !cancelled && setSlots(s))
-      .catch(() => !cancelled && setError('Nepavyko gauti laisvų laikų.'))
+      .catch(() => !cancelled && setError(t.booking.no_slots_error))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [date, staffId, duration]);
+  }, [date, staffId, duration, t]);
 
   return (
     <>
@@ -524,19 +537,17 @@ function SlotPicker({
       </div>
 
       <div className="border-t border-border pt-8">
-        <div className="eyebrow mb-5 tabular">Laisvi laikai · {duration} min vizitas</div>
+        <div className="eyebrow mb-5 tabular">{t.booking.available_at} · {duration} {t.booking.duration_visit}</div>
 
         {loading && (
           <div className="text-sm text-muted-foreground flex items-center gap-3">
             <span className="live-dot" />
-            Tikrinama…
+            {t.booking.checking}
           </div>
         )}
-        {error && <div className="text-sm text-live">{error}</div>}
+        {error && <div className="text-sm text-primary">{error}</div>}
         {!loading && slots && slots.length === 0 && (
-          <div className="text-sm text-muted-foreground">
-            Šią dieną pasirinktam meistrui laisvų laikų nėra. Pabandykite kitą dieną.
-          </div>
+          <div className="text-sm text-muted-foreground">{t.booking.no_slots}</div>
         )}
 
         {!loading && slots && slots.length > 0 && (
@@ -577,9 +588,20 @@ interface DayCell {
   dow: string;
 }
 
-function nextDays(n: number): DayCell[] {
-  const dows = ['Sek', 'Pir', 'Ant', 'Tre', 'Ket', 'Pen', 'Šeš'];
-  const months = ['Sau', 'Vas', 'Kov', 'Bal', 'Geg', 'Bir', 'Lie', 'Rgp', 'Rgs', 'Spa', 'Lap', 'Gru'];
+const DOWS_BY_LANG: Record<string, string[]> = {
+  lt: ['Sek', 'Pir', 'Ant', 'Tre', 'Ket', 'Pen', 'Šeš'],
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  ru: ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'],
+};
+const MONTHS_BY_LANG: Record<string, string[]> = {
+  lt: ['Sau', 'Vas', 'Kov', 'Bal', 'Geg', 'Bir', 'Lie', 'Rgp', 'Rgs', 'Spa', 'Lap', 'Gru'],
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  ru: ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'],
+};
+
+function nextDays(n: number, lang: string = 'lt'): DayCell[] {
+  const dows = DOWS_BY_LANG[lang] ?? DOWS_BY_LANG.lt;
+  const months = MONTHS_BY_LANG[lang] ?? MONTHS_BY_LANG.lt;
   const out: DayCell[] = [];
   const today = new Date();
   for (let i = 0; i < n; i++) {
@@ -604,15 +626,16 @@ function ContactForm({
   contact: { firstName: string; lastName: string; email: string; phone: string };
   onChange: (c: { firstName: string; lastName: string; email: string; phone: string }) => void;
 }) {
+  const t = useT();
   return (
     <div>
-      <div className="eyebrow mb-5">Jūsų kontaktai</div>
+      <div className="eyebrow mb-5">{t.booking.contact_label}</div>
       <div className="grid sm:grid-cols-2 gap-4 mb-4">
-        <Field label="Vardas" value={contact.firstName} onChange={(v) => onChange({ ...contact, firstName: v })} autoComplete="given-name" />
-        <Field label="Pavardė" value={contact.lastName} onChange={(v) => onChange({ ...contact, lastName: v })} autoComplete="family-name" />
+        <Field label={t.booking.field_first} value={contact.firstName} onChange={(v) => onChange({ ...contact, firstName: v })} autoComplete="given-name" />
+        <Field label={t.booking.field_last} value={contact.lastName} onChange={(v) => onChange({ ...contact, lastName: v })} autoComplete="family-name" />
       </div>
-      <Field label="El. paštas" type="email" value={contact.email} onChange={(v) => onChange({ ...contact, email: v })} autoComplete="email" />
-      <Field label="Telefonas" type="tel" value={contact.phone} onChange={(v) => onChange({ ...contact, phone: v })} autoComplete="tel" hint="Reikalingas tik priminimui." />
+      <Field label={t.booking.field_email} type="email" value={contact.email} onChange={(v) => onChange({ ...contact, email: v })} autoComplete="email" />
+      <Field label={t.booking.field_phone} type="tel" value={contact.phone} onChange={(v) => onChange({ ...contact, phone: v })} autoComplete="tel" hint={t.booking.phone_hint} />
     </div>
   );
 }
@@ -663,20 +686,22 @@ function Summary({
   date?: string;
   startTime?: string;
 }) {
+  const t = useT();
+  const { lang } = useLang();
   return (
     <div className="card p-7 sm:p-8">
       <div className="eyebrow mb-6 flex items-center gap-2">
         <span className="live-dot" />
-        Vizito suvestinė
+        {t.booking.summary_title}
       </div>
-      <Row label="Paslauga" value={service?.name} />
-      <Row label="Meistras" value={staffName} />
-      <Row label="Salonas" value={office?.name} />
-      <Row label="Adresas" value={office?.address} />
-      <Row label="Data" value={date ? formatDateLT(date) : undefined} />
-      <Row label="Laikas" value={startTime && service ? `${startTime} · ${service.duration} min` : undefined} mono />
+      <Row label={t.booking.sum_service} value={service?.name} />
+      <Row label={t.booking.sum_master} value={staffName} />
+      <Row label={t.booking.sum_salon} value={office?.name} />
+      <Row label={t.booking.sum_address} value={office?.address} />
+      <Row label={t.booking.sum_date} value={date ? formatDateForLang(date, lang) : undefined} />
+      <Row label={t.booking.sum_time} value={startTime && service ? `${startTime} · ${service.duration} ${t.ui.duration_min}` : undefined} mono />
       <div className="border-t border-border mt-6 pt-6 flex items-baseline justify-between">
-        <span className="eyebrow">Kaina</span>
+        <span className="eyebrow">{t.booking.sum_price}</span>
         <AnimatedPrice price={service?.price} />
       </div>
     </div>
@@ -720,9 +745,21 @@ function AnimatedPrice({ price }: { price?: number }) {
   );
 }
 
-function formatDateLT(iso: string): string {
-  const months = ['sausio', 'vasario', 'kovo', 'balandžio', 'gegužės', 'birželio', 'liepos', 'rugpjūčio', 'rugsėjo', 'spalio', 'lapkričio', 'gruodžio'];
-  const dows = ['sekmadienis', 'pirmadienis', 'antradienis', 'trečiadienis', 'ketvirtadienis', 'penktadienis', 'šeštadienis'];
+const FULL_MONTHS_BY_LANG: Record<string, string[]> = {
+  lt: ['sausio', 'vasario', 'kovo', 'balandžio', 'gegužės', 'birželio', 'liepos', 'rugpjūčio', 'rugsėjo', 'spalio', 'lapkričio', 'gruodžio'],
+  en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+  ru: ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'],
+};
+const FULL_DOWS_BY_LANG: Record<string, string[]> = {
+  lt: ['sekmadienis', 'pirmadienis', 'antradienis', 'trečiadienis', 'ketvirtadienis', 'penktadienis', 'šeštadienis'],
+  en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+  ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
+};
+
+function formatDateForLang(iso: string, lang: string = 'lt'): string {
+  const months = FULL_MONTHS_BY_LANG[lang] ?? FULL_MONTHS_BY_LANG.lt;
+  const dows = FULL_DOWS_BY_LANG[lang] ?? FULL_DOWS_BY_LANG.lt;
   const d = new Date(iso);
+  if (lang === 'en') return `${dows[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}`;
   return `${dows[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
 }

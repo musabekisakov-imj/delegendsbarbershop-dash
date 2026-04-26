@@ -5,8 +5,9 @@ import './globals.css';
 import { MainNav } from '@/components/shared/main-nav';
 import { SiteFooter } from '@/components/shared/site-footer';
 import { CookieBanner } from '@/components/shared/cookie-banner';
+import { Providers } from './providers';
+import { getServerLang, getServerT } from '@/lib/i18n';
 
-// Plus Jakarta Sans — exact pairing with the staff dashboard.
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin', 'latin-ext'],
   variable: '--font-jakarta',
@@ -14,31 +15,41 @@ const jakarta = Plus_Jakarta_Sans({
   weight: ['400', '500', '600', '700', '800'],
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: 'Kirpykla Vilnius',
-    template: '%s · Kirpykla Vilnius',
-  },
-  description: 'Du salonai Vilniuje. Patyrę meistrai. Užsisakykite vizitą per minutę.',
-  openGraph: {
-    type: 'website',
-    locale: 'lt_LT',
-    siteName: 'Kirpykla Vilnius',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = getServerT();
+  return {
+    title: { default: t.meta.title, template: `%s · ${t.meta.title}` },
+    description: t.meta.description,
+    openGraph: {
+      type: 'website',
+      locale: getServerLang() === 'en' ? 'en_US' : getServerLang() === 'ru' ? 'ru_RU' : 'lt_LT',
+      siteName: t.meta.title,
+    },
+  };
+}
 
 export const viewport: Viewport = {
-  themeColor: '#0a0a0a',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#fafaf6' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const lang = getServerLang();
   return (
-    <html lang="lt" className={`${jakarta.variable} ${GeistMono.variable}`}>
+    <html
+      lang={lang}
+      className={`${jakarta.variable} ${GeistMono.variable}`}
+      suppressHydrationWarning
+    >
       <body className="flex min-h-screen flex-col bg-background text-foreground">
-        <MainNav />
-        <main className="flex-1">{children}</main>
-        <SiteFooter />
-        <CookieBanner />
+        <Providers initialLang={lang}>
+          <MainNav />
+          <main className="flex-1">{children}</main>
+          <SiteFooter />
+          <CookieBanner />
+        </Providers>
       </body>
     </html>
   );
