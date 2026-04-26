@@ -3,53 +3,54 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ScissorsIcon } from '@heroicons/react/24/outline';
+import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 const LINKS = [
   { href: '/services', label: 'Paslaugos' },
   { href: '/team', label: 'Meistrai' },
   { href: '/locations', label: 'Salonai' },
-  { href: '/story', label: 'Apie' },
+  { href: '/story', label: 'Istorija' },
 ];
 
 export function MainNav() {
   const pathname = usePathname() ?? '/';
   const [scrolled, setScrolled] = useState(false);
+  // The home page has a full-bleed dark hero — nav stays transparent over it.
+  const [overHero, setOverHero] = useState(pathname === '/');
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
+    setOverHero(pathname === '/' && window.scrollY < window.innerHeight - 100);
+    const onScroll = () => {
+      setScrolled(window.scrollY > 8);
+      setOverHero(pathname === '/' && window.scrollY < window.innerHeight - 100);
+    };
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [pathname]);
 
   if (pathname.startsWith('/book')) return null;
 
   return (
     <header
       className={cn(
-        'sticky top-0 z-40 transition-all duration-200',
+        'fixed inset-x-0 top-0 z-40 transition-all duration-300',
         scrolled
-          ? 'bg-background/85 backdrop-blur-xl border-b border-border'
-          : 'bg-background border-b border-transparent',
+          ? 'bg-background/80 backdrop-blur-xl border-b border-border'
+          : 'bg-transparent border-b border-transparent',
       )}
     >
-      <div className="page flex h-14 items-center justify-between gap-6">
-        {/* Wordmark — dashboard-style icon + tight type */}
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <ScissorsIcon className="h-3.5 w-3.5" />
-          </span>
-          <span className="text-base font-bold tracking-tight text-foreground group-hover:text-primary transition-colors">
+      <div className="page flex h-16 items-center justify-between gap-6">
+        <Link href="/" className="group inline-flex items-baseline gap-2.5">
+          <span className="text-base font-medium tracking-tight text-foreground group-hover:text-primary transition-colors">
             Kirpykla
           </span>
-          <span className="hidden md:inline text-[11px] font-medium text-muted-foreground tabular">
-            · Vilnius
+          <span className="hidden sm:inline text-[10px] uppercase tracking-[0.18em] text-foreground/50 tabular font-mono">
+            Vilnius · MMXXVI
           </span>
         </Link>
 
-        {/* Center nav — text-only links with underline-active state */}
         <nav className="hidden md:flex items-center gap-1">
           {LINKS.map((l) => {
             const active = pathname === l.href || pathname.startsWith(`${l.href}/`);
@@ -58,23 +59,30 @@ export function MainNav() {
                 key={l.href}
                 href={l.href}
                 className={cn(
-                  'relative px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
-                  active ? 'text-foreground bg-accent' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                  'relative px-3 py-1.5 text-sm font-medium transition-colors',
+                  active
+                    ? 'text-primary'
+                    : 'text-foreground/70 hover:text-foreground',
                 )}
               >
                 {l.label}
+                {active && (
+                  <span className="absolute -bottom-0.5 left-3 right-3 h-px bg-primary" />
+                )}
               </Link>
             );
           })}
         </nav>
 
         <div className="flex items-center gap-3">
-          <span className="hidden lg:inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-700">
-            <span className="live-dot" />
-            Atviri dabar
-          </span>
-          <Link href="/book" className="btn-primary text-xs px-4 py-2">
-            Susitarti laiką
+          <Link
+            href="/book"
+            className="inline-flex items-center bg-primary text-primary-foreground pl-4 py-0 pr-0 text-xs font-medium hover:bg-foreground hover:text-background transition-colors duration-200"
+          >
+            <span>Susitarti</span>
+            <span className="border-l border-black/30 p-2.5 ml-4 inline-flex items-center">
+              <ArrowRight className="h-3.5 w-3.5" />
+            </span>
           </Link>
         </div>
       </div>
