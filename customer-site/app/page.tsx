@@ -6,15 +6,17 @@ import { publicApi } from '@/lib/api';
 import { gradientFor, serviceGradientFor } from '@/lib/tokens';
 import { PHOTOS, GRADIENTS } from '@/lib/photos';
 import { formatLtPhone, telHref } from '@/lib/lt';
-import { getServerT } from '@/lib/i18n';
+import { getServerT, getServerLang } from '@/lib/i18n';
+import { translateServiceName, translateServiceDescription } from '@/lib/translate-service';
 import type { Service, Office, PublicStaff } from '@/lib/types';
-import type { Translations } from '@/i18n';
+import type { Translations, Lang } from '@/i18n';
 import { RevealOnScroll, StaggerChildren, StaggerChild } from '@/components/home/home-anim';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   const t = getServerT();
+  const lang = getServerLang();
   const [services, offices, staff] = await Promise.all([
     publicApi.services().catch(() => [] as Service[]),
     publicApi.offices().catch(() => [] as Office[]),
@@ -42,7 +44,7 @@ export default async function HomePage() {
         officesCount={offices.length || 2}
       />
       <Manifesto t={t} />
-      {featuredServices.length > 0 && <ServicesPreview t={t} services={featuredServices} />}
+      {featuredServices.length > 0 && <ServicesPreview t={t} lang={lang} services={featuredServices} />}
       <TeamPreview t={t} staff={staff} />
       <LocationsPreview t={t} officeA={officeA} officeB={officeB} />
       <LiveBookingStrip t={t} slots={todaySlots} sampleStaff={sampleStaff} />
@@ -87,7 +89,7 @@ function Manifesto({ t }: { t: Translations }) {
 
 // ─── Services preview ──────────────────────────────────────────
 
-function ServicesPreview({ t, services }: { t: Translations; services: Service[] }) {
+function ServicesPreview({ t, lang, services }: { t: Translations; lang: Lang; services: Service[] }) {
   return (
     <section className="border-t border-border">
       <div className="page py-24 sm:py-32">
@@ -110,10 +112,11 @@ function ServicesPreview({ t, services }: { t: Translations; services: Service[]
         </RevealOnScroll>
 
         <StaggerChildren>
+          {/* gap-px on bg-border container = 1px hairlines between cards */}
           <div className="grid gap-px sm:grid-cols-3 bg-border">
             {services.map((s) => (
               <StaggerChild key={s.id}>
-                <ServiceCard service={s} bookLabel={t.ui.select_arrow} durationUnit={t.ui.duration_min} />
+                <ServiceCard service={s} lang={lang} bookLabel={t.ui.select_arrow} durationUnit={t.ui.duration_min} />
               </StaggerChild>
             ))}
           </div>
@@ -123,23 +126,38 @@ function ServicesPreview({ t, services }: { t: Translations; services: Service[]
   );
 }
 
-function ServiceCard({ service, bookLabel, durationUnit }: { service: Service; bookLabel: string; durationUnit: string }) {
+function ServiceCard({
+  service,
+  lang,
+  bookLabel,
+  durationUnit,
+}: {
+  service: Service;
+  lang: Lang;
+  bookLabel: string;
+  durationUnit: string;
+}) {
+  const name = translateServiceName(service.name, lang);
+  const description = translateServiceDescription(service.description, lang);
   return (
-    <Link href="/book" className="group flex flex-col bg-background hover:bg-surface transition-colors duration-300">
+    <Link
+      href="/book"
+      className="group flex flex-col h-full bg-background hover:bg-surface transition-colors duration-300"
+    >
       <div className={`aspect-[4/3] bg-gradient-to-br ${serviceGradientFor(service.id)} relative`}>
         <div className="absolute top-4 left-4 inline-flex items-center px-2 py-1 bg-black/40 backdrop-blur text-white text-[10px] font-mono uppercase tracking-[0.18em]">
           {service.duration} {durationUnit}
         </div>
-        <div className="absolute bottom-4 right-4 text-white text-3xl font-bold tabular drop-shadow">
+        <div className="absolute bottom-4 right-4 text-white text-3xl font-bold tabular drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
           €{service.price}
         </div>
       </div>
       <div className="p-6 flex flex-col flex-1">
         <h3 className="text-2xl font-medium tracking-tight group-hover:text-primary transition-colors">
-          {service.name}
+          {name}
         </h3>
-        {service.description && (
-          <p className="mt-2 text-sm text-foreground/60 leading-relaxed">{service.description}</p>
+        {description && (
+          <p className="mt-2 text-sm text-foreground/60 leading-relaxed">{description}</p>
         )}
         <div className="mt-auto pt-6 inline-flex items-center gap-2 text-xs font-mono uppercase tracking-[0.18em] text-foreground/60 group-hover:text-primary transition-colors">
           {bookLabel}

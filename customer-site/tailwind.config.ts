@@ -8,6 +8,16 @@ import type { Config } from 'tailwindcss';
 const config: Config = {
   darkMode: 'class',
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
+  // Tailwind's JIT scanner can't see dynamically interpolated class names
+  // (e.g. `${serviceGradientFor(id)}` → `from-rose-400 via-fuchsia-500 to-purple-600`).
+  // Without safelisting, those gradient color stops get purged and the
+  // service hero blocks render as invisible boxes.
+  safelist: [
+    {
+      pattern: /^(from|via|to)-(rose|fuchsia|purple|blue|indigo|violet|amber|orange|sky|emerald|teal|cyan|lime|pink|red)-(400|500|600)$/,
+    },
+    'bg-gradient-to-br',
+  ],
   theme: {
     extend: {
       colors: {
@@ -50,9 +60,12 @@ const config: Config = {
           DEFAULT: 'oklch(0.62 0.21 25 / <alpha-value>)',
           foreground: 'oklch(0.96 0 0 / <alpha-value>)',
         },
-        border: 'rgb(var(--border-rgb) / <alpha-value>)',
-        'border-strong': 'rgb(var(--border-strong-rgb) / <alpha-value>)',
-        input: 'rgb(var(--border-rgb) / <alpha-value>)',
+        // Hairline tokens use fixed alpha — `<alpha-value>` placeholder
+        // defaults to 1.0 without an opacity modifier, which would render
+        // these as solid black/white slabs instead of subtle hairlines.
+        border: 'rgb(var(--border-rgb) / 0.10)',
+        'border-strong': 'rgb(var(--border-strong-rgb) / 0.20)',
+        input: 'rgb(var(--border-rgb) / 0.06)',
         ring: 'oklch(var(--primary) / <alpha-value>)',
       },
       fontFamily: {

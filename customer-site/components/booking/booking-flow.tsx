@@ -9,6 +9,11 @@ import { publicApi, ApiError } from '@/lib/api';
 import type { Office, Service, PublicStaff } from '@/lib/types';
 import { cn } from '@/lib/cn';
 import { useT, useLang } from '@/lib/use-t';
+import {
+  translateServiceName,
+  translateServiceDescription,
+  translateCategory,
+} from '@/lib/translate-service';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -347,6 +352,10 @@ function ServiceCard({
   durationUnit: string;
   onSelect: () => void;
 }) {
+  const { lang } = useLang();
+  const name = translateServiceName(service.name, lang);
+  const description = translateServiceDescription(service.description, lang);
+  const category = service.category?.name ? translateCategory(service.category.name, lang) : '—';
   return (
     <button
       type="button"
@@ -363,7 +372,7 @@ function ServiceCard({
             selected ? 'text-background/60' : 'text-muted-foreground',
           )}
         >
-          {service.category?.name ?? '—'}
+          {category}
         </span>
         <span
           className={cn(
@@ -381,16 +390,16 @@ function ServiceCard({
           selected ? 'text-background' : 'text-foreground',
         )}
       >
-        {service.name}
+        {name}
       </h3>
-      {service.description && (
+      {description && (
         <p
           className={cn(
             'text-sm mb-6 line-clamp-2',
             selected ? 'text-background/70' : 'text-muted-foreground',
           )}
         >
-          {service.description}
+          {description}
         </p>
       )}
       <div
@@ -694,7 +703,7 @@ function Summary({
         <span className="live-dot" />
         {t.booking.summary_title}
       </div>
-      <Row label={t.booking.sum_service} value={service?.name} />
+      <Row label={t.booking.sum_service} value={service ? translateServiceName(service.name, lang) : undefined} />
       <Row label={t.booking.sum_master} value={staffName} />
       <Row label={t.booking.sum_salon} value={office?.name} />
       <Row label={t.booking.sum_address} value={office?.address} />
