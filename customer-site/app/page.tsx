@@ -5,6 +5,7 @@ import { Photo } from '@/components/shared/photo';
 import { publicApi } from '@/lib/api';
 import { gradientFor, serviceGradientFor } from '@/lib/tokens';
 import { PHOTOS, GRADIENTS } from '@/lib/photos';
+import { formatLtPhone, telHref } from '@/lib/lt';
 import type { Service, Office, PublicStaff } from '@/lib/types';
 import { RevealOnScroll, StaggerChildren, StaggerChild } from '@/components/home/home-anim';
 
@@ -66,11 +67,12 @@ function Manifesto() {
             <div className="lg:col-span-5 lg:col-start-8 self-end">
               <p className="text-foreground/70 text-lg leading-relaxed">
                 Mes nedirbame su devyniomis paslaugomis ir trimis franšizėmis.
-                Du salonai, keturi meistrai, vienas standartas — kruopštumas.
+                Du salonai Vilniuje, keturi meistrai, vienas standartas — kruopštumas.
               </p>
               <p className="mt-4 text-foreground/70 text-lg leading-relaxed">
                 Vidutinis vizitas — keturiasdešimt penkios minutės. Per tą laiką
                 tilps ir kirpimas, ir pokalbis, ir, jei reikia, tylos minutė.
+                Be reklamų, be skambučių.
               </p>
               <Link
                 href="/story"
@@ -262,8 +264,8 @@ function LocationsPreview({ officeA, officeB }: { officeA: Office; officeB: Offi
                     {office.address}
                   </div>
                   {office.phone && (
-                    <a href={`tel:${office.phone}`} className="mt-2 inline-flex items-center gap-2 text-sm tabular text-foreground hover:text-primary transition-colors">
-                      {office.phone}
+                    <a href={telHref(office.phone)} className="mt-2 inline-flex items-center gap-2 text-sm tabular text-foreground hover:text-primary transition-colors">
+                      {formatLtPhone(office.phone)}
                     </a>
                   )}
                   <div className="mt-6 pt-6 border-t border-border grid grid-cols-3 gap-3 text-xs">
@@ -360,19 +362,22 @@ function ClosingCTA() {
           </h2>
           <p className="mt-10 text-foreground/60 max-w-xl mx-auto text-lg leading-relaxed">
             Pasirinkite paslaugą, meistrą ir laiką. Patvirtinimo el. laišką
-            gausite per minutę.
+            gausite per minutę. Be išankstinio mokėjimo.
           </p>
           <div className="mt-12 inline-flex items-center justify-center">
             <Link
               href="/book"
               className="inline-flex items-center bg-primary text-primary-foreground pl-7 py-0 pr-0 text-base font-medium hover:bg-foreground hover:text-background transition-colors duration-200"
             >
-              <span>Pradėti rezervaciją</span>
+              <span>Užsakyti vizitą</span>
               <span className="border-l border-black/30 p-4 ml-7 inline-flex items-center">
                 <ArrowRight className="h-5 w-5" />
               </span>
             </Link>
           </div>
+          <p className="mt-6 text-[10px] uppercase tracking-[0.18em] text-foreground/40 font-mono">
+            Visos kainos su PVM · Mokėti vietoje
+          </p>
         </RevealOnScroll>
       </div>
     </section>

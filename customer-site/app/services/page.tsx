@@ -40,9 +40,15 @@ export default async function ServicesPage({
         {/* Filter bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-12">
           <OfficeFilter offices={offices} active={searchParams.office} />
-          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground tabular">
-            <ClockIcon className="h-3.5 w-3.5" />
-            Atnaujinta dabar · {services.length} paslaugos
+          <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 tabular">
+              <ClockIcon className="h-3.5 w-3.5" />
+              {services.length} paslaugos
+            </span>
+            <span className="text-foreground/30">·</span>
+            <span className="uppercase tracking-[0.18em] text-[10px] font-mono">
+              Visos kainos su PVM
+            </span>
           </div>
         </div>
 

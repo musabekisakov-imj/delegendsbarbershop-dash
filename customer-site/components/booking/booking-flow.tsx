@@ -156,7 +156,7 @@ export function BookingFlow({ offices, services, staff }: Props) {
         <div ref={refStaff}>
           <Section
             eyebrow="02 / 04"
-            title="Pas kurį meistrą?"
+            title="Pas kurį meistrą norėtumėte?"
             disabled={!state.serviceId}
             disabledLabel="Pirma pasirinkite paslaugą"
           >
@@ -204,7 +204,7 @@ export function BookingFlow({ offices, services, staff }: Props) {
         <div ref={refContact} id="summary">
           <Section
             eyebrow="04 / 04"
-            title="Beveik baigta."
+            title="Patvirtinkite vizitą."
             accent="Lauksime jūsų."
             disabled={!state.startTime}
             disabledLabel="Pirma pasirinkite laiką"
@@ -234,7 +234,7 @@ export function BookingFlow({ offices, services, staff }: Props) {
                   onClick={handleSubmit}
                   className="btn-primary-lg mt-6 w-full"
                 >
-                  {submitting ? 'Užsakoma…' : 'Patvirtinti vizitą'}
+                  {submitting ? 'Užsakoma…' : 'Užsakyti vizitą'}
                   {!submitting && <ArrowUpRightIcon className="h-4 w-4" />}
                 </button>
                 <p className="mt-3 text-[10px] uppercase tracking-eyebrow text-muted-foreground/70 text-center">

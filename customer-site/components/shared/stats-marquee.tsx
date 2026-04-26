@@ -51,11 +51,11 @@ export function defaultStats({
   officesCount: number;
 }): Stat[] {
   return [
-    { value: String(officesCount).padStart(2, '0'), label: 'Salonai · Vilnius' },
-    { value: String(staffCount).padStart(2, '0'), label: 'Meistrai · 5+ metų patirties' },
-    { value: String(servicesCount).padStart(2, '0'), label: 'Paslaugos · Kainoraštis' },
-    { value: '6/7', label: 'Dienų atviri' },
-    { value: 'MMXXVI', label: 'Įsteigta · Vilnius' },
-    { value: '60s', label: 'Rezervacija online' },
+    { value: String(officesCount).padStart(2, '0'), label: 'Salonai · Senamiestis ir Naujamiestis' },
+    { value: String(staffCount).padStart(2, '0'), label: 'Meistrai · vyrų kirpyklos profesionalai' },
+    { value: String(servicesCount).padStart(2, '0'), label: 'Paslaugos · su PVM' },
+    { value: '6/7', label: 'Dienų · pirm—šeš' },
+    { value: 'EST. 2026', label: 'Vilnius · neseniai atidaryta' },
+    { value: '60 SEK.', label: 'Rezervacija online' },
   ];
 }

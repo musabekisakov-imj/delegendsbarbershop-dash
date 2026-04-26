@@ -4,6 +4,7 @@ import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 import { MainNav } from '@/components/shared/main-nav';
 import { SiteFooter } from '@/components/shared/site-footer';
+import { CookieBanner } from '@/components/shared/cookie-banner';
 
 // Plus Jakarta Sans — exact pairing with the staff dashboard.
 const jakarta = Plus_Jakarta_Sans({
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MainNav />
         <main className="flex-1">{children}</main>
         <SiteFooter />
+        <CookieBanner />
       </body>
     </html>
   );

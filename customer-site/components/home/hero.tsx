@@ -65,11 +65,11 @@ export function Hero({ staff, servicesCount, officesCount }: Props) {
           <div className="w-full space-y-6 sm:w-1/2">
             <h1 className="font-medium text-4xl text-foreground leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
               <RevealLine delay={0.15}>
-                Tikri <span className="text-primary">KIRPIMAI</span> tikram
+                Vyriška <span className="text-primary">KIRPYKLA</span>,
               </RevealLine>
               <RevealLine delay={0.25}>
-                <span className="text-primary">VYRUI</span>
-                <span className="text-foreground"> — Vilniuje, kasdien.</span>
+                du <span className="text-primary">SALONAI</span>
+                <span className="text-foreground"> Vilniuje.</span>
               </RevealLine>
             </h1>
 
@@ -79,7 +79,7 @@ export function Hero({ staff, servicesCount, officesCount }: Props) {
               transition={{ duration: 0.7, ease: EASE, delay: 0.55 }}
             >
               <Link href="/book" className="inline-flex items-center bg-primary text-primary-foreground pl-5 py-0 pr-0 text-base font-medium hover:bg-foreground hover:text-background transition-colors duration-200">
-                <span>Susitarti laiką</span>
+                <span>Užsakyti vizitą</span>
                 <span className="border-l border-black/30 p-3 ml-5 inline-flex items-center">
                   <ArrowRight className="h-5 w-5" />
                 </span>
@@ -94,8 +94,8 @@ export function Hero({ staff, servicesCount, officesCount }: Props) {
             className="w-full sm:w-1/2"
           >
             <p className="text-base text-primary italic sm:text-right md:text-2xl leading-relaxed">
-              Du salonai, keturi meistrai, vienas standartas. Pasirinkite paslaugą,
-              meistrą ir laiką — patvirtinimo el. laišką gausite per minutę.
+              Senamiestyje ir Naujamiestyje. Užsisakykite vizitą per minutę —
+              patvirtinimą gausite el. paštu, be išankstinio mokėjimo.
             </p>
           </motion.div>
         </div>

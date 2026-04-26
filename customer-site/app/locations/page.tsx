@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Photo } from '@/components/shared/photo';
 import { publicApi } from '@/lib/api';
 import { PHOTOS, GRADIENTS } from '@/lib/photos';
+import { formatLtPhone, telHref, mapsHref } from '@/lib/lt';
 import type { Office } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -73,15 +74,25 @@ function LocationBlock({ office, index }: { office: Office; index: number }) {
           <h2 className="font-bold tracking-tight text-5xl sm:text-6xl tracking-tight mb-6">{office.name}</h2>
 
           <div className="space-y-3 mb-10">
-            <div className="flex items-start gap-3 text-foreground">
-              <MapPinIcon className="h-4 w-4 mt-1 text-muted-foreground/70 shrink-0" />
-              <span className="text-sm leading-relaxed">{office.address}</span>
-            </div>
+            <a
+              href={mapsHref(office.address)}
+              target="_blank"
+              rel="noopener"
+              className="flex items-start gap-3 text-foreground hover:text-primary transition-colors group"
+            >
+              <MapPinIcon className="h-4 w-4 mt-1 text-muted-foreground/70 group-hover:text-primary shrink-0 transition-colors" />
+              <span className="text-sm leading-relaxed">
+                {office.address}
+                <span className="block text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 mt-1 font-mono">
+                  Atidaryti žemėlapyje →
+                </span>
+              </span>
+            </a>
             {office.phone && (
               <div className="flex items-center gap-3">
                 <PhoneIcon className="h-4 w-4 text-muted-foreground/70 shrink-0" />
-                <a href={`tel:${office.phone}`} className="text-sm tabular text-foreground hover:text-primary transition-colors">
-                  {office.phone}
+                <a href={telHref(office.phone)} className="text-sm tabular text-foreground hover:text-primary transition-colors">
+                  {formatLtPhone(office.phone)}
                 </a>
               </div>
             )}

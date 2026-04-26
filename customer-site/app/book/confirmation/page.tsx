@@ -63,7 +63,7 @@ export default function ConfirmationPage() {
             <CheckIcon className="h-7 w-7" />
           </motion.div>
 
-          <div className="eyebrow mb-6">Patvirtinta · Iki greito</div>
+          <div className="eyebrow mb-6">Vizitas patvirtintas · Iki susitikimo</div>
 
           <h1 className="font-bold tracking-tight text-5xl sm:text-7xl lg:text-8xl tracking-tight mb-6 leading-[0.92]">
             Lauksime jūsų{' '}
@@ -73,8 +73,9 @@ export default function ConfirmationPage() {
           </h1>
 
           <p className="mt-8 text-muted-foreground text-lg max-w-xl leading-relaxed">
-            Patvirtinimo el. laišką netrukus išsiuntėme. Jei reikia atšaukti
-            ar perkelti vizitą — paskambinkite į saloną.
+            Patvirtinimo el. laišką ką tik išsiuntėme. Jei reikia atšaukti
+            arba perkelti vizitą — paskambinkite į saloną.
+            Mokėti galėsite vietoje grynaisiais arba kortele.
           </p>
 
           <motion.div
