@@ -17,12 +17,14 @@ interface Props {
   staff: PublicStaff[];
   /** Limit to the first N staff (default 5 to match the source pattern). */
   max?: number;
-  /** Override default avatar size. Default size-13 like the pattern. */
+  /** Override default avatar size. Default h-12 w-12 (48px) — note: `size-13`
+   *  from the source pattern doesn't exist on Tailwind's default spacing
+   *  scale, so we use h-/w- directly to avoid the avatars collapsing to 0. */
   size?: string;
   className?: string;
 }
 
-export function AvatarStack({ staff, max = 5, size = 'size-13', className }: Props) {
+export function AvatarStack({ staff, max = 5, size = 'h-12 w-12', className }: Props) {
   const visible = staff.slice(0, max);
 
   return (

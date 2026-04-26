@@ -38,12 +38,16 @@ export function Marquee({
         vertical ? 'flex-col' : 'flex-row',
         className,
       )}
+      // Outer-flex gap so the seam between repeated rows shows the same
+      // spacing as siblings within a row. Without this, the last item of
+      // row 1 visually glues into the first item of row 2.
+      style={{ gap: 'var(--gap)' }}
     >
       {Array.from({ length: repeat }).map((_, i) => (
         <div
           key={i}
           className={cn(
-            'flex shrink-0 justify-around',
+            'flex shrink-0',
             vertical ? 'animate-marquee-vertical flex-col' : 'animate-marquee flex-row',
             pauseOnHover && 'group-hover:[animation-play-state:paused]',
             reverse && '[animation-direction:reverse]',
