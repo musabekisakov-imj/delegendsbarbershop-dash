@@ -15,6 +15,7 @@ export interface Client {
   phone: string;
   notes: string;
   gender?: Gender;
+  avatarUrl?: string;
   totalVisits: number;
   lastVisitAt: string | null;
   officeIds: string[];

@@ -4,7 +4,6 @@ import { appointmentsApi, clientsApi, staffApi, accountsApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
 import { useAuthStore } from '../store/auth-store';
 import { SectionHeading } from '../components/shared/section-heading';
-import { WelcomeCard } from '../components/shared/welcome-card';
 import { Button } from '../components/ui/button';
 import {
   CalendarIcon,
@@ -198,9 +197,6 @@ export function OverviewPage() {
           </Button>
         </div>
       </div>
-
-      {/* Welcome / setup checklist — auto-hides when dismissed or all 4 steps done */}
-      <WelcomeCard />
 
       {/* ─── Hero stat + day rail ──────────────────────────
           ONE number at display size ("booked today") + the breakdown

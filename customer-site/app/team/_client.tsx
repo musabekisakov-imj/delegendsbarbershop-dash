@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowUpRightIcon } from '@heroicons/react/24/outline';
 import type { PublicStaff } from '@/lib/types';
-import { GRADIENTS } from '@/lib/photos';
+import { GRADIENTS, PHOTOS } from '@/lib/photos';
+import { useT } from '@/lib/use-t';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -12,10 +13,11 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 const FALLBACKS = [GRADIENTS.warm, GRADIENTS.amber, GRADIENTS.earth, GRADIENTS.cool];
 
 export function TeamGrid({ staff }: { staff: PublicStaff[] }) {
+  const t = useT();
   if (staff.length === 0) {
     return (
       <div className="py-24 text-center">
-        <p className="text-muted-foreground text-sm">Komandos sąrašas šiuo metu nepasiekiamas.</p>
+        <p className="text-muted-foreground text-sm">{t.confirm.empty_title}</p>
       </div>
     );
   }
@@ -43,7 +45,9 @@ function StaffCard({
   index: number;
   fallback: string;
 }) {
+  const t = useT();
   const initials = `${staff.firstName[0]}${staff.lastName[0]}`.toUpperCase();
+  const portrait = staff.avatarUrl ?? PHOTOS.staffByFirstName[staff.firstName] ?? null;
 
   return (
     <motion.div
@@ -53,17 +57,19 @@ function StaffCard({
       }}
     >
       <Link href="/book" className="card card-hover overflow-hidden flex flex-col group h-full">
-        {/* Portrait area — uses gradient fallback (we don't generate facial photos) */}
+        {/* Portrait area — real photo when available, gradient + initials fallback */}
         <div
           className="aspect-[4/5] flex items-center justify-center relative overflow-hidden"
           style={{
-            background: staff.avatarUrl ? `url(${staff.avatarUrl}) center/cover` : fallback,
+            background: portrait ? `url("${portrait}") center/cover` : fallback,
           }}
         >
-          {!staff.avatarUrl && (
-            <span className="font-bold tracking-tight text-7xl text-background/40 tabular">{initials}</span>
+          {!portrait && (
+            <span className="font-bold tracking-tight text-7xl text-foreground/35 tabular">{initials}</span>
           )}
-          <div className="absolute top-4 left-4 text-[10px] uppercase tracking-eyebrow text-background/60 tabular">
+          {/* Subtle bottom veil so name + chip read on bright photos */}
+          <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-background/85 to-transparent pointer-events-none" />
+          <div className="absolute top-4 left-4 text-[10px] uppercase tracking-eyebrow text-white/85 bg-black/35 backdrop-blur-sm px-2 py-1 rounded tabular">
             № {String(index + 1).padStart(2, '0')}
           </div>
         </div>
@@ -75,7 +81,7 @@ function StaffCard({
           <div className="eyebrow mt-1 mb-auto">{staff.lastName}</div>
 
           <div className="mt-6 pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-            <span className="tabular">5+ metų patirtis</span>
+            <span className="tabular">{t.team_preview.experience}</span>
             <ArrowUpRightIcon className="h-3.5 w-3.5 group-hover:rotate-45 group-hover:text-foreground transition-all duration-300" />
           </div>
         </div>

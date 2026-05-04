@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workshop — kirpykla.lt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FFFFFF;
+    --ink: #000000;
+    --ink-soft: #555555;
+    --accent: #FF3B0F;
+    --rule: #000000;
+    --grid: #00000010;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    font-feature-settings: 'tnum';
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .display { font-family: 'Inter', sans-serif; font-weight: 700; letter-spacing: -0.04em; line-height: 0.92; text-transform: uppercase; }
+  .eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+  .page { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+  /* Grid background */
+  .grid-bg {
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 80px 80px;
+  }
+
+  /* Nav */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--bg);
+    border-bottom: 2px solid var(--ink);
+  }
+  .nav-row { display: grid; grid-template-columns: auto 1fr auto; gap: 32px; align-items: center; padding: 14px 0; }
+  .logo { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+  .logo .accent { color: var(--accent); }
+  .nav-links { display: flex; gap: 28px; list-style: none; justify-content: center; }
+  .nav-links a { color: var(--ink); text-decoration: none; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+  .nav-links a:hover { color: var(--accent); }
+  .nav-right { display: flex; align-items: center; gap: 16px; }
+  .lang { display: flex; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; color: var(--ink-soft); letter-spacing: 0.04em; }
+  .lang .active { color: var(--ink); border-bottom: 1px solid var(--ink); }
+  .btn-book {
+    background: var(--ink); color: var(--bg);
+    padding: 10px 20px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+    text-decoration: none; letter-spacing: 0.06em; text-transform: uppercase;
+    border: 2px solid var(--ink);
+  }
+  .btn-book:hover { background: var(--accent); border-color: var(--accent); }
+
+  /* Hero */
+  .hero {
+    border-bottom: 2px solid var(--ink);
+    padding: 0;
+    position: relative;
+  }
+  .hero-grid-display {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    border-bottom: 1px solid var(--ink);
+  }
+  .hero-cell {
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    border-right: 1px solid var(--ink);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .hero-cell:last-child { border-right: none; }
+  .hero-cell strong { color: var(--ink); font-weight: 600; }
+
+  .hero-main { padding: 80px 0 60px; position: relative; }
+  .hero h1 { font-size: clamp(64px, 14vw, 220px); }
+  .hero h1 .accent { color: var(--accent); }
+  .hero h1 .underline { border-bottom: 8px solid var(--accent); display: inline-block; padding-bottom: 4px; line-height: 0.85; }
+  .hero-byline {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 24px;
+    border-top: 1px solid var(--ink);
+    padding-top: 24px;
+    margin-top: 60px;
+  }
+  .hero-byline-block { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .hero-byline-block .lbl { color: var(--ink-soft); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .hero-byline-block .val { color: var(--ink); font-weight: 500; }
+  .hero-byline p { font-size: 16px; line-height: 1.5; max-width: 480px; }
+
+  /* Tools strip */
+  .tools-strip {
+    border-bottom: 2px solid var(--ink);
+    background: var(--ink);
+    color: var(--bg);
+    padding: 14px 0;
+    overflow: hidden;
+  }
+  .tools-track {
+    display: flex; gap: 32px; white-space: nowrap;
+    animation: scroll-tools 50s linear infinite;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .tools-track .accent { color: var(--accent); }
+  @keyframes scroll-tools { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* Spec / About */
+  .spec { padding: 100px 0; border-bottom: 2px solid var(--ink); }
+  .spec-grid {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 60px;
+    align-items: start;
+  }
+  .spec-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-top: 1px solid var(--ink);
+    padding-top: 12px;
+  }
+  .spec-content h2 {
+    font-size: clamp(36px, 5vw, 64px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    margin-bottom: 32px;
+    border-top: 1px solid var(--ink);
+    padding-top: 12px;
+  }
+  .spec-content h2 .accent {
+    background: var(--accent); color: var(--bg);
+    padding: 0 8px;
+  }
+  .spec-content p { font-size: 18px; line-height: 1.55; max-width: 720px; color: var(--ink-soft); }
+  .spec-content p strong { color: var(--ink); font-weight: 500; }
+  .spec-content p + p { margin-top: 16px; }
+
+  /* Atmosphere strip */
+  .atmosphere { padding: 80px 0; border-bottom: 2px solid var(--ink); }
+  .atmo-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 40px; border: 2px solid var(--ink); }
+  .atmo-tile { aspect-ratio: 4/5; background-size: cover; background-position: center; position: relative; overflow: hidden; border-right: 2px solid var(--ink); filter: grayscale(0.6) contrast(1.1); }
+  .atmo-tile:last-child { border-right: none; }
+  .atmo-tile::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 65%, rgba(0,0,0,0.65)); }
+  .atmo-tile .lbl { position: absolute; bottom: 12px; left: 12px; right: 12px; color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; z-index: 2; }
+  .atmo-tile .idx { position: absolute; top: 8px; left: 8px; color: var(--bg); background: var(--accent); padding: 3px 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; z-index: 2; }
+  @media (max-width: 900px) {
+    .atmo-row { grid-template-columns: repeat(2, 1fr); }
+    .atmo-tile:nth-child(2) { border-right: none; }
+    .atmo-tile:nth-child(3), .atmo-tile:nth-child(4) { border-top: 2px solid var(--ink); }
+  }
+
+  /* Services as table */
+  .services { padding: 80px 0; border-bottom: 2px solid var(--ink); }
+  .section-head { display: flex; justify-content: space-between; align-items: end; margin-bottom: 48px; gap: 32px; }
+  .section-head h2 { font-size: clamp(36px, 5vw, 72px); font-weight: 700; letter-spacing: -0.03em; }
+  .services-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 2px solid var(--ink);
+    border-bottom: 2px solid var(--ink);
+  }
+  .services-table th {
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: var(--ink);
+    color: var(--bg);
+  }
+  .services-table td {
+    padding: 24px 16px;
+    border-bottom: 1px solid var(--ink);
+    vertical-align: top;
+  }
+  .services-table tr:last-child td { border-bottom: none; }
+  .services-table tr:hover td { background: var(--accent); color: var(--bg); }
+  .services-table tr:hover .price { color: var(--bg); }
+  .services-table .num { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-soft); width: 60px; }
+  .services-table .name { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; width: 28%; }
+  .services-table .desc { font-size: 14px; color: var(--ink-soft); line-height: 1.5; }
+  .services-table .meta { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-soft); white-space: nowrap; width: 80px; }
+  .services-table .price { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 600; text-align: right; width: 80px; color: var(--accent); }
+
+  /* Team */
+  .team { padding: 100px 0; border-bottom: 2px solid var(--ink); }
+  .team-grid { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--ink); border-left: 1px solid var(--ink); }
+  .barber { padding: 24px; border-right: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+  .barber-photo {
+    aspect-ratio: 1;
+    background-color: var(--ink);
+    background-size: cover;
+    background-position: center 25%;
+    margin-bottom: 16px;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid var(--ink);
+    filter: grayscale(0.85) contrast(1.1);
+  }
+  .barber-photo::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 70%, rgba(0,0,0,0.4));
+  }
+  .barber-photo .num {
+    position: absolute; top: 8px; left: 8px;
+    color: var(--bg); background: var(--accent);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    padding: 3px 8px; letter-spacing: 0.06em; text-transform: uppercase;
+    font-weight: 600; z-index: 2;
+  }
+  .barber-name { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .barber-role { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-soft); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .barber-tag {
+    display: inline-block; margin-top: 12px;
+    background: var(--ink); color: var(--bg);
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    padding: 3px 8px; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+
+  /* Locations */
+  .locations { padding: 100px 0; border-bottom: 2px solid var(--ink); }
+  .loc-grid { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 48px; border: 2px solid var(--ink); }
+  .loc-card { padding: 36px; border-right: 1px solid var(--ink); }
+  .loc-card:last-child { border-right: none; }
+  .loc-name { font-size: 48px; font-weight: 700; letter-spacing: -0.03em; }
+  .loc-tag { display: inline-block; background: var(--accent); color: var(--bg); font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 4px 10px; margin-top: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .loc-addr { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-soft); margin-top: 24px; line-height: 1.6; text-transform: uppercase; letter-spacing: 0.04em; }
+  .loc-hours { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--ink); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .loc-hours .day { color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+  .loc-hours .time { color: var(--ink); font-weight: 600; }
+
+  /* CTA */
+  .cta { padding: 140px 0; border-bottom: 2px solid var(--ink); text-align: center; }
+  .cta h2 { font-size: clamp(56px, 9vw, 144px); font-weight: 800; letter-spacing: -0.04em; line-height: 0.92; max-width: 1100px; margin: 0 auto; text-transform: uppercase; }
+  .cta h2 .accent { background: var(--accent); color: var(--bg); padding: 0 12px; }
+  .cta p { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-soft); margin-top: 32px; max-width: 600px; margin-left: auto; margin-right: auto; text-transform: uppercase; letter-spacing: 0.06em; }
+  .cta-btn {
+    display: inline-block; margin-top: 48px;
+    background: var(--accent); color: var(--bg);
+    padding: 24px 56px; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700;
+    text-decoration: none; letter-spacing: 0.12em; text-transform: uppercase;
+    border: 2px solid var(--ink);
+  }
+  .cta-btn:hover { background: var(--ink); }
+
+  /* Footer */
+  footer { padding: 32px 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; }
+  .footer-row { display: flex; justify-content: space-between; align-items: baseline; }
+
+  @media (max-width: 900px) {
+    .hero-grid-display { grid-template-columns: 1fr 1fr; }
+    .hero-cell:nth-child(2) { border-right: none; }
+    .hero-cell:nth-child(3), .hero-cell:nth-child(4) { border-top: 1px solid var(--ink); }
+    .spec-grid { grid-template-columns: 1fr; gap: 24px; }
+    .team-grid { grid-template-columns: repeat(2, 1fr); }
+    .loc-grid { grid-template-columns: 1fr; }
+    .loc-card { border-right: none; border-bottom: 1px solid var(--ink); }
+    .nav-links { display: none; }
+    .services-table th:nth-child(3), .services-table td.desc { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="page nav-row">
+    <a href="#" class="logo">KIRPYKLA<span class="accent">.LT</span> / V.2026</a>
+    <ul class="nav-links">
+      <li><a href="#">Paslaugos</a></li>
+      <li><a href="#">Komanda</a></li>
+      <li><a href="#">Salonai</a></li>
+      <li><a href="#">FAQ</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="lang"><span class="active">LT</span><span>EN</span><span>RU</span></div>
+      <a href="#" class="btn-book">Užsisakyti →</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-grid-display">
+    <div class="hero-cell">EST. <strong>2018</strong></div>
+    <div class="hero-cell">VILNIUS · <strong>KAUNAS</strong></div>
+    <div class="hero-cell">MEISTRAI: <strong>07</strong></div>
+    <div class="hero-cell">ATVIRA: <strong>10:00 — 24:00</strong></div>
+  </div>
+  <div class="page hero-main">
+    <h1 class="display">
+      Plaukai. Britva.<br>
+      <span class="underline">Žirklės.</span> <span class="accent">↗</span>
+    </h1>
+    <div class="hero-byline">
+      <div class="hero-byline-block">
+        <div class="lbl">// Operacija</div>
+        <div class="val">Kirpykla / 2 salonai</div>
+      </div>
+      <div class="hero-byline-block">
+        <p>Kirpimas, skutimas, barzdos formavimas. Septyni meistrai, du salonai, septyniolika paslaugų — visos su skaidria trukme ir kaina.</p>
+      </div>
+      <div class="hero-byline-block" style="text-align: right;">
+        <div class="lbl">// Susitarimas</div>
+        <div class="val"><a href="#" style="color: var(--accent); text-decoration: none;">+370 600 12345 →</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="tools-strip">
+  <div class="tools-track">
+    <span>// ŽIRKLĖS GALANDAMOS KAS SAVAITĘ</span>
+    <span class="accent">●</span>
+    <span>// BRITVOS KEIČIAMOS KAS MĖNESĮ</span>
+    <span class="accent">●</span>
+    <span>// 17 PASLAUGŲ</span>
+    <span class="accent">●</span>
+    <span>// 7 MEISTRAI</span>
+    <span class="accent">●</span>
+    <span>// SUSITARIMAS PER 60 SEKUNDŽIŲ</span>
+    <span class="accent">●</span>
+    <span>// ŽIRKLĖS GALANDAMOS KAS SAVAITĘ</span>
+    <span class="accent">●</span>
+    <span>// BRITVOS KEIČIAMOS KAS MĖNESĮ</span>
+    <span class="accent">●</span>
+    <span>// 17 PASLAUGŲ</span>
+    <span class="accent">●</span>
+    <span>// 7 MEISTRAI</span>
+    <span class="accent">●</span>
+    <span>// SUSITARIMAS PER 60 SEKUNDŽIŲ</span>
+    <span class="accent">●</span>
+  </div>
+</div>
+
+<section class="spec">
+  <div class="page">
+    <div class="spec-grid">
+      <div class="spec-label">// 01 — Manifestas</div>
+      <div class="spec-content">
+        <h2>Mes <span class="accent">galandame</span> žirkles. Ne tik metaforiškai.</h2>
+        <p><strong>Visa kita yra papildinys.</strong> Kiekvienas meistras turi savo įrankių rinkinį, savo sterilizatorių, savo standartą. Kiekvieną savaitę galandame žirkles. Kiekvieną mėnesį atnaujiname britvas.</p>
+        <p>Tai detalės, kurių klientas paprastai nemato, bet kurios skiria meistrą nuo to, kuris kerpa. Mes rodome viską — ir dėl to mūsų klientai grįžta.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="atmosphere">
+  <div class="page">
+    <div class="spec-grid">
+      <div class="spec-label">// 02 — Atmosfera</div>
+      <div class="spec-content">
+        <h2 style="font-size: clamp(36px, 5vw, 64px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; border-top: 1px solid var(--ink); padding-top: 12px;">Salonas iš vidaus.</h2>
+      </div>
+    </div>
+    <div class="atmo-row">
+      <div class="atmo-tile" style="background-image: url('https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=1200&q=80&auto=format&fit=crop');">
+        <span class="idx">N°01</span>
+        <span class="lbl">// Įrankiai</span>
+      </div>
+      <div class="atmo-tile" style="background-image: url('https://images.unsplash.com/photo-1567894340315-735d7c361db0?w=1200&q=80&auto=format&fit=crop');">
+        <span class="idx">N°02</span>
+        <span class="lbl">// Procesas</span>
+      </div>
+      <div class="atmo-tile" style="background-image: url('https://images.unsplash.com/photo-1622286342621-4bd786c2447c?w=1200&q=80&auto=format&fit=crop');">
+        <span class="idx">N°03</span>
+        <span class="lbl">// Detalė</span>
+      </div>
+      <div class="atmo-tile" style="background-image: url('https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=1200&q=80&auto=format&fit=crop');">
+        <span class="idx">N°04</span>
+        <span class="lbl">// Vieta</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="services">
+  <div class="page">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow" style="margin-bottom: 12px;">// 03 — Paslaugų katalogas</div>
+        <h2>Septyniolika darbų.<br>Visos kainos su PVM.</h2>
+      </div>
+      <a href="#" class="mono" style="color: var(--accent); font-size: 12px; text-decoration: none; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Visas katalogas →</a>
+    </div>
+    <table class="services-table">
+      <thead>
+        <tr>
+          <th>N°</th>
+          <th>Paslauga</th>
+          <th>Aprašymas</th>
+          <th>Trukmė</th>
+          <th style="text-align: right;">Kaina</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="num">01</td>
+          <td class="name">Klasikinis kirpimas</td>
+          <td class="desc">Konsultacija, žirklių darbas, plovimas, formavimas. Pas vyr. meistrą.</td>
+          <td class="meta">45 min</td>
+          <td class="price">€ 25</td>
+        </tr>
+        <tr>
+          <td class="num">02</td>
+          <td class="name">Skutimas britva</td>
+          <td class="desc">Karštas rankšluostis, dviguba pravažiavimas, balzamas. Senasis amatas.</td>
+          <td class="meta">30 min</td>
+          <td class="price">€ 22</td>
+        </tr>
+        <tr>
+          <td class="num">03</td>
+          <td class="name">Barzdos modeliavimas</td>
+          <td class="desc">Forma pagal veido geometriją. Įskaičiuotas trumpas skutimas britva.</td>
+          <td class="meta">35 min</td>
+          <td class="price">€ 20</td>
+        </tr>
+        <tr>
+          <td class="num">04</td>
+          <td class="name">Berniuko kirpimas</td>
+          <td class="desc">Iki 12 metų amžiaus. Greičiau, švelniau, su filmuku ekrane.</td>
+          <td class="meta">25 min</td>
+          <td class="price">€ 15</td>
+        </tr>
+        <tr>
+          <td class="num">05</td>
+          <td class="name">Pilnas paketas</td>
+          <td class="desc">Kirpimas + barzda + skutimas + plaukų kaukė. Devyniasdešimt minučių sesija.</td>
+          <td class="meta">90 min</td>
+          <td class="price">€ 55</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="team">
+  <div class="page">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow" style="margin-bottom: 12px;">// 04 — Meistrai</div>
+        <h2>Septyni žmonės<br>už žirklių.</h2>
+      </div>
+    </div>
+    <div class="team-grid">
+      <div class="barber">
+        <div class="barber-photo" style="background-image: url('https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=900&q=80&auto=format&fit=crop&crop=faces');">
+          <span class="num">N°01</span>
+        </div>
+        <div class="barber-name">Tomas K.</div>
+        <div class="barber-role">// Vyr. meistras · Vilnius</div>
+        <span class="barber-tag">12 metų</span>
+      </div>
+      <div class="barber">
+        <div class="barber-photo" style="background-image: url('https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=900&q=80&auto=format&fit=crop&crop=faces');">
+          <span class="num">N°02</span>
+        </div>
+        <div class="barber-name">Marius J.</div>
+        <div class="barber-role">// Meistras · Vilnius</div>
+        <span class="barber-tag">Britva</span>
+      </div>
+      <div class="barber">
+        <div class="barber-photo" style="background-image: url('https://images.unsplash.com/photo-1503443207922-dff7d543fd0e?w=900&q=80&auto=format&fit=crop&crop=faces');">
+          <span class="num">N°03</span>
+        </div>
+        <div class="barber-name">Domas V.</div>
+        <div class="barber-role">// Meistras · Kaunas</div>
+        <span class="barber-tag">Fade</span>
+      </div>
+      <div class="barber">
+        <div class="barber-photo" style="background-image: url('https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=900&q=80&auto=format&fit=crop&crop=faces');">
+          <span class="num">N°04</span>
+        </div>
+        <div class="barber-name">Ignas R.</div>
+        <div class="barber-role">// Apprentice · Kaunas</div>
+        <span class="barber-tag">−10 %</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="locations">
+  <div class="page">
+    <div class="eyebrow" style="margin-bottom: 12px;">// 05 — Salonai</div>
+    <h2 style="font-size: clamp(36px, 5vw, 64px); font-weight: 700; letter-spacing: -0.03em;">Du salonai. Vienas standartas.</h2>
+    <div class="loc-grid">
+      <div class="loc-card">
+        <div class="loc-name">Vilnius</div>
+        <span class="loc-tag">Pagrindinis</span>
+        <div class="loc-addr">// Pilies g. 24<br>// LT-01123 Vilnius</div>
+        <div class="loc-hours">
+          <span class="day">// Pir – Pen</span><span class="time">10:00 — 24:00</span>
+          <span class="day">// Šeš</span><span class="time">10:00 — 22:00</span>
+          <span class="day">// Sek</span><span class="time">12:00 — 20:00</span>
+        </div>
+      </div>
+      <div class="loc-card">
+        <div class="loc-name">Kaunas</div>
+        <span class="loc-tag">Antrasis</span>
+        <div class="loc-addr">// Laisvės al. 56<br>// LT-44243 Kaunas</div>
+        <div class="loc-hours">
+          <span class="day">// Pir – Pen</span><span class="time">10:00 — 22:00</span>
+          <span class="day">// Šeš</span><span class="time">10:00 — 20:00</span>
+          <span class="day">// Sek</span><span class="time">Uždaryta</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="page">
+    <div class="eyebrow" style="margin-bottom: 24px;">// 06 — Susitarimas</div>
+    <h2 class="display">Užsisakyk vizitą<br>per <span class="accent">60 sekundžių.</span></h2>
+    <p>Be skambučių, be el. laiškų. Pasirink salonąi, paslaugą, meistrą ir laiką.</p>
+    <a href="#" class="cta-btn">Susitarti →</a>
+  </div>
+</section>
+
+<footer>
+  <div class="page footer-row">
+    <div>// kirpykla.lt — Vilnius · Kaunas — Įk. 2018</div>
+    <div>// Privatumas · Sąlygos · Slapukai · GDPR</div>
+  </div>
+</footer>
+
+</body>
+</html>

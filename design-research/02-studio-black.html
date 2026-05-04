@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Studio Black — kirpykla.lt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0B0B0D;
+    --bg-2: #16161A;
+    --ink: #EDECE7;
+    --ink-soft: #8A8A8E;
+    --accent: #C8FF3D;
+    --rule: #FFFFFF14;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.55;
+    font-feature-settings: 'tnum';
+  }
+  .display { font-family: 'Anton', Impact, sans-serif; letter-spacing: 0.005em; line-height: 0.92; text-transform: uppercase; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; font-weight: 600; color: var(--accent); }
+  .page { max-width: 1320px; margin: 0 auto; padding: 0 32px; }
+
+  /* Nav */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(11, 11, 13, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .nav-row { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+  .logo { font-family: 'Anton', sans-serif; font-size: 26px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .logo .accent { color: var(--accent); }
+  .nav-links { display: flex; gap: 32px; list-style: none; }
+  .nav-links a { color: var(--ink); text-decoration: none; font-size: 13px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+  .nav-links a:hover { color: var(--accent); }
+  .nav-right { display: flex; align-items: center; gap: 20px; }
+  .lang { display: flex; gap: 8px; font-size: 12px; font-weight: 600; color: var(--ink-soft); letter-spacing: 0.1em; }
+  .lang .active { color: var(--accent); }
+  .btn-book {
+    background: var(--accent); color: var(--bg);
+    padding: 12px 24px; font-size: 12px; font-weight: 700;
+    text-decoration: none; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .btn-book:hover { background: #fff; }
+
+  /* Hero */
+  .hero {
+    padding: 100px 0 0;
+    position: relative;
+    overflow: hidden;
+    background-image:
+      linear-gradient(180deg, rgba(11,11,13,0.55) 0%, rgba(11,11,13,0.85) 80%, var(--bg) 100%),
+      url('https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=2400&q=80&auto=format&fit=crop');
+    background-size: cover;
+    background-position: center;
+  }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 7fr 5fr;
+    gap: 40px;
+    align-items: end;
+    padding-bottom: 60px;
+    position: relative;
+    z-index: 2;
+  }
+  .hero h1 { font-size: clamp(80px, 16vw, 240px); }
+  .hero h1 .row { display: block; }
+  .hero h1 .accent { color: var(--accent); }
+  .hero-side { padding-bottom: 16px; display: flex; flex-direction: column; gap: 24px; }
+  .hero-side p { font-size: 18px; color: var(--ink); max-width: 380px; line-height: 1.5; }
+  .hero-tag { display: inline-block; border: 1px solid var(--accent); color: var(--accent); padding: 6px 14px; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600; align-self: flex-start; }
+
+  /* Marquee */
+  .marquee {
+    border-top: 1px solid var(--accent);
+    border-bottom: 1px solid var(--accent);
+    background: var(--bg);
+    overflow: hidden;
+    padding: 18px 0;
+  }
+  .marquee-track {
+    display: flex; gap: 48px;
+    white-space: nowrap;
+    animation: scroll 40s linear infinite;
+  }
+  .marquee-item { font-family: 'Anton', sans-serif; font-size: 22px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .marquee-item.dot { color: var(--accent); }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  /* Manifesto */
+  .manifesto { padding: 120px 0; }
+  .manifesto-grid { display: grid; grid-template-columns: 5fr 7fr; gap: 80px; align-items: start; }
+  .manifesto h2 { font-size: clamp(48px, 7vw, 96px); }
+  .manifesto h2 .accent { color: var(--accent); }
+  .manifesto p { font-size: 18px; color: var(--ink-soft); line-height: 1.65; }
+  .manifesto p strong { color: var(--ink); font-weight: 500; }
+  .manifesto p + p { margin-top: 20px; }
+
+  /* Atmosphere strip */
+  .atmosphere { padding: 60px 0 0; border-top: 1px solid var(--rule); }
+  .atmo-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 40px; }
+  .atmo-tile { aspect-ratio: 4/5; background-size: cover; background-position: center; position: relative; overflow: hidden; }
+  .atmo-tile::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 60%, rgba(11,11,13,0.6)); }
+  .atmo-tile .lbl { position: absolute; bottom: 12px; left: 12px; right: 12px; color: var(--accent); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; z-index: 2; }
+  @media (max-width: 900px) { .atmo-row { grid-template-columns: repeat(2, 1fr); } }
+
+  /* Services */
+  .services { padding: 120px 0; border-top: 1px solid var(--rule); }
+  .section-head { display: flex; justify-content: space-between; align-items: end; margin-bottom: 56px; gap: 32px; flex-wrap: wrap; }
+  .section-head h2 { font-size: clamp(56px, 8vw, 120px); }
+  .service-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+  .service-card {
+    background: var(--bg);
+    padding: 36px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    min-height: 260px;
+    transition: background 0.2s;
+    position: relative;
+  }
+  .service-card:hover { background: var(--bg-2); }
+  .service-card:hover .service-arrow { color: var(--accent); transform: translateX(4px); }
+  .service-num { font-size: 13px; color: var(--ink-soft); letter-spacing: 0.16em; }
+  .service-name { font-family: 'Anton', sans-serif; font-size: 38px; line-height: 1; text-transform: uppercase; letter-spacing: 0.01em; margin-top: 16px; }
+  .service-foot { display: flex; justify-content: space-between; align-items: end; margin-top: 32px; }
+  .service-meta { font-size: 13px; color: var(--ink-soft); letter-spacing: 0.06em; text-transform: uppercase; }
+  .service-price { font-family: 'Anton', sans-serif; font-size: 32px; color: var(--accent); }
+  .service-arrow { position: absolute; top: 36px; right: 36px; color: var(--ink-soft); font-size: 18px; transition: all 0.2s; }
+
+  /* Team */
+  .team { padding: 120px 0; border-top: 1px solid var(--rule); background: var(--bg-2); }
+  .team-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-top: 56px; }
+  .barber { position: relative; }
+  .barber-photo {
+    aspect-ratio: 3/4;
+    background-color: #1a1a1d;
+    background-size: cover;
+    background-position: center 20%;
+    border: 1px solid var(--rule);
+    margin-bottom: 16px;
+    position: relative; overflow: hidden;
+    filter: grayscale(0.3) contrast(1.1);
+  }
+  .barber-photo::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+    height: 50%;
+    background: linear-gradient(180deg, transparent, var(--bg-2) 95%);
+  }
+  .barber-num {
+    position: absolute; top: 12px; left: 12px;
+    font-family: 'Anton', sans-serif; font-size: 14px; color: var(--accent); letter-spacing: 0.1em;
+    z-index: 2;
+  }
+  .barber-name { font-family: 'Anton', sans-serif; font-size: 24px; text-transform: uppercase; letter-spacing: 0.02em; }
+  .barber-role { font-size: 12px; color: var(--accent); letter-spacing: 0.12em; text-transform: uppercase; margin-top: 4px; font-weight: 600; }
+
+  /* Locations */
+  .locations { padding: 120px 0; border-top: 1px solid var(--rule); }
+  .loc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin-top: 56px; }
+  .loc-card { background: var(--bg); padding: 48px; }
+  .loc-name { font-family: 'Anton', sans-serif; font-size: 56px; line-height: 1; text-transform: uppercase; }
+  .loc-addr { font-size: 16px; color: var(--ink-soft); margin-top: 16px; line-height: 1.5; }
+  .loc-hours { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); font-size: 14px; }
+  .loc-hours .day { color: var(--ink-soft); }
+  .loc-hours .time { color: var(--ink); font-weight: 500; }
+
+  /* CTA */
+  .cta { padding: 160px 0; border-top: 1px solid var(--accent); text-align: center; background: var(--accent); color: var(--bg); }
+  .cta h2 { font-size: clamp(72px, 11vw, 180px); color: var(--bg); }
+  .cta p { font-size: 20px; margin-top: 24px; max-width: 600px; margin-left: auto; margin-right: auto; color: var(--bg); opacity: 0.7; }
+  .cta-btn {
+    display: inline-block; margin-top: 56px;
+    background: var(--bg); color: var(--accent);
+    padding: 22px 60px; font-size: 14px; font-weight: 700;
+    text-decoration: none; letter-spacing: 0.16em; text-transform: uppercase;
+    font-family: 'Anton', sans-serif;
+  }
+
+  /* Footer */
+  footer { padding: 60px 0 40px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--ink-soft); }
+  .footer-row { display: flex; justify-content: space-between; align-items: baseline; }
+
+  @media (max-width: 900px) {
+    .hero-grid, .manifesto-grid { grid-template-columns: 1fr; gap: 32px; }
+    .service-grid, .loc-grid { grid-template-columns: 1fr; }
+    .team-grid { grid-template-columns: repeat(2, 1fr); }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="page nav-row">
+    <a href="#" class="logo">KIRPYKLA<span class="accent">·</span>LT</a>
+    <ul class="nav-links">
+      <li><a href="#">Paslaugos</a></li>
+      <li><a href="#">Komanda</a></li>
+      <li><a href="#">Salonai</a></li>
+      <li><a href="#">Apie</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="lang"><span class="active">LT</span><span>EN</span><span>RU</span></div>
+      <a href="#" class="btn-book">Susitarti</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="page">
+    <div class="hero-grid">
+      <h1 class="display">
+        <span class="row">Kirpykla.</span>
+        <span class="row">Be <span class="accent">kompromisų.</span></span>
+      </h1>
+      <div class="hero-side">
+        <span class="hero-tag">Vilnius · Kaunas</span>
+        <p>Septyni meistrai. Du salonai atvirti iki vidurnakčio. Vienas standartas — kiekvienas kirpimas vertas keturiasdešimt minučių dėmesio.</p>
+        <div style="display: flex; gap: 12px; margin-top: 8px;">
+          <a href="#" class="btn-book">Užsisakyti laiką</a>
+          <a href="#" style="color: var(--ink); border: 1px solid var(--rule); padding: 12px 24px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; font-weight: 600;">Paslaugos →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="marquee">
+  <div class="marquee-track">
+    <span class="marquee-item">17 paslaugų</span><span class="marquee-item dot">●</span>
+    <span class="marquee-item">7 meistrai</span><span class="marquee-item dot">●</span>
+    <span class="marquee-item">2 salonai</span><span class="marquee-item dot">●</span>
+    <span class="marquee-item">Atviri iki 24:00</span><span class="marquee-item dot">●</span>
+    <span class="marquee-item">Įk. 2018</span><span class="marquee-item dot">●</span>
+    <span class="marquee-item">17 paslaugų</span><span class="marquee-item dot">●</span>
+    <span class="marquee-item">7 meistrai</span><span class="marquee-item dot">●</span>
+    <span class="marquee-item">2 salonai</span><span class="marquee-item dot">●</span>
+    <span class="marquee-item">Atviri iki 24:00</span><span class="marquee-item dot">●</span>
+    <span class="marquee-item">Įk. 2018</span><span class="marquee-item dot">●</span>
+  </div>
+</div>
+
+<section class="manifesto">
+  <div class="page">
+    <div class="manifesto-grid">
+      <div>
+        <div class="eyebrow" style="margin-bottom: 24px;">Manifestas — N°01</div>
+        <h2 class="display">Tikslas — ne <span class="accent">greitis,</span> o tikslumas.</h2>
+      </div>
+      <div>
+        <p><strong>Mes neturime dvylikos paslaugų katalogo, kuriame pasimestų pats meistras.</strong> Turime septynyolika kruopščiai aprašytų darbų — kiekvieną iš jų galite užduoti vardu, žinodami trukmę ir kainą be siurprizų.</p>
+        <p>Kiekvieną savaitę galandame žirkles. Kiekvieną mėnesį atnaujiname britvas. <strong>Tai detalės, kurių klientas nemato</strong>, bet kurios skiria meistrą nuo to, kuris kerpa.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="atmosphere">
+  <div class="page">
+    <div class="eyebrow" style="margin-bottom: 16px;">Atmosfera · Salonas iš vidaus</div>
+    <h2 class="display" style="font-size: clamp(40px, 6vw, 72px);">Vakaras<br>salone.</h2>
+    <div class="atmo-row">
+      <div class="atmo-tile" style="background-image: url('https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=1200&q=80&auto=format&fit=crop');"><span class="lbl">// Įrankiai</span></div>
+      <div class="atmo-tile" style="background-image: url('https://images.unsplash.com/photo-1567894340315-735d7c361db0?w=1200&q=80&auto=format&fit=crop');"><span class="lbl">// Procesas</span></div>
+      <div class="atmo-tile" style="background-image: url('https://images.unsplash.com/photo-1622286342621-4bd786c2447c?w=1200&q=80&auto=format&fit=crop');"><span class="lbl">// Detalė</span></div>
+      <div class="atmo-tile" style="background-image: url('https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=1200&q=80&auto=format&fit=crop');"><span class="lbl">// Vieta</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="services">
+  <div class="page">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow" style="margin-bottom: 16px;">Paslaugos · Pavasaris 2026</div>
+        <h2 class="display">Atrinktos<br>paslaugos.</h2>
+      </div>
+      <a href="#" style="color: var(--accent); font-size: 13px; text-decoration: none; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; padding-bottom: 8px;">Visas katalogas →</a>
+    </div>
+    <div class="service-grid">
+      <div class="service-card">
+        <div>
+          <div class="service-num">N°01</div>
+          <div class="service-name">Klasikinis<br>kirpimas</div>
+        </div>
+        <div class="service-arrow">→</div>
+        <div class="service-foot">
+          <div class="service-meta">45 min</div>
+          <div class="service-price">25 €</div>
+        </div>
+      </div>
+      <div class="service-card">
+        <div>
+          <div class="service-num">N°02</div>
+          <div class="service-name">Skutimas<br>britva</div>
+        </div>
+        <div class="service-arrow">→</div>
+        <div class="service-foot">
+          <div class="service-meta">30 min</div>
+          <div class="service-price">22 €</div>
+        </div>
+      </div>
+      <div class="service-card">
+        <div>
+          <div class="service-num">N°03</div>
+          <div class="service-name">Barzdos<br>modeliavimas</div>
+        </div>
+        <div class="service-arrow">→</div>
+        <div class="service-foot">
+          <div class="service-meta">35 min</div>
+          <div class="service-price">20 €</div>
+        </div>
+      </div>
+      <div class="service-card">
+        <div>
+          <div class="service-num">N°04</div>
+          <div class="service-name">Pilnas<br>paketas</div>
+        </div>
+        <div class="service-arrow">→</div>
+        <div class="service-foot">
+          <div class="service-meta">90 min</div>
+          <div class="service-price">55 €</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="team">
+  <div class="page">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow" style="margin-bottom: 16px;">Komanda</div>
+        <h2 class="display">Meistrai už<br>žirklių.</h2>
+      </div>
+    </div>
+    <div class="team-grid">
+      <div class="barber">
+        <div class="barber-photo" style="background-image: url('https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=900&q=80&auto=format&fit=crop&crop=faces');"><span class="barber-num">N°01</span></div>
+        <div class="barber-name">Tomas K.</div>
+        <div class="barber-role">Vyr. meistras · Vilnius</div>
+      </div>
+      <div class="barber">
+        <div class="barber-photo" style="background-image: url('https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=900&q=80&auto=format&fit=crop&crop=faces');"><span class="barber-num">N°02</span></div>
+        <div class="barber-name">Marius J.</div>
+        <div class="barber-role">Meistras · Vilnius</div>
+      </div>
+      <div class="barber">
+        <div class="barber-photo" style="background-image: url('https://images.unsplash.com/photo-1503443207922-dff7d543fd0e?w=900&q=80&auto=format&fit=crop&crop=faces');"><span class="barber-num">N°03</span></div>
+        <div class="barber-name">Domas V.</div>
+        <div class="barber-role">Meistras · Kaunas</div>
+      </div>
+      <div class="barber">
+        <div class="barber-photo" style="background-image: url('https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=900&q=80&auto=format&fit=crop&crop=faces');"><span class="barber-num">N°04</span></div>
+        <div class="barber-name">Ignas R.</div>
+        <div class="barber-role">Apprentice · Kaunas</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="locations">
+  <div class="page">
+    <div class="eyebrow" style="margin-bottom: 16px;">Salonai</div>
+    <h2 class="display" style="font-size: clamp(48px, 7vw, 96px);">Du salonai. Vienas<br>standartas.</h2>
+    <div class="loc-grid">
+      <div class="loc-card">
+        <div class="loc-name">Vilnius</div>
+        <div class="loc-addr">Pilies g. 24<br>LT-01123 Vilnius</div>
+        <div class="loc-hours">
+          <span class="day">Pir – Pen</span><span class="time">10:00 — 24:00</span>
+          <span class="day">Šeš</span><span class="time">10:00 — 22:00</span>
+          <span class="day">Sek</span><span class="time">12:00 — 20:00</span>
+        </div>
+      </div>
+      <div class="loc-card">
+        <div class="loc-name">Kaunas</div>
+        <div class="loc-addr">Laisvės al. 56<br>LT-44243 Kaunas</div>
+        <div class="loc-hours">
+          <span class="day">Pir – Pen</span><span class="time">10:00 — 22:00</span>
+          <span class="day">Šeš</span><span class="time">10:00 — 20:00</span>
+          <span class="day">Sek</span><span class="time">Uždaryta</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="page">
+    <div class="eyebrow" style="margin-bottom: 24px; color: var(--bg); opacity: 0.6;">Susitarkime</div>
+    <h2 class="display">Užsisakyk<br>vizitą.</h2>
+    <p>Per minutę. Be skambučių, be el. laiškų. Tik laikas, meistras, ir tu.</p>
+    <a href="#" class="cta-btn">Susitarti →</a>
+  </div>
+</section>
+
+<footer>
+  <div class="page footer-row">
+    <div>kirpykla.lt — Vilnius · Kaunas · Įk. 2018</div>
+    <div>Privatumas · Sąlygos · Slapukai</div>
+  </div>
+</footer>
+
+</body>
+</html>

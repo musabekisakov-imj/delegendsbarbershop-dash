@@ -31,6 +31,13 @@ export default defineConfig({
     },
   },
 
+  // Allow Cloudflare tunnel hostnames so the dev server can be exposed via
+  // `cloudflared tunnel --url http://localhost:5173` for client previews.
+  // Vite 5+ otherwise rejects unknown Host headers with 403 (CVE-2025-24010).
+  server: {
+    allowedHosts: ['.trycloudflare.com', '.loca.lt', '.ngrok-free.app', '.ngrok.io'],
+  },
+
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 

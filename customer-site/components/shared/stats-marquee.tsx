@@ -51,11 +51,11 @@ export function defaultStats({
   officesCount: number;
 }): Stat[] {
   return [
-    { value: String(officesCount).padStart(2, '0'), label: 'Salonai · Senamiestis ir Naujamiestis' },
-    { value: String(staffCount).padStart(2, '0'), label: 'Meistrai · vyrų kirpyklos profesionalai' },
+    { value: String(officesCount).padStart(2, '0'), label: 'Salonas · Pilies g. 38, Senamiestis' },
+    { value: String(staffCount).padStart(2, '0'), label: 'Meistrai · 5+ metų patirties' },
     { value: String(servicesCount).padStart(2, '0'), label: 'Paslaugos · su PVM' },
     { value: '6/7', label: 'Dienų · pirm—šeš' },
-    { value: 'EST. 2026', label: 'Vilnius · neseniai atidaryta' },
+    { value: 'EST. 2022', label: 'Vilnius · Senamiestis' },
     { value: '60 SEK.', label: 'Rezervacija online' },
   ];
 }

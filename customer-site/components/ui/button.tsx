@@ -20,7 +20,7 @@ const buttonVariants = cva(
         // Inverse — bone fill on dark
         ink: 'bg-foreground text-background pl-5 py-0 pr-0 text-sm hover:bg-primary hover:text-primary-foreground',
         // Outlined
-        ghost: 'bg-transparent text-foreground border border-[rgba(255,255,255,0.2)] pl-5 py-0 pr-0 text-sm hover:bg-foreground hover:text-background',
+        ghost: 'bg-transparent text-foreground border border-border-strong pl-5 py-0 pr-0 text-sm hover:bg-foreground hover:text-background',
         // Plain text link with arrow rotation on hover (used inline in copy)
         link: 'inline-flex items-center gap-1.5 px-0 py-0 text-sm text-foreground hover:text-primary',
       },

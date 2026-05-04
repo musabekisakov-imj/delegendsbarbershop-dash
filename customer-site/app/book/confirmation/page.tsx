@@ -2,9 +2,12 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { CheckIcon, ArrowDownTrayIcon, ArrowUpRightIcon } from '@heroicons/react/24/outline';
+import { useSearchParams } from 'next/navigation';
+import { ArrowDownTrayIcon, ArrowUpRightIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
 import { useT, useLang } from '@/lib/use-t';
+import { publicApi, ApiError } from '@/lib/api';
+import { ConfirmedBadge } from '@/components/booking/confirmed-badge';
 import type { ConfirmedBooking } from '@/lib/types';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -12,18 +15,74 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 export default function ConfirmationPage() {
   const t = useT();
   const { lang } = useLang();
+  const searchParams = useSearchParams();
+  const idParam = searchParams?.get('id') ?? null;
   const [booking, setBooking] = useState<ConfirmedBooking | null>(null);
+  const [clientEmail, setClientEmail] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem('barberpro_last_booking');
-    if (raw) {
-      try {
-        setBooking(JSON.parse(raw));
-      } catch {
-        // Stale or corrupted — show empty state.
+    let cancelled = false;
+    async function load() {
+      // 1. Same-tab path: sessionStorage holds the freshly-confirmed booking
+      //    + the email we just submitted (booking-flow stuffs both in).
+      const raw = sessionStorage.getItem('barberpro_last_booking');
+      if (raw) {
+        try {
+          const parsed: ConfirmedBooking & { clientEmail?: string } = JSON.parse(raw);
+          if (!idParam || parsed.appointmentId === idParam) {
+            if (!cancelled) {
+              setBooking(parsed);
+              if (parsed.clientEmail) setClientEmail(parsed.clientEmail);
+              setLoading(false);
+            }
+            return;
+          }
+        } catch {
+          // Corrupted — fall through to URL-based lookup.
+        }
       }
+
+      // 2. Recovered-via-URL path: ?id=… → fetch from the manage API.
+      //    The API never exposes client email by design, so we show a
+      //    generic "Confirmation emailed" line instead of an address.
+      if (idParam) {
+        try {
+          const fresh = await publicApi.getBooking(idParam);
+          if (cancelled) return;
+          setBooking({
+            appointmentId: fresh.appointmentId,
+            startTime: fresh.startTime,
+            endTime: fresh.endTime,
+            serviceName: fresh.serviceName,
+            staffName: fresh.staffName,
+            officeName: fresh.officeName,
+            officeAddress: fresh.officeAddress,
+          });
+        } catch (err) {
+          if (!(err instanceof ApiError) || err.status !== 404) {
+            // network blip — leave loading true, then fall to empty
+          }
+        }
+      }
+      if (!cancelled) setLoading(false);
     }
-  }, []);
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [idParam]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center px-6 bg-background">
+        <div className="flex items-center gap-3 text-muted-foreground text-sm">
+          <span className="live-dot" />
+          {t.booking.checking}
+        </div>
+      </main>
+    );
+  }
 
   if (!booking) {
     return (
@@ -64,14 +123,7 @@ export default function ConfirmationPage() {
           transition={{ duration: 0.7, ease: EASE }}
           className="max-w-3xl mx-auto"
         >
-          <motion.div
-            initial={{ scale: 0.7, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.1, ease: EASE }}
-            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground mb-10"
-          >
-            <CheckIcon className="h-7 w-7" />
-          </motion.div>
+          <ConfirmedBadge size={96} className="mb-10" />
 
           <div className="eyebrow mb-6">{t.confirm.eyebrow}</div>
 
@@ -81,6 +133,31 @@ export default function ConfirmationPage() {
               {t.confirm.title_accent(formatDateForLang(start, lang), formatTime(start))}
             </span>
           </h1>
+
+          {/* Email-sent line — visible right under the title.
+              Shows the actual address on same-tab loads, generic copy on URL recovery. */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.85, ease: EASE }}
+            className="mt-6 inline-flex items-center gap-3 border border-primary/40 bg-primary/5 px-4 py-2.5"
+          >
+            <span className="relative inline-flex h-2 w-2">
+              <span className="absolute inset-0 rounded-full bg-primary animate-ping opacity-75" />
+              <span className="relative inline-block h-2 w-2 rounded-full bg-primary" />
+            </span>
+            <EnvelopeIcon className="h-4 w-4 text-primary" />
+            <span className="text-sm text-foreground">
+              {clientEmail ? (
+                <>
+                  {t.confirm.email_sent_to}{' '}
+                  <span className="font-mono text-primary tabular">{clientEmail}</span>
+                </>
+              ) : (
+                t.confirm.email_sent_generic
+              )}
+            </span>
+          </motion.div>
 
           <p className="mt-8 text-muted-foreground text-lg max-w-xl leading-relaxed">{t.confirm.body}</p>
 
@@ -119,6 +196,15 @@ export default function ConfirmationPage() {
                 <ArrowDownTrayIcon className="h-4 w-4" />
               </span>
             </a>
+            <Link
+              href={`/b/${booking.appointmentId}`}
+              className="inline-flex items-center bg-foreground text-background pl-5 py-0 pr-0 text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-colors"
+            >
+              <span>{t.manage.eyebrow}</span>
+              <span className="border-l border-background/20 p-3 ml-5 inline-flex items-center">
+                <ArrowUpRightIcon className="h-4 w-4" />
+              </span>
+            </Link>
             <Link
               href="/"
               className="inline-flex items-center bg-transparent text-foreground border border-border-strong pl-5 py-0 pr-0 text-sm font-medium hover:bg-foreground hover:text-background transition-colors"
@@ -177,9 +263,9 @@ function icsHref(b: ConfirmedBooking): string {
   const ics = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Kirpykla Vilnius//Booking//LT',
+    'PRODID:-//De Legends Barbershop//Booking//LT',
     'BEGIN:VEVENT',
-    `UID:${b.appointmentId}@kirpykla.lt`,
+    `UID:${b.appointmentId}@delegendsbarbershop.lt`,
     `DTSTAMP:${fmt(new Date().toISOString())}`,
     `DTSTART:${fmt(b.startTime)}`,
     `DTEND:${fmt(b.endTime)}`,

@@ -1387,7 +1387,7 @@ export function CalendarPage() {
           as labelled fields with shadcn primitives (no native
           inputs, no blue-tinted "When" panel). */}
       <Dialog open={isCreateOpen} onOpenChange={open => { if (!open) closeCreate(); }}>
-        <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">New</p>
             <DialogTitle className="text-2xl sm:text-3xl font-bold tracking-tight">
@@ -1396,22 +1396,39 @@ export function CalendarPage() {
           </DialogHeader>
 
           <div className="space-y-6">
-            {/* Wheel picker centered as visual hero of the new-booking flow */}
-            <div className="flex flex-col items-center gap-2 pt-2">
-              <TimeWheelPicker
-                value={createTime}
-                onChange={setCreateTime}
-                startHour={DAY_START_HOUR}
-                endHour={DAY_END_HOUR}
-                minuteStep={5}
-                format={timeFormat}
-                ariaLabel="Appointment start time"
-              />
-              {selectedSlot?.staffId && (() => {
-                const st = activeStaff.find(s => s.id === selectedSlot.staffId);
-                if (!st) return null;
-                const c = getStaffColor(staffColorMap.get(st.id) ?? 0);
-                return (
+            {/* Date grid + Time wheel in one row — month grid on the left
+                (receptionist's mental model: weeks + day-of-week visible),
+                time wheel on the right. Both wrapped in matching card shells
+                with min-h to align heights regardless of month length.
+                Stacks vertically on mobile so neither control overflows. */}
+            <div className="flex flex-col md:flex-row md:items-stretch md:justify-center gap-4 pt-2">
+              <div className="rounded-2xl border border-border bg-card p-5 w-full md:w-[300px] mx-auto md:mx-0 flex items-center justify-center">
+                <MiniCalendar
+                  selectedDate={createDate ? parseISO(createDate) : new Date()}
+                  onSelectDate={(d) => setCreateDate(format(d, 'yyyy-MM-dd'))}
+                  appointments={appointments}
+                />
+              </div>
+              <div className="flex items-center justify-center mx-auto md:mx-0">
+                <TimeWheelPicker
+                  value={createTime}
+                  onChange={setCreateTime}
+                  startHour={DAY_START_HOUR}
+                  endHour={DAY_END_HOUR}
+                  minuteStep={5}
+                  format={timeFormat}
+                  ariaLabel="Appointment start time"
+                />
+              </div>
+            </div>
+
+            {/* Pre-selected barber chip — sits below the WHEN block when present. */}
+            {selectedSlot?.staffId && (() => {
+              const st = activeStaff.find(s => s.id === selectedSlot.staffId);
+              if (!st) return null;
+              const c = getStaffColor(staffColorMap.get(st.id) ?? 0);
+              return (
+                <div className="flex justify-center">
                   <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
                     <Avatar className="h-4 w-4">
                       {st.avatarUrl && <AvatarImage src={st.avatarUrl} alt={st.firstName} />}
@@ -1419,20 +1436,9 @@ export function CalendarPage() {
                     </Avatar>
                     <span>Pre-selected barber: {st.firstName}</span>
                   </div>
-                );
-              })()}
-            </div>
-
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
-              <Input
-                type="date"
-                value={createDate}
-                onChange={(e) => setCreateDate(e.target.value)}
-                className="mt-1.5 h-10 tabular-nums"
-                aria-label="Date"
-              />
-            </div>
+                </div>
+              );
+            })()}
 
             {/* Client autocomplete */}
             <ClientAutocomplete

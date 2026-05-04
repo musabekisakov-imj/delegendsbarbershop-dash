@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Customer-site — design research</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    background: #FAFAF7;
+    color: #14181D;
+    line-height: 1.55;
+    padding: 60px 32px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 56px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+  .eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #888; margin-bottom: 16px; }
+  .lede { font-size: 19px; color: #555; max-width: 700px; margin-top: 24px; line-height: 1.55; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 64px; }
+  .card {
+    border: 1px solid #00000018;
+    background: #fff;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.15s, box-shadow 0.15s;
+    overflow: hidden;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px #00000018; }
+  .card-preview {
+    aspect-ratio: 16/10;
+    background: #F5F0E8;
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid #00000018;
+  }
+  .card-preview::before {
+    content: ''; position: absolute; inset: 0;
+    background-size: cover;
+    background-position: center;
+    opacity: 0.18;
+    background-image: url('https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=1200&q=80&auto=format&fit=crop');
+  }
+  .card-preview-1 { background: #F5F0E8; color: #14181D; }
+  .card-preview-2 { background: #0B0B0D; color: #C8FF3D; }
+  .card-preview-2::before { opacity: 0.45; filter: contrast(1.1) saturate(0.6); }
+  .card-preview-3 { background: #FFFFFF; color: #000; border-bottom: 2px solid #000; }
+  .card-preview-3::before { opacity: 0.10; filter: grayscale(1) contrast(1.2); }
+  .card-preview .label {
+    position: absolute; bottom: 16px; left: 20px; right: 20px;
+    font-weight: 700; letter-spacing: -0.01em; line-height: 1;
+    z-index: 2;
+  }
+  .card-preview-1 .label { font-family: Georgia, serif; font-size: 32px; font-style: italic; }
+  .card-preview-2 .label { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 38px; text-transform: uppercase; letter-spacing: 0.005em; }
+  .card-preview-3 .label { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 32px; text-transform: uppercase; letter-spacing: -0.03em; }
+  .card-preview-3 .label .acc { background: #FF3B0F; color: #fff; padding: 0 6px; }
+  .card-preview-2 .label .acc { color: #C8FF3D; }
+  .card-body { padding: 24px; }
+  .card-title { font-size: 18px; font-weight: 600; }
+  .card-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #888; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .card-desc { font-size: 14px; color: #555; margin-top: 8px; line-height: 1.55; }
+  .card-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  .tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 4px 8px; background: #00000010; letter-spacing: 0.04em; text-transform: uppercase; }
+  .docs {
+    margin-top: 64px;
+    padding: 32px;
+    border: 1px solid #00000018;
+    background: #fff;
+  }
+  .docs h2 { font-size: 22px; font-weight: 600; }
+  .docs p { margin-top: 12px; color: #555; font-size: 15px; }
+  .docs a { color: #14181D; font-weight: 500; text-decoration: underline; text-underline-offset: 4px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="eyebrow">// kirpykla.lt — design research — May 2026</div>
+  <h1>Three directions.<br>One commitment.</h1>
+  <p class="lede">Three fully-formed positions for the customer site, written for client review at the May 6 checkpoint. Pick one — don't iterate all three further.</p>
+
+  <div class="grid">
+    <a href="01-atelier.html" class="card">
+      <div class="card-preview card-preview-1">
+        <span class="label">Atelier</span>
+      </div>
+      <div class="card-body">
+        <div class="card-num">N°01 · Refined editorial</div>
+        <div class="card-title">Atelier</div>
+        <div class="card-desc">Heritage British grooming pulled into 2026. Cream + ink + oxblood. Serif display. The safe, sophisticated bet.</div>
+        <div class="card-tags">
+          <span class="tag">Fraunces</span>
+          <span class="tag">Inter Tight</span>
+          <span class="tag">3-color</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="02-studio-black.html" class="card">
+      <div class="card-preview card-preview-2">
+        <span class="label">Studio<br><span class="acc">Black.</span></span>
+      </div>
+      <div class="card-body">
+        <div class="card-num">N°02 · Dark cinematic</div>
+        <div class="card-title">Studio Black</div>
+        <div class="card-desc">Near-black + lime accent. Anton display. Marquee strips and oversized type. The brave, contemporary choice.</div>
+        <div class="card-tags">
+          <span class="tag">Anton</span>
+          <span class="tag">Inter</span>
+          <span class="tag">Lime accent</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="03-workshop.html" class="card">
+      <div class="card-preview card-preview-3">
+        <span class="label">Work<span class="acc">shop.</span></span>
+      </div>
+      <div class="card-body">
+        <div class="card-num">N°03 · Utilitarian craft</div>
+        <div class="card-title">Workshop</div>
+        <div class="card-desc">Black-on-white brutalist. Mono technical labels. ASCII portraits. Honest tools-and-craft register. The differentiator.</div>
+        <div class="card-tags">
+          <span class="tag">Inter Display</span>
+          <span class="tag">JetBrains Mono</span>
+          <span class="tag">Red accent</span>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="docs">
+    <h2>Reference analysis</h2>
+    <p>Detailed steal/avoid breakdown of Murdock, Ruffians, Hawthorne, and Blind Barber — the four sites this research draws from. Read this before showing the variants to the client; it gives you the language to defend each direction.</p>
+    <p style="margin-top: 16px;"><a href="00-reference-analysis.md">Open 00-reference-analysis.md →</a></p>
+  </div>
+</div>
+
+</body>
+</html>

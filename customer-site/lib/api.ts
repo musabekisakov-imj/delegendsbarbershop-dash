@@ -10,7 +10,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOpts {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined | null>;
   /** Server-side fetch caching strategy. Default: no-store for live data. */
@@ -90,6 +90,13 @@ export const publicApi = {
       cache: 'no-store',
     }),
 
+  /** Aggregate today's free slots for every staff at one office (single round-trip). */
+  todayAvailability: (params: { officeId: string; duration?: number }) =>
+    request<{ staffId: string; firstName: string; slots: string[] }[]>(
+      '/public/availability/today',
+      { query: params, cache: 'no-store' },
+    ),
+
   createBooking: (body: {
     officeId: string;
     serviceId: string;
@@ -100,5 +107,41 @@ export const publicApi = {
     request<ConfirmedBooking>('/public/appointments', {
       method: 'POST',
       body,
+    }),
+
+  // ─── Manage my booking (UUID-only auth) ──────────────────────────
+  getBooking: (id: string) =>
+    request<{
+      appointmentId: string;
+      status: 'scheduled' | 'completed' | 'cancelled' | 'no_show' | 'in_progress';
+      startTime: string;
+      endTime: string;
+      serviceName: string;
+      duration: number;
+      price: number;
+      staffId: string;
+      staffName: string;
+      officeName: string;
+      officeAddress: string;
+      officePhone: string;
+      clientFirstName: string;
+    }>(`/public/appointments/${encodeURIComponent(id)}`, { cache: 'no-store' }),
+
+  cancelBooking: (id: string) =>
+    request<{ ok: true; status: 'cancelled' }>(
+      `/public/appointments/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST' },
+    ),
+
+  rescheduleBooking: (id: string, newStartTime: string) =>
+    request<{ ok: true; startTime: string; endTime: string }>(
+      `/public/appointments/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: { newStartTime } },
+    ),
+
+  subscribeNewsletter: (email: string) =>
+    request<{ ok: true }>('/public/newsletter', {
+      method: 'POST',
+      body: { email },
     }),
 };

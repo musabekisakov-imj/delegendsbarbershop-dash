@@ -152,7 +152,7 @@ export function TimeWheelPicker({
   );
 }
 
-interface WheelColumnProps {
+export interface WheelColumnProps {
   label: string;
   items: number[];
   selected: number;
@@ -161,7 +161,7 @@ interface WheelColumnProps {
   formatItem?: (n: number) => string;
 }
 
-function WheelColumn({ label, items, selected, onSelect, formatItem }: WheelColumnProps) {
+export function WheelColumn({ label, items, selected, onSelect, formatItem }: WheelColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef<number | null>(null);

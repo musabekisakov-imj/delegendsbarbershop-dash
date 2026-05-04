@@ -371,6 +371,201 @@ export class PublicService implements OnModuleInit {
     };
   }
 
+  // ─── Manage booking (lookup + cancel) ────────────────────────────────
+
+  /**
+   * Public lookup by appointment ID — used by the "manage my booking" page
+   * the customer reaches from their confirmation email. Returns only the
+   * fields shown on that page; never exposes other client data, notes, etc.
+   */
+  async getAppointment(appointmentId: string) {
+    const tenantId = this.assertConfigured();
+
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId, deletedAt: null },
+      include: {
+        service: { select: { name: true, duration: true, price: true } },
+        staff: { select: { firstName: true, lastName: true } },
+        office: { select: { name: true, address: true, phone: true } },
+        client: { select: { firstName: true } },
+      },
+    });
+    if (!appt) throw new NotFoundException('Booking not found');
+
+    return {
+      appointmentId: appt.id,
+      status: appt.status,
+      startTime: appt.startTime,
+      endTime: appt.endTime,
+      serviceName: appt.service.name,
+      duration: appt.service.duration,
+      price: Number(appt.service.price),
+      staffId: appt.staffId,
+      staffName: `${appt.staff.firstName} ${appt.staff.lastName}`,
+      officeName: appt.office.name,
+      officeAddress: appt.office.address,
+      officePhone: appt.office.phone,
+      clientFirstName: appt.client.firstName,
+    };
+  }
+
+  /**
+   * Reschedule a booking — keeps the same service/staff/office, moves the
+   * start time. Rejected if cancellable cutoff has passed (≥2h) or the new
+   * slot conflicts with an existing booking on the same staff member.
+   */
+  async rescheduleAppointment(appointmentId: string, newStartIso: string) {
+    const tenantId = this.assertConfigured();
+
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId, deletedAt: null },
+      include: { service: true },
+    });
+    if (!appt) throw new NotFoundException('Booking not found');
+
+    if (
+      appt.status === AppointmentStatus.cancelled ||
+      appt.status === AppointmentStatus.no_show ||
+      appt.status === AppointmentStatus.completed
+    ) {
+      throw new ConflictException('This booking can no longer be rescheduled');
+    }
+
+    const minutesUntilStart = (appt.startTime.getTime() - Date.now()) / 60_000;
+    if (minutesUntilStart < 120) {
+      throw new BadRequestException(
+        'Online reschedule is only available up to 2 hours before the visit. Please call the salon.',
+      );
+    }
+
+    const newStart = new Date(newStartIso);
+    if (isNaN(newStart.getTime())) {
+      throw new BadRequestException('newStartTime is not a valid ISO date');
+    }
+    if (newStart.getTime() < Date.now() + 60 * 60 * 1000) {
+      throw new BadRequestException('New start must be at least 1 hour from now');
+    }
+    const newEnd = new Date(newStart.getTime() + appt.service.duration * 60 * 1000);
+
+    // Conflict check on same staff, excluding this very appointment.
+    const conflicts = await this.prisma.appointment.findMany({
+      where: {
+        staffId: appt.staffId,
+        id: { not: appt.id },
+        deletedAt: null,
+        status: { notIn: [AppointmentStatus.cancelled, AppointmentStatus.no_show] },
+        startTime: { lt: newEnd },
+        endTime: { gt: newStart },
+      },
+      select: { id: true },
+    });
+    if (conflicts.length > 0) {
+      throw new ConflictException('That time slot was just taken — please pick another');
+    }
+
+    await this.prisma.appointment.update({
+      where: { id: appt.id },
+      data: { startTime: newStart, endTime: newEnd },
+    });
+
+    return { ok: true, startTime: newStart, endTime: newEnd };
+  }
+
+  /**
+   * Cancel a booking by ID. Rejects with 410 (already cancelled) or 422
+   * (too close to start time — sub-2-hour window). Fires a cancellation
+   * email after the DB write succeeds.
+   */
+  async cancelAppointment(appointmentId: string) {
+    const tenantId = this.assertConfigured();
+
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId, deletedAt: null },
+      include: {
+        client: true,
+        service: { select: { name: true } },
+        tenant: { select: { name: true, phone: true } },
+      },
+    });
+    if (!appt) throw new NotFoundException('Booking not found');
+
+    if (
+      appt.status === AppointmentStatus.cancelled ||
+      appt.status === AppointmentStatus.no_show ||
+      appt.status === AppointmentStatus.completed
+    ) {
+      throw new ConflictException('This booking can no longer be cancelled');
+    }
+
+    const minutesUntilStart = (appt.startTime.getTime() - Date.now()) / 60_000;
+    if (minutesUntilStart < 120) {
+      throw new BadRequestException(
+        'Online cancellation is only available up to 2 hours before the visit. Please call the salon.',
+      );
+    }
+
+    await this.prisma.appointment.update({
+      where: { id: appt.id },
+      data: { status: AppointmentStatus.cancelled },
+    });
+
+    this.email
+      .sendBookingCancellation({
+        to: appt.client.email,
+        clientFirstName: appt.client.firstName,
+        serviceName: appt.service.name,
+        startTime: appt.startTime,
+        shopName: appt.tenant.name,
+        shopPhone: appt.tenant.phone,
+      })
+      .catch(() => {
+        this.logger.error(`Failed to send cancellation email to ${appt.client.email}`);
+      });
+
+    return { ok: true, status: 'cancelled' as const };
+  }
+
+  // ─── Aggregate today's availability ───────────────────────────────────
+
+  /**
+   * Returns today's free slot times per staff member at the given office.
+   * Single round-trip replacement for N parallel availability calls from
+   * the customer-site home page.
+   */
+  async getTodayAvailability(officeId: string, duration: number) {
+    const tenantId = this.assertConfigured();
+    await this.assertOfficeOwnership(tenantId, officeId);
+
+    const staff = await this.prisma.staff.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        officeLinks: { some: { officeId } },
+      },
+      select: { id: true, firstName: true },
+    });
+    const today = new Date().toISOString().slice(0, 10);
+
+    const results = await Promise.all(
+      staff.map((s) =>
+        this.getAvailability({ staffId: s.id, date: today, duration })
+          .then((slots) => ({ staffId: s.id, firstName: s.firstName, slots }))
+          .catch(() => ({ staffId: s.id, firstName: s.firstName, slots: [] as string[] })),
+      ),
+    );
+    return results;
+  }
+
+  // ─── Newsletter ────────────────────────────────────────────────────────
+
+  async subscribeNewsletter(email: string) {
+    const ok = await this.email.subscribeNewsletter(email);
+    if (!ok) {
+      throw new BadRequestException('Could not subscribe at this time. Please try again.');
+    }
+    return { ok: true };
+  }
+
   // ─── Helpers ──────────────────────────────────────────────────────────
 
   private async assertOfficeOwnership(tenantId: string, officeId: string) {

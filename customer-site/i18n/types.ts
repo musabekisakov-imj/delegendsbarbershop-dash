@@ -173,6 +173,8 @@ export interface Translations {
     title_a: string;
     title_accent: (date: string, time: string) => string;
     body: string;
+    email_sent_to: string;
+    email_sent_generic: string;
     sum_service: string;
     sum_master: string;
     sum_salon: string;
@@ -187,14 +189,73 @@ export interface Translations {
   };
   page: {
     services: { eyebrow: string; title: string; accent: string; sub: string; vat_note: string; filter: string; all: string; cta_eyebrow: string; cta_title_a: string; cta_title_accent: string; cta: string };
-    team: { eyebrow: string; title: string; accent: string; sub: string; cta_eyebrow: string; cta_title_a: string; cta_title_accent: string; cta: string };
-    locations: { eyebrow: string; title: string; accent: string; sub: string; salon_label: string; map_open: string; hours: string; cta: string };
-    story: { eyebrow: string; title: string; accent: string; sub: string };
+    team: { eyebrow: string; title: string; accent: string; sub: string; cta_eyebrow: string; cta_title_a: string; cta_title_accent: string; cta: string; atmosphere_eyebrow: string; atmosphere_title: string };
+    locations: {
+      eyebrow: string; title: string; accent: string; sub: string;
+      salon_label: string; map_open: string; hours: string; cta: string;
+      day_week: string; day_fri: string; day_sat: string; day_sun: string; closed: string;
+    };
+    story: {
+      eyebrow: string; title: string; accent: string; sub: string;
+      principles_eyebrow: string; principles_title: string;
+      p1_title: string; p1_body: string;
+      p2_title: string; p2_body: string;
+      p3_title: string; p3_body: string;
+      team_eyebrow: string; team_title: string;
+      team_body1: string; team_body2: string; team_cta: string;
+      vieta_eyebrow: string; vieta_title: string; vieta_body: string; vieta_cta: string;
+      cta_eyebrow: string; cta_title_a: string; cta_title_accent: string; cta: string;
+      caption_lead: string; caption_team: string; caption_vieta: string;
+    };
+    faq: {
+      eyebrow: string; title: string; accent: string; sub: string;
+      items: { q: string; a: string }[];
+      cta_eyebrow: string; cta_title_a: string; cta_title_accent: string; cta: string;
+    };
+    gifts: {
+      eyebrow: string; title: string; accent: string; sub: string;
+      denoms_label: string;
+      denoms: { value: string; label: string }[];
+      detail_label: string;
+      details: string[];
+      cta_eyebrow: string; cta_title: string; cta_body: string; cta_phone: string;
+    };
+  };
+  testimonials: {
+    eyebrow: string;
+    title_a: string;
+    title_accent: string;
+    items: { quote: string; name: string; meta: string }[];
+  };
+  live_today: {
+    eyebrow: string;
+    free_now: string;
+    full: string;
+    book_now: string;
   };
   ui: {
     select_master: string;
     duration_min: string;
     select_arrow: string;
     next_open: string;
+  };
+  manage: {
+    eyebrow: string;
+    title: string;
+    sub: string;
+    visit_label: string;
+    cancel_cta: string;
+    cancelling: string;
+    cancel_confirm: string;
+    cancelled_eyebrow: string;
+    cancelled_title: string;
+    cancelled_body: string;
+    too_late: string;
+    not_found_eyebrow: string;
+    not_found_title: string;
+    not_found_body: string;
+    back_home: string;
+    book_again: string;
+    call_to_change: string;
   };
 }

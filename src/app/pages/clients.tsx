@@ -504,10 +504,20 @@ export function ClientsPage() {
                   {/* Identity: avatar + name + chip stack */}
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={cn(
-                      'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-xs font-bold text-white',
+                      'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-xs font-bold text-white overflow-hidden',
                       grad,
                     )}>
-                      {client.firstName[0]}{client.lastName[0]}
+                      {client.avatarUrl && (
+                        <img
+                          src={client.avatarUrl}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="absolute inset-0 h-full w-full object-cover"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      )}
+                      <span className="relative">{client.firstName[0]}{client.lastName[0]}</span>
                       {isVip && (
                         <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-card">
                           <StarIconSolid className="h-2.5 w-2.5" />
@@ -626,10 +636,20 @@ export function ClientsPage() {
                   <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-start gap-4 min-w-0">
                       <div className={cn(
-                        'relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-lg font-bold text-white',
+                        'relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-lg font-bold text-white overflow-hidden',
                         gradientFor(selectedClient.id),
                       )}>
-                        {selectedClient.firstName[0]}{selectedClient.lastName[0]}
+                        {selectedClient.avatarUrl && (
+                          <img
+                            src={selectedClient.avatarUrl}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            className="absolute inset-0 h-full w-full object-cover"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        )}
+                        <span className="relative">{selectedClient.firstName[0]}{selectedClient.lastName[0]}</span>
                         {isVip && (
                           <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-card">
                             <StarIconSolid className="h-3 w-3" />
@@ -899,10 +919,20 @@ function ClientCard({
       {/* Identity — avatar + name + recency mark on one line */}
       <div className="flex items-start gap-3">
         <div className={cn(
-          'relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white',
+          'relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white overflow-hidden',
           grad,
         )}>
-          {client.firstName[0]}{client.lastName[0]}
+          {client.avatarUrl && (
+            <img
+              src={client.avatarUrl}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
+          <span className="relative">{client.firstName[0]}{client.lastName[0]}</span>
           {isVip && (
             <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-card">
               <StarIconSolid className="h-2.5 w-2.5" />

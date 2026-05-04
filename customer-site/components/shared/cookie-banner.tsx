@@ -7,7 +7,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useT } from '@/lib/use-t';
 
 const STORAGE_KEY = 'barberpro_cookie_consent';
@@ -61,7 +61,7 @@ export function CookieBanner() {
                 aria-label={t.cookie.close_label}
                 className="text-foreground/40 hover:text-foreground transition-colors"
               >
-                <X className="h-4 w-4" />
+                <XMarkIcon className="h-4 w-4" />
               </button>
             </div>
             <p className="text-sm text-foreground/80 leading-relaxed mb-5">
@@ -71,21 +71,13 @@ export function CookieBanner() {
               </Link>
               {t.cookie.body_b}
             </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => dismiss('accepted')}
-                className="inline-flex items-center bg-primary text-primary-foreground pl-4 py-0 pr-0 text-xs font-medium hover:bg-foreground hover:text-background transition-colors"
-              >
-                <span>{t.cookie.accept}</span>
-                <span className="border-l border-black/30 px-3 py-2.5 ml-4">{t.cookie.accept_short}</span>
-              </button>
-              <button
-                onClick={() => dismiss('rejected')}
-                className="px-4 py-2 text-xs font-medium text-foreground/60 hover:text-foreground transition-colors"
-              >
-                {t.cookie.reject}
-              </button>
-            </div>
+            <button
+              onClick={() => dismiss('accepted')}
+              className="inline-flex items-center bg-primary text-primary-foreground pl-4 py-0 pr-0 text-xs font-medium hover:bg-foreground hover:text-background transition-colors"
+            >
+              <span>{t.cookie.accept}</span>
+              <span className="border-l border-black/30 px-3 py-2.5 ml-4">{t.cookie.accept_short}</span>
+            </button>
           </div>
         </motion.div>
       )}

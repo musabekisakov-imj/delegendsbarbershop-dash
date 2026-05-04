@@ -24,11 +24,10 @@ export default function PrivacyPage() {
       <article className="page py-16 prose-section">
         <Section title="1. Duomenų valdytojas">
           <p>
-            MB &ldquo;Kirpykla Vilnius&rdquo; (toliau — Kirpykla), įmonės kodas
-            305 000 000, registruota adresu Pilies g. 12, LT-01123 Vilnius.
-            Kontaktinis el. paštas dėl asmens duomenų klausimų:{' '}
-            <a href="mailto:hello@kirpykla.lt" className="text-primary hover:underline">
-              hello@kirpykla.lt
+            De Legends Barbershop (toliau — De Legends), Pilies g. 38,
+            LT-01123 Vilnius. Kontaktinis el. paštas dėl asmens duomenų klausimų:{' '}
+            <a href="mailto:contact@delegendsbarbershop.lt" className="text-primary hover:underline">
+              contact@delegendsbarbershop.lt
             </a>
             .
           </p>
@@ -87,8 +86,8 @@ export default function PrivacyPage() {
           </p>
           <p className="mt-3">
             Visus prašymus dėl duomenų tvarkymo siųskite{' '}
-            <a href="mailto:hello@kirpykla.lt" className="text-primary hover:underline">
-              hello@kirpykla.lt
+            <a href="mailto:contact@delegendsbarbershop.lt" className="text-primary hover:underline">
+              contact@delegendsbarbershop.lt
             </a>
             .
           </p>

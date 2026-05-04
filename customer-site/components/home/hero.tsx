@@ -1,14 +1,15 @@
 'use client';
 
 // HALL Hero — adapted from the supplied UI library pattern.
-// Full-bleed photo background + dark overlay + avatar stack + stats
-// marquee at top, brutalist split title/paragraph at the bottom.
+// Full-bleed photo background + dark overlay + stats marquee at top,
+// brutalist split title/paragraph at the bottom. The avatar cluster lived
+// here previously but read as a confusing not-logo — moved out, brand
+// identity is carried by the wordmark in the nav.
 
 import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRightIcon } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
 import { Photo } from '@/components/shared/photo';
-import { AvatarStack } from '@/components/shared/avatar-stack';
 import { StatsMarquee } from '@/components/shared/stats-marquee';
 import { useT } from '@/lib/use-t';
 import { PHOTOS, GRADIENTS } from '@/lib/photos';
@@ -44,21 +45,20 @@ export function Hero({ staff, servicesCount, officesCount }: Props) {
           className="h-full w-full"
           treated={false}
         />
-        <div className="absolute inset-0 bg-black/55" />
+        <div className="absolute inset-0 bg-black/60" />
+        {/* Bottom gradient — keeps the title legible regardless of photo subject */}
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
       </div>
 
-      {/* Top zone — avatar stack + stats marquee */}
-      <div className="relative z-10 w-full max-w-4xl px-4 pt-24 text-foreground sm:px-8 lg:px-16">
-        <div className="space-y-4">
-          <AvatarStack staff={staff} />
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: EASE, delay: 0.4 }}
-          >
-            <StatsMarquee stats={stats} />
-          </motion.div>
-        </div>
+      {/* Top zone — stats marquee only (avatar cluster removed) */}
+      <div className="relative z-10 w-full pt-24">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: EASE, delay: 0.4 }}
+        >
+          <StatsMarquee stats={stats} />
+        </motion.div>
       </div>
 
       <div className="flex-1" />
@@ -84,10 +84,13 @@ export function Hero({ staff, servicesCount, officesCount }: Props) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.55 }}
             >
-              <Link href="/book" className="inline-flex items-center bg-primary text-primary-foreground pl-5 py-0 pr-0 text-base font-medium hover:bg-white hover:text-black transition-colors duration-200">
+              <Link
+                href="/book"
+                className="inline-flex items-center bg-primary text-primary-foreground pl-5 py-0 pr-0 text-base font-semibold hover:bg-white hover:text-black transition-colors duration-200"
+              >
                 <span>{t.nav.book}</span>
                 <span className="border-l border-black/30 p-3 ml-5 inline-flex items-center">
-                  <ArrowRight className="h-5 w-5" />
+                  <ArrowRightIcon className="h-5 w-5" />
                 </span>
               </Link>
             </motion.div>

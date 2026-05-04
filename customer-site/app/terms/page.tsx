@@ -13,7 +13,7 @@ export default function TermsPage() {
         eyebrow="Teisinis dokumentas"
         title="Naudojimo"
         accent="taisyklės."
-        description="Šios taisyklės reguliuoja vizitų rezervaciją per kirpykla.lt svetainę ir paslaugų teikimą Kirpyklos salonuose. Atnaujinta 2026 m. balandžio mėn."
+        description="Šios taisyklės reguliuoja vizitų rezervaciją per delegendsbarbershop.lt svetainę ir paslaugų teikimą De Legends Barbershop salone. Atnaujinta 2026 m. balandžio mėn."
         size="default"
       />
 
@@ -54,7 +54,7 @@ export default function TermsPage() {
 
         <Section title="5. Atsakomybė">
           <p>
-            Kirpykla atsako už paslaugų kokybę pagal galiojančius Lietuvos
+            De Legends atsako už paslaugų kokybę pagal galiojančius Lietuvos
             Respublikos teisės aktus. Pretenzijos dėl paslaugų pateikiamos
             iškart po vizito arba per 3 dienas el. paštu.
           </p>
@@ -74,7 +74,7 @@ export default function TermsPage() {
         <Section title="7. Ginčų sprendimas">
           <p>
             Visi ginčai pirmiausia sprendžiami derybų keliu, susisiekus
-            adresu hello@kirpykla.lt. Nepavykus susitarti, ginčai sprendžiami
+            adresu contact@delegendsbarbershop.lt. Nepavykus susitarti, ginčai sprendžiami
             Lietuvos Respublikos teismuose. Vartotojai taip pat gali kreiptis
             į Valstybinę vartotojų teisių apsaugos tarnybą (
             <a

@@ -203,6 +203,7 @@ model Client {
   phone       String
   notes       String    @default("")
   gender      Gender?
+  avatarUrl   String?
   totalVisits Int       @default(0)
   lastVisitAt DateTime?
   createdAt   DateTime  @default(now())

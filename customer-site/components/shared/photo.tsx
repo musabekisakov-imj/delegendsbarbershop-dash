@@ -4,7 +4,6 @@
 // photo fails to load (404, network, blocked), the gradient stays visible —
 // no broken image icons, ever. Filter unifies any photo into HOURS palette.
 
-import { PHOTOS } from '@/lib/photos';
 import { cn } from '@/lib/cn';
 
 interface Props {
@@ -29,13 +28,14 @@ export function Photo({
     <div
       role={alt ? 'img' : 'presentation'}
       aria-label={alt || undefined}
-      className={cn('relative overflow-hidden bg-ink', className)}
+      className={cn('relative overflow-hidden bg-background', className)}
       style={{
         backgroundImage: `url("${src}"), ${fallback}`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
-        ...(treated && { filter: PHOTOS.filter }),
+        // Theme-aware filter — light mode lifts brightness, dark crushes it
+        ...(treated && { filter: 'var(--photo-filter)' }),
       }}
     >
       {children}

@@ -3,9 +3,10 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRightIcon } from '@heroicons/react/24/outline';
 import { formatLtPhone, telHref, mapsHref } from '@/lib/lt';
 import { useT } from '@/lib/use-t';
+import { SITE, legalLine } from '@/lib/site-config';
 
 export function SiteFooter() {
   const t = useT();
@@ -21,7 +22,7 @@ export function SiteFooter() {
           {/* Brand */}
           <div className="lg:col-span-5">
             <Link href="/" className="text-xl font-medium tracking-tight text-foreground hover:text-primary transition-colors">
-              Kirpykla Vilnius
+              {SITE.name}
             </Link>
             <p className="mt-4 text-foreground/60 text-sm leading-relaxed max-w-sm">
               {t.footer.tagline}
@@ -40,50 +41,46 @@ export function SiteFooter() {
               <li><Link href="/team" className="text-foreground hover:text-primary transition-colors">{t.nav.team}</Link></li>
               <li><Link href="/locations" className="text-foreground hover:text-primary transition-colors">{t.nav.locations}</Link></li>
               <li><Link href="/story" className="text-foreground hover:text-primary transition-colors">{t.nav.story}</Link></li>
+              <li><Link href="/faq" className="text-foreground hover:text-primary transition-colors">{t.page.faq.eyebrow.split(' · ')[0]}</Link></li>
+              <li><Link href="/gift-cards" className="text-foreground hover:text-primary transition-colors">{t.page.gifts.eyebrow.split(' · ')[0]}</Link></li>
               <li><Link href="/book" className="text-primary font-medium hover:underline">{t.footer.book_link}</Link></li>
             </ul>
           </div>
 
-          {/* Senamiestis */}
-          <div className="lg:col-span-2">
-            <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-foreground/40 mb-4 font-mono">Senamiestis</div>
-            <address className="not-italic text-sm leading-7 text-foreground/70">
-              <a href={mapsHref('Pilies g. 12, Vilnius')} target="_blank" rel="noopener" className="hover:text-foreground transition-colors">
-                Pilies g. 12<br />
-                LT-01123 Vilnius
-              </a><br />
-              <a href={telHref('+37060000001')} className="tabular text-foreground hover:text-primary transition-colors">
-                {formatLtPhone('+37060000001')}
-              </a>
-            </address>
-          </div>
-
-          {/* Naujamiestis */}
-          <div className="lg:col-span-2 lg:col-start-11">
-            <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-foreground/40 mb-4 font-mono">Naujamiestis</div>
-            <address className="not-italic text-sm leading-7 text-foreground/70">
-              <a href={mapsHref('Gedimino pr. 45, Vilnius')} target="_blank" rel="noopener" className="hover:text-foreground transition-colors">
-                Gedimino pr. 45<br />
-                LT-01103 Vilnius
-              </a><br />
-              <a href={telHref('+37060000002')} className="tabular text-foreground hover:text-primary transition-colors">
-                {formatLtPhone('+37060000002')}
-              </a>
-            </address>
-          </div>
+          {SITE.offices.map((office, idx) => {
+            const [street] = office.address.split(',');
+            return (
+              <div key={office.key} className={idx === 1 ? 'lg:col-span-2 lg:col-start-11' : 'lg:col-span-2'}>
+                <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-foreground/40 mb-4 font-mono">
+                  {office.name}
+                </div>
+                <address className="not-italic text-sm leading-7 text-foreground/70">
+                  <a href={mapsHref(office.address)} target="_blank" rel="noopener" className="hover:text-foreground transition-colors">
+                    {street.trim()}<br />
+                    {office.postalCode} Vilnius
+                  </a><br />
+                  <a href={telHref(office.phone)} className="tabular text-foreground hover:text-primary transition-colors">
+                    {formatLtPhone(office.phone)}
+                  </a>
+                </address>
+              </div>
+            );
+          })}
         </div>
 
         {/* Legal + business meta strip */}
         <div className="mt-16 pt-6 border-t border-border grid gap-3 sm:grid-cols-[1fr_auto] items-baseline">
           <div className="text-[10px] uppercase tracking-[0.18em] text-foreground/40 font-mono leading-relaxed">
-            {t.footer.legal_company.replace('{year}', String(new Date().getFullYear()))}<br />
+            {legalLine(new Date().getFullYear())}<br />
             {t.footer.legal_vat}
           </div>
           <div className="flex items-center flex-wrap gap-x-5 gap-y-2 text-[10px] uppercase tracking-[0.18em] font-mono">
             <Link href="/privacy" className="text-foreground/60 hover:text-foreground transition-colors">{t.footer.privacy}</Link>
             <Link href="/terms" className="text-foreground/60 hover:text-foreground transition-colors">{t.footer.terms}</Link>
-            <a href="mailto:hello@kirpykla.lt" className="text-foreground/60 hover:text-foreground transition-colors">hello@kirpykla.lt</a>
-            <a href="https://instagram.com" target="_blank" rel="noopener" className="text-foreground/60 hover:text-foreground transition-colors">Instagram</a>
+            <a href={`mailto:${SITE.email}`} className="text-foreground/60 hover:text-foreground transition-colors">{SITE.email}</a>
+            {SITE.instagram && (
+              <a href={SITE.instagram} target="_blank" rel="noopener" className="text-foreground/60 hover:text-foreground transition-colors">Instagram</a>
+            )}
           </div>
         </div>
       </div>
@@ -96,10 +93,26 @@ function NewsletterBlock() {
   const [email, setEmail] = useState('');
   const [done, setDone] = useState(false);
   const [consent, setConsent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (email.includes('@') && consent) setDone(true);
+    if (!email.includes('@') || !consent) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      // Lazy-import the client API only on submit so the footer doesn't pull
+      // it into its initial bundle.
+      const { publicApi, ApiError } = await import('@/lib/api');
+      await publicApi.subscribeNewsletter(email);
+      setDone(true);
+    } catch (err) {
+      const msg = (err as { message?: string })?.message ?? '';
+      setError(msg || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -134,15 +147,18 @@ function NewsletterBlock() {
                   />
                   <button
                     type="submit"
-                    disabled={!consent || !email}
+                    disabled={!consent || !email || submitting}
                     className="inline-flex items-center bg-primary text-primary-foreground pl-5 py-0 pr-0 text-sm font-medium hover:bg-foreground hover:text-background transition-colors duration-200 shrink-0 disabled:opacity-40 disabled:pointer-events-none"
                   >
-                    <span>{t.newsletter.submit}</span>
+                    <span>{submitting ? '…' : t.newsletter.submit}</span>
                     <span className="border-l border-black/30 p-4 ml-5 inline-flex items-center">
-                      <ArrowRight className="h-4 w-4" />
+                      <ArrowRightIcon className="h-4 w-4" />
                     </span>
                   </button>
                 </div>
+                {error && (
+                  <p className="text-xs text-red-300/90" role="alert">{error}</p>
+                )}
                 <label className="flex items-start gap-2.5 text-xs text-foreground/60 cursor-pointer">
                   <input
                     type="checkbox"

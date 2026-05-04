@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { ArrowUpRightIcon } from '@heroicons/react/24/outline';
 import { PageHeader } from '@/components/shared/page-header';
+import { Photo } from '@/components/shared/photo';
 import { TeamGrid } from './_client';
 import { publicApi } from '@/lib/api';
+import { PHOTOS, GRADIENTS } from '@/lib/photos';
 import { getServerT } from '@/lib/i18n';
 import type { PublicStaff } from '@/lib/types';
 
@@ -31,6 +33,23 @@ export default async function TeamPage() {
 
       <section className="page pb-32">
         <TeamGrid staff={staff} />
+
+        {/* Atmosphere photo strip — anchors the team in a real space */}
+        <figure className="relative aspect-[21/9] rounded-xl overflow-hidden mt-24">
+          <Photo
+            src={PHOTOS.teamAtmosphere}
+            fallback={GRADIENTS.warm}
+            alt={t.page.team.atmosphere_title}
+            className="absolute inset-0"
+          />
+          <div className="absolute inset-0 bg-gradient-to-tr from-background/85 via-background/40 to-transparent" />
+          <figcaption className="absolute bottom-8 left-8 right-8 lg:bottom-12 lg:left-12 max-w-xl">
+            <div className="eyebrow mb-3 text-foreground/85">{t.page.team.atmosphere_eyebrow}</div>
+            <h3 className="font-bold tracking-tight text-2xl sm:text-3xl lg:text-4xl text-foreground leading-tight">
+              {t.page.team.atmosphere_title}
+            </h3>
+          </figcaption>
+        </figure>
 
         <div className="mt-24 pt-12 border-t border-border grid lg:grid-cols-12 gap-10">
           <div className="lg:col-span-6">

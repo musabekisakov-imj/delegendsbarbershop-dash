@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, MapPin } from 'lucide-react';
+import { ArrowRightIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import { Hero } from '@/components/home/hero';
 import { Photo } from '@/components/shared/photo';
 import { publicApi } from '@/lib/api';
@@ -11,6 +11,7 @@ import { translateServiceName, translateServiceDescription } from '@/lib/transla
 import type { Service, Office, PublicStaff } from '@/lib/types';
 import type { Translations, Lang } from '@/i18n';
 import { RevealOnScroll, StaggerChildren, StaggerChild } from '@/components/home/home-anim';
+import { Testimonials } from '@/components/home/testimonials';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,15 +24,6 @@ export default async function HomePage() {
     publicApi.staff().catch(() => [] as PublicStaff[]),
   ]);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const sampleStaff = staff[0];
-  const sampleService = services[0];
-  const todaySlots: string[] = sampleStaff && sampleService
-    ? await publicApi
-        .availability({ staffId: sampleStaff.id, date: today, duration: sampleService.duration })
-        .catch(() => [] as string[])
-    : [];
-
   const featuredServices = (services.length ? services : []).slice(0, 3);
   const officeA = offices[0] ?? FALLBACK_OFFICES[0];
   const officeB = offices[1] ?? FALLBACK_OFFICES[1];
@@ -40,14 +32,14 @@ export default async function HomePage() {
     <>
       <Hero
         staff={staff.length ? staff : []}
-        servicesCount={services.length || 5}
+        servicesCount={services.length || 17}
         officesCount={offices.length || 2}
       />
       <Manifesto t={t} />
       {featuredServices.length > 0 && <ServicesPreview t={t} lang={lang} services={featuredServices} />}
       <TeamPreview t={t} staff={staff} />
       <LocationsPreview t={t} officeA={officeA} officeB={officeB} />
-      <LiveBookingStrip t={t} slots={todaySlots} sampleStaff={sampleStaff} />
+      <Testimonials />
       <ClosingCTA t={t} />
     </>
   );
@@ -77,7 +69,7 @@ function Manifesto({ t }: { t: Translations }) {
                 className="mt-8 inline-flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-colors group"
               >
                 {t.manifesto.cta}
-                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
               </Link>
             </div>
           </div>
@@ -106,7 +98,7 @@ function ServicesPreview({ t, lang, services }: { t: Translations; lang: Lang; s
               className="inline-flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-colors group"
             >
               {t.services_preview.cta}
-              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+              <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
         </RevealOnScroll>
@@ -139,16 +131,28 @@ function ServiceCard({
 }) {
   const name = translateServiceName(service.name, lang);
   const description = translateServiceDescription(service.description, lang);
+  const photoUrl = PHOTOS.serviceByName[service.name];
   return (
     <Link
       href="/book"
       className="group flex flex-col h-full bg-background hover:bg-surface transition-colors duration-300"
     >
-      <div className={`aspect-[4/3] bg-gradient-to-br ${serviceGradientFor(service.id)} relative`}>
-        <div className="absolute top-4 left-4 inline-flex items-center px-2 py-1 bg-black/40 backdrop-blur text-white text-[10px] font-mono uppercase tracking-[0.18em]">
+      <div className="aspect-[4/3] relative overflow-hidden">
+        {photoUrl ? (
+          <Photo
+            src={photoUrl}
+            fallback={GRADIENTS.warm}
+            alt={name}
+            className="absolute inset-0 transition-transform duration-700 group-hover:scale-[1.04]"
+          />
+        ) : (
+          <div className={`absolute inset-0 bg-gradient-to-br ${serviceGradientFor(service.id)}`} />
+        )}
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-background/85 via-background/20 to-transparent pointer-events-none" />
+        <div className="absolute top-4 left-4 inline-flex items-center px-2 py-1 bg-black/55 backdrop-blur text-white text-[10px] font-mono uppercase tracking-[0.18em]">
           {service.duration} {durationUnit}
         </div>
-        <div className="absolute bottom-4 right-4 text-white text-3xl font-bold tabular drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
+        <div className="absolute bottom-4 right-4 text-white text-3xl font-bold tabular drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]">
           €{service.price}
         </div>
       </div>
@@ -161,7 +165,7 @@ function ServiceCard({
         )}
         <div className="mt-auto pt-6 inline-flex items-center gap-2 text-xs font-mono uppercase tracking-[0.18em] text-foreground/60 group-hover:text-primary transition-colors">
           {bookLabel}
-          <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-1" />
+          <ArrowRightIcon className="h-3 w-3 transition-transform group-hover:translate-x-1" />
         </div>
       </div>
     </Link>
@@ -190,7 +194,7 @@ function TeamPreview({ t, staff }: { t: Translations; staff: PublicStaff[] }) {
               className="inline-flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-colors group"
             >
               {t.team_preview.cta}
-              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+              <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
         </RevealOnScroll>
@@ -201,9 +205,19 @@ function TeamPreview({ t, staff }: { t: Translations; staff: PublicStaff[] }) {
               <StaggerChild key={s.id}>
                 <Link href="/book" className="group flex items-center gap-5 bg-background hover:bg-surface p-7 transition-colors duration-300">
                   <div
-                    className={`size-16 rounded-full bg-gradient-to-br ${gradientFor(s.id)} flex items-center justify-center text-white font-bold tabular shrink-0 border-2 border-primary`}
+                    className={`relative size-16 rounded-full overflow-hidden bg-gradient-to-br ${gradientFor(s.id)} flex items-center justify-center text-white font-bold tabular shrink-0 ring-2 ring-primary`}
+                    style={
+                      PHOTOS.staffByFirstName[s.firstName] || s.avatarUrl
+                        ? {
+                            backgroundImage: `url("${s.avatarUrl ?? PHOTOS.staffByFirstName[s.firstName]}")`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                          }
+                        : undefined
+                    }
                   >
-                    {`${s.firstName[0]}${s.lastName[0]}`.toUpperCase()}
+                    {!PHOTOS.staffByFirstName[s.firstName] && !s.avatarUrl &&
+                      `${s.firstName[0]}${s.lastName[0]}`.toUpperCase()}
                   </div>
                   <div className="min-w-0">
                     <div className="text-xl font-medium tracking-tight group-hover:text-primary transition-colors">
@@ -245,7 +259,7 @@ function LocationsPreview({ t, officeA, officeB }: { t: Translations; officeA: O
               className="inline-flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-colors group"
             >
               {t.locations_preview.cta}
-              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+              <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
         </RevealOnScroll>
@@ -270,7 +284,7 @@ function LocationsPreview({ t, officeA, officeB }: { t: Translations; officeA: O
                     </span>
                   </div>
                   <div className="flex items-start gap-2 text-sm text-foreground/60 leading-relaxed">
-                    <MapPin className="h-3.5 w-3.5 mt-1 shrink-0" />
+                    <MapPinIcon className="h-3.5 w-3.5 mt-1 shrink-0" />
                     {office.address}
                   </div>
                   {office.phone && (
@@ -302,57 +316,6 @@ function Hours({ day, hours }: { day: string; hours: string }) {
   );
 }
 
-// ─── Live booking strip ────────────────────────────────────────
-
-function LiveBookingStrip({ t, slots, sampleStaff }: { t: Translations; slots: string[]; sampleStaff?: PublicStaff }) {
-  return (
-    <section className="border-t border-border bg-primary text-primary-foreground">
-      <div className="page py-16 sm:py-20">
-        <RevealOnScroll>
-          <div className="grid lg:grid-cols-12 gap-10 items-center">
-            <div className="lg:col-span-6">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary-foreground animate-pulse" />
-                <span className="text-[10px] uppercase tracking-[0.18em] text-primary-foreground/70 font-mono">
-                  {t.live.today} · {t.live.with_master} {sampleStaff?.firstName ?? '—'}
-                </span>
-              </div>
-              <h3 className="display text-3xl sm:text-5xl text-primary-foreground">
-                {slots.length > 0 ? `${slots.length} ${t.live.free_slots}` : t.live.all_booked}
-              </h3>
-            </div>
-
-            <div className="lg:col-span-6 lg:col-start-7">
-              {slots.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {slots.slice(0, 8).map((time) => (
-                    <Link
-                      key={time}
-                      href="/book"
-                      className="px-4 py-2 border border-primary-foreground/20 bg-background text-foreground tabular text-sm hover:bg-foreground hover:text-background transition-all"
-                    >
-                      {time}
-                    </Link>
-                  ))}
-                  <Link
-                    href="/book"
-                    className="px-4 py-2 bg-primary-foreground text-primary text-sm font-medium hover:bg-foreground hover:text-background transition-all inline-flex items-center gap-2"
-                  >
-                    {t.live.all}
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </div>
-              ) : (
-                <p className="text-primary-foreground/70 text-base">{t.live.next_day}</p>
-              )}
-            </div>
-          </div>
-        </RevealOnScroll>
-      </div>
-    </section>
-  );
-}
-
 // ─── Closing CTA ───────────────────────────────────────────────
 
 function ClosingCTA({ t }: { t: Translations }) {
@@ -374,7 +337,7 @@ function ClosingCTA({ t }: { t: Translations }) {
             >
               <span>{t.closing.cta}</span>
               <span className="border-l border-black/30 p-4 ml-7 inline-flex items-center">
-                <ArrowRight className="h-5 w-5" />
+                <ArrowRightIcon className="h-5 w-5" />
               </span>
             </Link>
           </div>
@@ -390,6 +353,6 @@ function ClosingCTA({ t }: { t: Translations }) {
 // ─── Fallbacks ─────────────────────────────────────────────────
 
 const FALLBACK_OFFICES: Office[] = [
-  { id: '1', name: 'Senamiestis', address: 'Pilies g. 12, Vilnius', phone: '+370 600 00001' },
-  { id: '2', name: 'Naujamiestis', address: 'Gedimino pr. 45, Vilnius', phone: '+370 600 00002' },
+  { id: '1', name: 'Senamiestis',  address: 'Pilies g. 38, Vilnius',    phone: '+37066375648' },
+  { id: '2', name: 'Naujamiestis', address: 'Gedimino pr. 45, Vilnius', phone: '+37060000002' },
 ];

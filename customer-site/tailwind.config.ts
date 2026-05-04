@@ -1,12 +1,10 @@
 import type { Config } from 'tailwindcss';
 
-// HALL — dark/light system. Colors live as CSS custom properties in
-// globals.css so `:root` (light) vs `.dark` (dark) toggles the entire
-// palette via next-themes' class swap. Tailwind reads `oklch(var(--…) /
-// <alpha-value>)` so opacity modifiers (bg-primary/10) keep working.
+// HALL — single dark editorial palette. Colors live as CSS custom properties
+// in globals.css; Tailwind reads `oklch(var(--…) / <alpha-value>)` so
+// opacity modifiers (bg-primary/10) keep working.
 
 const config: Config = {
-  darkMode: 'class',
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   // Tailwind's JIT scanner can't see dynamically interpolated class names
   // (e.g. `${serviceGradientFor(id)}` → `from-rose-400 via-fuchsia-500 to-purple-600`).
@@ -69,7 +67,7 @@ const config: Config = {
         ring: 'oklch(var(--primary) / <alpha-value>)',
       },
       fontFamily: {
-        sans: ['var(--font-jakarta)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['var(--font-geist-mono)', 'ui-monospace', 'monospace'],
       },
       borderRadius: {

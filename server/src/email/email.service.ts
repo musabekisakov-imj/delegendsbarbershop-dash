@@ -38,17 +38,43 @@ export class EmailService {
   private readonly from: string;
   private readonly replyTo: string | undefined;
   private readonly dryRun: boolean;
+  private readonly audienceId: string | undefined;
 
   constructor(config: ConfigService) {
     const apiKey = config.get<string>('RESEND_API_KEY');
     this.from = config.get<string>('EMAIL_FROM') ?? 'BarberPro <noreply@example.com>';
     this.replyTo = config.get<string>('EMAIL_REPLY_TO');
     this.dryRun = config.get<string>('EMAIL_DRY_RUN') === 'true';
+    this.audienceId = config.get<string>('RESEND_AUDIENCE_ID');
 
     this.resend = apiKey && apiKey !== 're_xxx_your_key_here' ? new Resend(apiKey) : null;
 
     if (!this.resend && !this.dryRun) {
       this.logger.warn('EMAIL_DRY_RUN=false but RESEND_API_KEY missing — emails will fail silently.');
+    }
+  }
+
+  /**
+   * Subscribe an email to the newsletter audience. Returns true on success
+   * (added or already-subscribed), false on hard failure. Always logs the
+   * captured email so dev sees signups even without a Resend key.
+   */
+  async subscribeNewsletter(email: string): Promise<boolean> {
+    this.logger.log(`Newsletter signup: ${email}`);
+    if (this.dryRun || !this.resend || !this.audienceId) return true;
+    try {
+      await this.resend.contacts.create({
+        email,
+        audienceId: this.audienceId,
+        unsubscribed: false,
+      });
+      return true;
+    } catch (err) {
+      // Resend returns 409 if the contact already exists — treat as success.
+      const msg = (err as Error).message ?? '';
+      if (msg.includes('already exists') || msg.includes('409')) return true;
+      this.logger.error(`Newsletter subscribe failed for ${email} → ${msg}`);
+      return false;
     }
   }
 

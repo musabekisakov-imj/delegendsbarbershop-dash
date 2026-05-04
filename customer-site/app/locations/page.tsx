@@ -20,8 +20,8 @@ export async function generateMetadata() {
 }
 
 const FALLBACK_OFFICES: Office[] = [
-  { id: '1', name: 'Senamiestis', address: 'Pilies g. 12, Vilnius', phone: '+370 600 00001', timezone: 'Europe/Vilnius' },
-  { id: '2', name: 'Naujamiestis', address: 'Gedimino pr. 45, Vilnius', phone: '+370 600 00002', timezone: 'Europe/Vilnius' },
+  { id: '1', name: 'Senamiestis',  address: 'Pilies g. 38, Vilnius',     phone: '+37066375648', timezone: 'Europe/Vilnius' },
+  { id: '2', name: 'Naujamiestis', address: 'Gedimino pr. 45, Vilnius',  phone: '+37060000002', timezone: 'Europe/Vilnius' },
 ];
 
 export default async function LocationsPage() {
@@ -29,12 +29,12 @@ export default async function LocationsPage() {
   const offices = (await publicApi.offices().catch(() => [] as Office[])) || [];
   const items = offices.length ? offices : FALLBACK_OFFICES;
 
-  // Hours grid is structured per language (day labels translate, hour values stay).
+  // Hours grid — day labels and the "closed" string come straight from the dict.
   const hoursGrid = [
-    { day: t.hours.week === 'M—T' ? 'Mon — Thu' : t.hours.week === 'Пн—Чт' ? 'Понедельник — Четверг' : 'Pirmadienis — Ketvirtadienis', hours: '09:00 — 20:00' },
-    { day: t.hours.fri === 'Fri' ? 'Friday' : t.hours.fri === 'Пт' ? 'Пятница' : 'Penktadienis', hours: '09:00 — 21:00' },
-    { day: t.hours.sat === 'Sat' ? 'Saturday' : t.hours.sat === 'Сб' ? 'Суббота' : 'Šeštadienis', hours: '10:00 — 18:00' },
-    { day: t.hours.sat === 'Sat' ? 'Sunday' : t.hours.sat === 'Сб' ? 'Воскресенье' : 'Sekmadienis', hours: t.hours.sat === 'Sat' ? 'Closed' : t.hours.sat === 'Сб' ? 'Закрыто' : 'Uždara', muted: true },
+    { day: t.page.locations.day_week, hours: '09:00 — 20:00' },
+    { day: t.page.locations.day_fri,  hours: '09:00 — 21:00' },
+    { day: t.page.locations.day_sat,  hours: '10:00 — 18:00' },
+    { day: t.page.locations.day_sun,  hours: t.page.locations.closed, muted: true },
   ];
 
   return (
@@ -70,17 +70,30 @@ function LocationBlock({
 }) {
   const photoUrl = PHOTOS.locationByIndex[index] ?? PHOTOS.locationByIndex[0];
   const fallback = index === 0 ? GRADIENTS.warm : GRADIENTS.amber;
+  // Keyless Google Maps embed — works without an API key, no usage quota.
+  const mapEmbedSrc = `https://www.google.com/maps?q=${encodeURIComponent(`${office.address}, Vilnius, Lithuania`)}&output=embed&z=16`;
 
   return (
     <article className="card overflow-hidden">
       <div className="grid lg:grid-cols-12">
         <div className={index % 2 === 0 ? 'lg:col-span-7' : 'lg:col-span-7 lg:order-2'}>
-          <Photo
-            src={photoUrl}
-            fallback={fallback}
-            alt={office.name}
-            className="aspect-[16/10] lg:aspect-auto lg:h-full"
-          />
+          {/* Top half: photo · bottom half: live Google Maps */}
+          <div className="grid grid-rows-2 h-full min-h-[480px] lg:min-h-[640px]">
+            <Photo
+              src={photoUrl}
+              fallback={fallback}
+              alt={office.name}
+              className="row-start-1 w-full h-full"
+            />
+            <iframe
+              src={mapEmbedSrc}
+              title={`${office.name} — ${office.address}`}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              className="row-start-2 w-full h-full border-0 grayscale-[0.6] contrast-[1.05] opacity-90"
+              allowFullScreen
+            />
+          </div>
         </div>
 
         <div className={`lg:col-span-5 p-8 sm:p-10 lg:p-14 flex flex-col ${index % 2 !== 0 ? 'lg:order-1' : ''}`}>

@@ -1,0 +1,17 @@
+# Dashboard project (root) only — exclude sibling apps and unrelated artifacts.
+server/
+customer-site/
+dist/
+.next/
+node_modules/
+*.log
+*.bak
+.env
+.env.local
+.env.*.local
+graphify-out/
+design-research/
+.DS_Store
+HANDOFF.md
+ATTRIBUTIONS.md
+guidelines/

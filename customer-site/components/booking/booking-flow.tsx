@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion, AnimatePresence, useInView } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUpRightIcon, ArrowLeftIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { publicApi, ApiError } from '@/lib/api';
 import type { Office, Service, PublicStaff } from '@/lib/types';
@@ -14,6 +14,8 @@ import {
   translateServiceDescription,
   translateCategory,
 } from '@/lib/translate-service';
+import { LiquidLine } from '@/components/shared/liquid-line';
+import { PHOTOS } from '@/lib/photos';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -90,8 +92,13 @@ export function BookingFlow({ offices, services, staff }: Props) {
         startTime: startDate.toISOString(),
         client: state.contact,
       });
-      sessionStorage.setItem('barberpro_last_booking', JSON.stringify(result));
-      router.push('/book/confirmation');
+      // Persist the booking + the email we just submitted so the
+      // confirmation page can show "Sent to your@email" on this device.
+      sessionStorage.setItem(
+        'barberpro_last_booking',
+        JSON.stringify({ ...result, clientEmail: state.contact.email }),
+      );
+      router.push(`/book/confirmation?id=${encodeURIComponent(result.appointmentId)}`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setSubmitError(t.booking.error_conflict);
@@ -105,21 +112,78 @@ export function BookingFlow({ offices, services, staff }: Props) {
     }
   }
 
+  // Booking progress percentage — drives the lime fill bar at the top.
+  const stepsDone =
+    (state.serviceId ? 1 : 0) +
+    (state.staffId ? 1 : 0) +
+    (state.startTime ? 1 : 0) +
+    (state.contact.firstName.trim().length > 0 ? 1 : 0);
+  const progressPct = Math.round((stepsDone / 4) * 100);
+
   return (
     <div className="bg-background min-h-screen">
       {/* Booking-specific compact header (global nav is hidden on /book/*) */}
-      <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
+      <motion.header
+        initial={{ y: -16, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.55, ease: EASE }}
+        className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md"
+      >
+        {/* Lime fill progress bar — animates from 0 → 100% as steps complete */}
+        <div className="relative h-[2px] bg-border-strong/20 overflow-hidden">
+          <motion.div
+            className="absolute inset-y-0 left-0 bg-primary"
+            initial={false}
+            animate={{ width: `${progressPct}%` }}
+            transition={{ type: 'spring', stiffness: 220, damping: 28 }}
+          />
+          {/* Leading-edge glow — sits at the right tip of the fill, pulses softly */}
+          {progressPct > 0 && progressPct < 100 && (
+            <motion.div
+              aria-hidden
+              className="absolute inset-y-0 w-8 bg-gradient-to-r from-primary/0 via-primary to-primary/0"
+              initial={false}
+              animate={{ left: `calc(${progressPct}% - 16px)`, opacity: [0.5, 1, 0.5] }}
+              transition={{
+                left: { type: 'spring', stiffness: 220, damping: 28 },
+                opacity: { duration: 1.6, ease: 'easeInOut', repeat: Infinity },
+              }}
+            />
+          )}
+          {/* Liquid mercury overlay — matches MainNav for visual continuity */}
+          <span className="absolute inset-x-0 -top-1 h-2 block pointer-events-none">
+            <LiquidLine height={8} amplitude={2} thickness={1.2} duration={5.5} ripples={9} />
+          </span>
+        </div>
         <div className="page flex h-16 items-center justify-between gap-6">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeftIcon className="h-4 w-4" />
-            <span className="font-medium tracking-tight text-[18px] text-foreground">Kirpykla</span>
+          <Link href="/" className="group inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeftIcon className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+            <span className="font-semibold tracking-tight text-[18px] text-foreground">
+              De Legends
+            </span>
           </Link>
           <Progress state={state} t={t} />
           <span className="hidden md:inline text-[10px] uppercase tracking-eyebrow text-muted-foreground/70 tabular">
-            {t.booking.flow_subtitle}
+            {t.booking.flow_subtitle} ·{' '}
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.span
+                key={progressPct}
+                initial={{ y: 6, opacity: 0, color: 'rgb(255, 255, 255)' }}
+                animate={{
+                  y: 0,
+                  opacity: 1,
+                  color: ['rgb(255, 255, 255)', 'oklch(0.95 0.16 118.89)'],
+                }}
+                exit={{ y: -6, opacity: 0 }}
+                transition={{ duration: 0.5, ease: EASE }}
+                className="text-primary tabular inline-block"
+              >
+                {progressPct}%
+              </motion.span>
+            </AnimatePresence>
           </span>
         </div>
-      </header>
+      </motion.header>
 
       <main className="page pt-12 pb-32">
         {/* ── Step 1: Service ── */}
@@ -224,7 +288,7 @@ export function BookingFlow({ offices, services, staff }: Props) {
                   onChange={(c) => setState((s) => ({ ...s, contact: c }))}
                 />
                 {submitError && (
-                  <p className="mt-6 text-sm text-live border-l-2 border-live pl-4">{submitError}</p>
+                  <p className="mt-6 text-sm text-red-300 border-l-2 border-red-400/60 pl-4">{submitError}</p>
                 )}
               </div>
 
@@ -276,24 +340,49 @@ function Progress({ state, t }: { state: BookingState; t: ReturnType<typeof useT
   ];
   return (
     <ol className="flex items-center gap-3">
-      {steps.map((s, i) => (
-        <li key={i} className="flex items-center gap-2">
-          <span
-            className={cn(
-              'flex h-5 w-5 items-center justify-center rounded-full border tabular text-[10px] transition-all duration-300',
-              s.done
-                ? 'border-ink bg-ink text-background'
-                : 'border-border text-muted-foreground/70',
+      {steps.map((s, i) => {
+        // The connector AFTER this step is "lit" once this step is done —
+        // the river of progress has reached that gap.
+        const connectorLit = s.done;
+        return (
+          <li key={i} className="flex items-center gap-2">
+            <motion.span
+              animate={
+                s.done
+                  ? { scale: [1, 1.18, 1] }
+                  : { scale: 1 }
+              }
+              transition={{ duration: 0.5, ease: EASE }}
+              className={cn(
+                'flex h-5 w-5 items-center justify-center rounded-full border tabular text-[10px] transition-colors duration-300',
+                s.done
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border text-muted-foreground/70',
+              )}
+            >
+              {s.done ? <CheckIcon className="h-3 w-3" /> : i + 1}
+            </motion.span>
+            <span className="hidden md:inline text-[10px] uppercase tracking-eyebrow text-muted-foreground">
+              {s.label}
+            </span>
+            {i < steps.length - 1 && (
+              <span
+                className="hidden md:inline-block relative w-10 h-px mx-1 bg-border-strong/30 overflow-hidden"
+                aria-hidden
+              >
+                {/* Lime fill draws left-to-right the moment the left-side step
+                    flips to done. Spring keeps it bouncy without overshooting. */}
+                <motion.span
+                  className="absolute inset-0 bg-primary origin-left"
+                  initial={false}
+                  animate={{ scaleX: connectorLit ? 1 : 0 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+                />
+              </span>
             )}
-          >
-            {s.done ? <CheckIcon className="h-3 w-3" /> : i + 1}
-          </span>
-          <span className="hidden md:inline text-[10px] uppercase tracking-eyebrow text-muted-foreground">
-            {s.label}
-          </span>
-          {i < steps.length - 1 && <span className="hidden md:inline text-muted-foreground/70/40 mx-1">—</span>}
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -313,31 +402,30 @@ function Section({
   disabled?: boolean;
   disabledLabel?: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-80px' });
-
+  // Mobile: hide disabled sections entirely so the user sees one focused panel
+  // at a time. Desktop (md+): keep the editorial scroll-down stack with a
+  // dimmed-then-active feel. CSS-only transitions — Framer's useInView gate
+  // here previously trapped the section at opacity:0 on mobile because
+  // IntersectionObserver doesn't fire on display:none elements, which broke
+  // the booking submit visibility once the user reached step 4.
   return (
-    <motion.section
-      ref={ref}
-      initial={{ opacity: 0, y: 16 }}
-      animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
-      transition={{ duration: 0.7, ease: EASE }}
+    <section
       className={cn(
-        'min-h-[80vh] py-16 transition-opacity duration-500',
-        disabled && 'opacity-30 pointer-events-none',
+        'py-10 md:py-16 md:min-h-[60vh] transition-opacity duration-500',
+        disabled && 'hidden md:block md:opacity-30 md:pointer-events-none',
       )}
     >
       <div className="eyebrow mb-4 tabular">{eyebrow}</div>
-      <h2 className="font-bold tracking-tight text-4xl sm:text-6xl mb-12 tracking-tight">
+      <h2 className="font-bold tracking-tight text-3xl sm:text-4xl md:text-6xl mb-8 md:mb-12">
         {title}{' '}
         {accent && <span className="text-primary">{accent}</span>}
       </h2>
       {disabled ? (
-        <div className="text-sm uppercase tracking-eyebrow text-muted-foreground/70">{disabledLabel}</div>
+        <div className="hidden md:block text-sm uppercase tracking-eyebrow text-muted-foreground/70">{disabledLabel}</div>
       ) : (
         children
       )}
-    </motion.section>
+    </section>
   );
 }
 
@@ -366,60 +454,28 @@ function ServiceCard({
       )}
     >
       <div className="flex items-center justify-between mb-4">
-        <span
-          className={cn(
-            'text-[10px] uppercase tracking-eyebrow',
-            selected ? 'text-background/60' : 'text-muted-foreground',
-          )}
-        >
+        <span className={cn('text-[10px] uppercase tracking-eyebrow', selected ? 'text-primary' : 'text-muted-foreground')}>
           {category}
         </span>
-        <span
-          className={cn(
-            'tabular text-[10px] uppercase tracking-eyebrow',
-            selected ? 'text-background/60' : 'text-muted-foreground/70',
-          )}
-        >
+        <span className="tabular text-[10px] uppercase tracking-eyebrow text-muted-foreground/70">
           {service.duration} {durationUnit}
         </span>
       </div>
 
-      <h3
-        className={cn(
-          'display text-2xl sm:text-3xl tracking-tight mb-2',
-          selected ? 'text-background' : 'text-foreground',
-        )}
-      >
+      <h3 className="display text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">
         {name}
       </h3>
       {description && (
-        <p
-          className={cn(
-            'text-sm mb-6 line-clamp-2',
-            selected ? 'text-background/70' : 'text-muted-foreground',
-          )}
-        >
+        <p className="text-sm mb-6 line-clamp-2 text-muted-foreground">
           {description}
         </p>
       )}
-      <div
-        className={cn(
-          'mt-auto pt-4 border-t flex items-baseline justify-between',
-          selected ? 'border-ink-inverse/15' : 'border-border',
-        )}
-      >
-        <span
-          className={cn(
-            'display text-3xl tabular',
-            selected ? 'text-background' : 'text-foreground',
-          )}
-        >
-          €{service.price}
-        </span>
+      <div className={cn('mt-auto pt-4 border-t flex items-baseline justify-between', selected ? 'border-primary/30' : 'border-border')}>
+        <span className="display text-3xl tabular text-foreground">€{service.price}</span>
         <span
           className={cn(
             'flex h-6 w-6 items-center justify-center rounded-full border transition-all',
-            selected ? 'border-ink-inverse bg-ink-inverse text-foreground' : 'border-border',
+            selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border',
           )}
         >
           {selected && <CheckIcon className="h-3.5 w-3.5" />}
@@ -439,6 +495,7 @@ function StaffTile({
   onSelect: () => void;
 }) {
   const initials = `${staff.firstName[0]}${staff.lastName[0]}`.toUpperCase();
+  const portrait = staff.avatarUrl ?? PHOTOS.staffByFirstName[staff.firstName] ?? null;
   return (
     <motion.button
       type="button"
@@ -449,26 +506,28 @@ function StaffTile({
     >
       <div
         className={cn(
-          'h-14 w-14 rounded-full flex items-center justify-center display text-lg shrink-0',
-          selected ? 'bg-ink-inverse text-foreground' : 'bg-muted text-foreground',
+          'h-14 w-14 rounded-full overflow-hidden flex items-center justify-center display text-lg shrink-0',
+          portrait
+            ? 'ring-2 ring-primary/40'
+            : selected
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-surface-2 text-foreground',
         )}
-        style={staff.avatarUrl ? { background: `url(${staff.avatarUrl}) center/cover` } : undefined}
+        style={portrait ? { backgroundImage: `url("${portrait}")`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
       >
-        {!staff.avatarUrl && initials}
+        {!portrait && initials}
       </div>
       <div>
-        <div className={cn('display text-2xl', selected ? 'text-background' : 'text-foreground')}>
-          {staff.firstName}
-        </div>
-        <div
-          className={cn(
-            'text-[10px] uppercase tracking-eyebrow mt-1',
-            selected ? 'text-background/60' : 'text-muted-foreground',
-          )}
-        >
+        <div className="display text-2xl text-foreground">{staff.firstName}</div>
+        <div className={cn('text-[10px] uppercase tracking-eyebrow mt-1', selected ? 'text-primary' : 'text-muted-foreground')}>
           {staff.lastName}
         </div>
       </div>
+      {selected && (
+        <span className="absolute top-3 right-3 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <CheckIcon className="h-3 w-3" />
+        </span>
+      )}
     </motion.button>
   );
 }
@@ -529,7 +588,7 @@ function SlotPicker({
                 onClick={() => onDate(d.iso)}
                 className={cn(
                   'shrink-0 w-16 sm:w-20 py-3 rounded-md border text-center transition-all duration-200',
-                  sel ? 'bg-ink text-background border-ink' : 'border-border text-foreground hover:border-ink/40',
+                  sel ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-foreground hover:border-foreground/40',
                 )}
               >
                 <div className={cn('text-[9px] uppercase tracking-eyebrow', sel ? 'text-background/60' : 'text-muted-foreground/70')}>
@@ -673,7 +732,7 @@ function Field({
         type={type}
         autoComplete={autoComplete}
         className="w-full px-4 py-3.5 rounded-md border border-border bg-card text-foreground
-                   focus:border-ink focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all text-base"
+                   focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all text-base"
       />
       {hint && <span className="text-[10px] uppercase tracking-eyebrow text-muted-foreground/70 mt-2 block">{hint}</span>}
     </label>
