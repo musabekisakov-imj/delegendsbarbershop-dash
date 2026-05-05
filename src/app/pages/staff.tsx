@@ -11,7 +11,8 @@ import { fileToDataUrl } from '../lib/image-upload';
 
 import { staffApi, shiftsApi, absencesApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
-import { useT } from '../hooks/use-t';
+import { useT, useTimeFormat } from '../hooks/use-t';
+import type { TimeFormat } from '../lib/time';
 import { cn } from '../components/ui/utils';
 import { CardSkeleton } from '../components/shared/page-skeleton';
 import { EmptyState } from '../components/shared/empty-state';
@@ -63,9 +64,22 @@ const REASON_STYLE: Record<AbsenceReason, { label: string; bg: string; text: str
   training:   { label: 'Training', bg: 'bg-indigo-100 dark:bg-indigo-950/50', text: 'text-indigo-700 dark:text-indigo-300',    dot: 'bg-indigo-500' },
 };
 
+// Format an "HH:MM" shift string per the user's preferred 12h/24h setting.
+// 24h → "09:00", "21:30". 12h → "9 AM", "9:30 PM".
+function formatShiftTime(hhmm: string, fmt: TimeFormat): string {
+  const [hStr = '0', mStr = '0'] = hhmm.split(':');
+  const h = parseInt(hStr, 10) || 0;
+  const m = parseInt(mStr, 10) || 0;
+  if (fmt === '24h') return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return m === 0 ? `${h12} ${period}` : `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
 export function StaffPage() {
   const queryClient = useQueryClient();
   const t = useT();
+  const [timeFormat] = useTimeFormat();
   const confirm = useConfirm();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -488,33 +502,52 @@ export function StaffPage() {
                 return (
                   <div
                     key={member.id}
-                    className="group flex flex-col rounded-xl border border-border bg-card p-5 transition-colors hover:border-foreground/15"
+                    className={cn(
+                      'group relative flex flex-col rounded-xl border border-border bg-card p-5 transition-all',
+                      'hover:border-foreground/20 hover:shadow-sm',
+                      !member.isActive && 'opacity-60',
+                    )}
                   >
-                    {/* Identity — plain avatar (no ring halo), eyebrow with
-                        subtle active dot, role + name. */}
+                    {/* Identity — avatar + eyebrow row + name. The status pill
+                        sits in the top-right as a clean editorial chip
+                        (replacing the old tiny dot inside the eyebrow). */}
                     <div className="flex items-start gap-3">
-                      <Avatar className="h-12 w-12 shrink-0">
+                      <Avatar className="h-14 w-14 shrink-0">
                         {member.avatarUrl && <AvatarImage src={member.avatarUrl} alt={member.firstName} />}
-                        <AvatarFallback className={cn('text-sm font-bold', c.bg, c.text)}>
+                        <AvatarFallback className={cn('text-base font-bold', c.bg, c.text)}>
                           {member.firstName[0]}{member.lastName[0]}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                          <span
-                            className={cn('h-1.5 w-1.5 rounded-full shrink-0', member.isActive ? 'bg-emerald-500' : 'bg-muted-foreground/40')}
-                            aria-label={member.isActive ? t('staff.active') : t('staff.inactive')}
-                          />
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                           {roleLabel[member.role]}
-                        </div>
-                        <p className="mt-0.5 font-semibold text-foreground truncate leading-tight">
+                        </p>
+                        <p className="mt-0.5 font-semibold text-foreground truncate leading-tight text-base">
                           {member.firstName} {member.lastName}
                         </p>
                       </div>
+                      {/* Status pill — tight, top-right, replaces the previous
+                          tiny dot. Filled emerald when active, hollow when not. */}
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] shrink-0',
+                          member.isActive
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                            : 'border-border bg-muted/40 text-muted-foreground',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 rounded-full',
+                            member.isActive ? 'bg-emerald-500' : 'bg-muted-foreground/40',
+                          )}
+                        />
+                        {member.isActive ? t('staff.active') : t('staff.inactive')}
+                      </span>
                     </div>
 
                     {/* Contact — tight line group */}
-                    <div className="mt-3 space-y-1 text-xs">
+                    <div className="mt-4 space-y-1.5 text-xs">
                       <p className="flex items-center gap-2 text-muted-foreground">
                         <EnvelopeIcon className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{member.email}</span>
@@ -525,55 +558,81 @@ export function StaffPage() {
                       </p>
                     </div>
 
-                    {/* Week strip — dots fill for working days, hollow for off.
-                        Cleaner visual vocabulary than the old tinted squares. */}
-                    <div className="mt-4 flex items-center gap-1.5">
-                      {DAYS.map(d => {
-                        const has = memberShifts.some(s => s.dayOfWeek === d);
+                    {/* Week strip — full-width filled cells per day. The old
+                        version used 1.5px dots which were hard to read at a
+                        glance; cells are now ~6px tall × full width per day,
+                        with the day letter above. The whole strip reads as a
+                        schedule map at a single glance. */}
+                    <div className="mt-5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          {t('staff.schedule' as TranslationKey)}
+                        </p>
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70 tabular-nums">
+                          {workingDays}/7
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {DAYS.map(d => {
+                          const has = memberShifts.some(s => s.dayOfWeek === d);
+                          return (
+                            <div
+                              key={d}
+                              title={t(`days.${d}` as TranslationKey)}
+                              className="flex flex-col items-center gap-1.5"
+                            >
+                              <span className={cn(
+                                'text-[9px] font-medium uppercase tracking-wider tabular-nums',
+                                has ? 'text-foreground' : 'text-muted-foreground/40',
+                              )}>
+                                {t(`days.short.${DAY_SHORT_KEY[d]}` as TranslationKey).slice(0, 1)}
+                              </span>
+                              <span
+                                className={cn(
+                                  'h-1.5 w-full rounded-full',
+                                  has ? c.dot : 'bg-muted/60',
+                                )}
+                                aria-hidden
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Shift hours range — earliest start to latest end across
+                          the whole week. Tells the receptionist "this is when
+                          this barber is reachable" without parsing per-day shifts.
+                          Respects the user's 12h/24h time-format preference. */}
+                      {memberShifts.length > 0 && (() => {
+                        const minStart = memberShifts.reduce<string>((min, s) =>
+                          !min || s.startTime < min ? s.startTime : min, memberShifts[0].startTime);
+                        const maxEnd = memberShifts.reduce<string>((max, s) =>
+                          !max || s.endTime > max ? s.endTime : max, memberShifts[0].endTime);
                         return (
-                          <div
-                            key={d}
-                            title={t(`days.${d}` as TranslationKey)}
-                            className="flex flex-1 flex-col items-center gap-1"
-                          >
-                            <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground tabular-nums">
-                              {t(`days.short.${DAY_SHORT_KEY[d]}` as TranslationKey).slice(0, 1)}
-                            </span>
-                            <span
-                              className={cn(
-                                'h-1.5 w-1.5 rounded-full',
-                                has ? c.dot : 'border border-border bg-transparent',
-                              )}
-                              aria-hidden
-                            />
-                          </div>
+                          <p className="mt-3 text-center text-[11px] font-semibold text-foreground tabular-nums">
+                            {formatShiftTime(minStart, timeFormat)} <span className="text-muted-foreground/60 font-normal">–</span> {formatShiftTime(maxEnd, timeFormat)}
+                          </p>
                         );
-                      })}
+                      })()}
                     </div>
 
-                    {/* Actions footer — hairline divider, working-days count
-                        on the left, management controls on the right. */}
-                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-border -mx-5 px-5 pt-3">
-                      <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <CalendarDaysIcon className="h-3.5 w-3.5" />
-                        <span className="tabular-nums">{workingDays}</span> {workingDays === 1 ? 'day' : 'days'}
-                      </span>
-
-                      <Can action="staff.manage">
-                        <div className="flex items-center gap-1">
-                          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer">
-                            <Switch
-                              aria-label="Toggle active"
-                              checked={member.isActive}
-                              onCheckedChange={() =>
-                                updateMutation.mutate({ id: member.id, data: { isActive: !member.isActive } })
-                              }
-                            />
-                          </label>
+                    {/* Actions footer — hairline divider above. Toggle slid
+                        to the left (signaling "primary control"), edit + delete
+                        on the right with subtle separator. */}
+                    <Can action="staff.manage">
+                      <div className="mt-5 flex items-center justify-between gap-2 border-t border-border -mx-5 px-5 pt-4">
+                        <Switch
+                          aria-label={member.isActive ? t('staff.deactivate' as TranslationKey) : t('staff.activate' as TranslationKey)}
+                          checked={member.isActive}
+                          onCheckedChange={() =>
+                            updateMutation.mutate({ id: member.id, data: { isActive: !member.isActive } })
+                          }
+                        />
+                        <div className="flex items-center gap-0.5">
                           <button
                             onClick={() => openEdit(member)}
-                            aria-label="Edit staff member"
-                            title="Edit"
+                            aria-label={t('staff.edit' as TranslationKey)}
+                            title={t('staff.edit' as TranslationKey)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                           >
                             <PencilSquareIcon className="h-4 w-4" />
@@ -581,15 +640,15 @@ export function StaffPage() {
                           <button
                             onClick={() => handleDelete(member)}
                             disabled={deleteMutation.isPending}
-                            aria-label="Delete staff member"
-                            title="Delete"
+                            aria-label={t('staff.delete' as TranslationKey)}
+                            title={t('staff.delete' as TranslationKey)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-300 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <TrashIcon className="h-4 w-4" />
                           </button>
                         </div>
-                      </Can>
-                    </div>
+                      </div>
+                    </Can>
                   </div>
                 );
               })

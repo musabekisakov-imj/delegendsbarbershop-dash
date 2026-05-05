@@ -113,26 +113,169 @@ export const defaultStaff: Staff[] = [
   { id: 'staff-6', firstName: 'Emma', lastName: 'Davis', email: 'emma@barberpro.com', phone: '+1 (555) 666-6666', role: 'barber', isActive: true, avatarUrl: 'https://i.pravatar.cc/150?u=emma-davis', officeIds: ['office-2'], createdAt: new Date().toISOString() }
 ];
 
-// Clients — some loyal to one office, some cross-visiting
-export const defaultClients: Client[] = [
-  { id: 'client-1', firstName: 'Robert', lastName: 'Taylor', email: 'robert.taylor@email.com', phone: '+1 (555) 101-1001', notes: 'Prefers short cuts', gender: 'male', totalVisits: 12, lastVisitAt: '2026-04-10T10:00:00Z', officeIds: ['office-1'], createdAt: new Date().toISOString() },
-  { id: 'client-2', firstName: 'James', lastName: 'Anderson', email: 'james.anderson@email.com', phone: '+1 (555) 101-1002', notes: 'Sensitive scalp', gender: 'male', totalVisits: 8, lastVisitAt: '2026-04-12T14:00:00Z', officeIds: ['office-1', 'office-2'], createdAt: new Date().toISOString() },
-  { id: 'client-3', firstName: 'Emma', lastName: 'Thomas', email: 'emma.thomas@email.com', phone: '+1 (555) 101-1003', notes: '', gender: 'female', totalVisits: 5, lastVisitAt: '2026-04-09T16:00:00Z', officeIds: ['office-1'], createdAt: new Date().toISOString() },
-  { id: 'client-4', firstName: 'Daniel', lastName: 'Martinez', email: 'daniel.martinez@email.com', phone: '+1 (555) 101-1004', notes: 'Regular customer - every 3 weeks', gender: 'male', totalVisits: 15, lastVisitAt: '2026-04-14T11:00:00Z', officeIds: ['office-2'], createdAt: new Date().toISOString() },
-  { id: 'client-5', firstName: 'Olivia', lastName: 'Robinson', email: 'olivia.robinson@email.com', phone: '+1 (555) 101-1005', notes: '', gender: 'female', totalVisits: 3, lastVisitAt: '2026-04-08T09:00:00Z', officeIds: ['office-2'], createdAt: new Date().toISOString() }
+// Clients — 30 names across both offices. Mixed gender, varied last-visit
+// dates and totalVisits so the clients page shows a believable retention
+// curve (a few VIPs, many regulars, a long tail of newcomers).
+const CLIENT_FIRSTS_M = ['Robert', 'James', 'Daniel', 'Michael', 'David', 'Christopher', 'Matthew', 'Andrew', 'Joseph', 'Ryan', 'Brandon', 'Justin', 'Tyler', 'Kevin', 'Eric', 'Jason', 'Brian', 'Aaron', 'Sean', 'Patrick'];
+const CLIENT_FIRSTS_F = ['Emma', 'Olivia', 'Sophia', 'Isabella', 'Mia', 'Charlotte', 'Amelia', 'Harper', 'Evelyn', 'Abigail'];
+const CLIENT_LASTS = ['Taylor', 'Anderson', 'Thomas', 'Martinez', 'Robinson', 'Walker', 'Hall', 'Young', 'Allen', 'King', 'Wright', 'Scott', 'Green', 'Baker', 'Adams', 'Nelson', 'Carter', 'Mitchell', 'Roberts', 'Phillips'];
+const CLIENT_NOTES = ['', '', '', '', 'Prefers short cuts', 'Sensitive scalp', 'Regular — every 3 weeks', 'Likes morning slots', 'Allergic to scented products', 'Quiet client', ''];
+const CLIENT_AVATARS = [
+  'https://i.pravatar.cc/150?u=client-1', 'https://i.pravatar.cc/150?u=client-2',
+  'https://i.pravatar.cc/150?u=client-3', 'https://i.pravatar.cc/150?u=client-4',
+  'https://i.pravatar.cc/150?u=client-5', 'https://i.pravatar.cc/150?u=client-6',
+  'https://i.pravatar.cc/150?u=client-7', 'https://i.pravatar.cc/150?u=client-8',
+  'https://i.pravatar.cc/150?u=client-9', 'https://i.pravatar.cc/150?u=client-10',
 ];
 
-// Appointments — distributed across both offices
-export const defaultAppointments: Appointment[] = [
-  { id: 'apt-1', clientId: 'client-1', staffId: 'staff-2', serviceId: 'svc-1', startTime: '2026-04-16T10:00:00Z', endTime: '2026-04-16T10:30:00Z', status: 'confirmed', notes: '', locationId: 'office-1', createdAt: new Date().toISOString() },
-  { id: 'apt-2', clientId: 'client-2', staffId: 'staff-3', serviceId: 'svc-2', startTime: '2026-04-16T11:00:00Z', endTime: '2026-04-16T11:45:00Z', status: 'scheduled', notes: '', locationId: 'office-1', createdAt: new Date().toISOString() },
-  { id: 'apt-3', clientId: 'client-3', staffId: 'staff-2', serviceId: 'svc-3', startTime: '2026-04-16T14:00:00Z', endTime: '2026-04-16T14:20:00Z', status: 'confirmed', notes: '', locationId: 'office-1', createdAt: new Date().toISOString() },
-  { id: 'apt-4', clientId: 'client-4', staffId: 'staff-1', serviceId: 'svc-11', startTime: '2026-04-16T15:30:00Z', endTime: '2026-04-16T16:00:00Z', status: 'scheduled', notes: '', locationId: 'office-2', createdAt: new Date().toISOString() },
-  { id: 'apt-5', clientId: 'client-1', staffId: 'staff-2', serviceId: 'svc-1', startTime: '2026-04-15T10:00:00Z', endTime: '2026-04-15T10:30:00Z', status: 'completed', notes: '', locationId: 'office-1', createdAt: new Date().toISOString() },
-  { id: 'apt-6', clientId: 'client-2', staffId: 'staff-3', serviceId: 'svc-5', startTime: '2026-04-14T13:00:00Z', endTime: '2026-04-14T14:30:00Z', status: 'completed', notes: '', locationId: 'office-1', createdAt: new Date().toISOString() },
-  { id: 'apt-7', clientId: 'client-5', staffId: 'staff-6', serviceId: 'svc-9', startTime: '2026-04-13T09:00:00Z', endTime: '2026-04-13T09:45:00Z', status: 'completed', notes: '', locationId: 'office-2', createdAt: new Date().toISOString() },
-  { id: 'apt-8', clientId: 'client-4', staffId: 'staff-6', serviceId: 'svc-8', startTime: '2026-04-12T16:00:00Z', endTime: '2026-04-12T16:30:00Z', status: 'completed', notes: '', locationId: 'office-2', createdAt: new Date().toISOString() }
-];
+function buildDefaultClients(): Client[] {
+  const out: Client[] = [];
+  // 20 male first × 1 last each (paired by index) — 20 clients
+  // 10 female first × 1 last each (offset paired) — 10 clients
+  // Total: 30 clients
+  const allFirsts: { name: string; gender: 'male' | 'female' }[] = [
+    ...CLIENT_FIRSTS_M.map(name => ({ name, gender: 'male' as const })),
+    ...CLIENT_FIRSTS_F.map(name => ({ name, gender: 'female' as const })),
+  ];
+  for (let i = 0; i < allFirsts.length; i++) {
+    const f = allFirsts[i];
+    const last = CLIENT_LASTS[(i * 7) % CLIENT_LASTS.length];
+    // 20% pattern: every 5th client books at both offices
+    const officeIds = i % 5 === 0 ? ['office-1', 'office-2'] : [i % 2 === 0 ? 'office-1' : 'office-2'];
+    // Loyalty curve: first ~30% are VIPs (15-30 visits), middle 50% regulars (5-15),
+    // last 20% newcomers (0-3). Matches the 30/50/20 power-law of real shops.
+    const tier = i / allFirsts.length;
+    const totalVisits = tier < 0.3 ? 15 + Math.floor(Math.random() * 16)
+                      : tier < 0.8 ? 5 + Math.floor(Math.random() * 11)
+                      : Math.floor(Math.random() * 4);
+    out.push({
+      id: `client-${i + 1}`,
+      firstName: f.name,
+      lastName: last,
+      email: `${f.name.toLowerCase()}.${last.toLowerCase()}@email.com`,
+      phone: `+1 (555) 1${String(100000 + i * 137).slice(0, 6)}`,
+      notes: CLIENT_NOTES[i % CLIENT_NOTES.length],
+      gender: f.gender,
+      avatarUrl: CLIENT_AVATARS[i % CLIENT_AVATARS.length],
+      totalVisits,
+      lastVisitAt: totalVisits > 0
+        ? new Date(2026, 3, 1 + (i * 13) % 28, 9 + (i % 10), 0, 0).toISOString()
+        : null,
+      officeIds,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  return out;
+}
+
+export const defaultClients: Client[] = buildDefaultClients();
+
+// Appointments — full month of May 2026 with realistic volume curves.
+// Mon-Thu carry 18-26 bookings, Fri 20-26, Sat 24-32 (peak), Sun closed.
+// Status distribution by date: past = mostly completed + small cancel/no-show
+// slice, today mixed, future = scheduled/confirmed.
+function buildMayAppointments(
+  clients: Client[],
+  staff: Staff[],
+  services: Service[],
+): Appointment[] {
+  const out: Appointment[] = [];
+  const taken = new Set<string>(); // staff-day-startMin lock to avoid conflicts
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const nowHour = now.getHours();
+
+  const office1Staff = staff.filter(s => s.officeIds.includes('office-1') && s.isActive);
+  const office2Staff = staff.filter(s => s.officeIds.includes('office-2') && s.isActive);
+  const office1Services = services.filter(s => s.officeId === 'office-1');
+  const office2Services = services.filter(s => s.officeId === 'office-2');
+
+  // 30/50/20 loyalty buckets — a few VIPs drive most volume.
+  const regulars = clients.slice(0, Math.floor(clients.length * 0.30));
+  const occasionals = clients.slice(Math.floor(clients.length * 0.30), Math.floor(clients.length * 0.80));
+  const walkins = clients.slice(Math.floor(clients.length * 0.80));
+  const pickClient = (): Client => {
+    const r = Math.random();
+    const pool = r < 0.70 ? regulars : r < 0.95 ? occasionals : walkins;
+    return pool[Math.floor(Math.random() * pool.length)] || clients[0];
+  };
+
+  const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+  let id = 1;
+  // Iterate every day in May 2026 (month index 4)
+  for (let d = 1; d <= 31; d++) {
+    const day = new Date(2026, 4, d);
+    const dow = day.getDay(); // 0=Sun, 6=Sat
+    if (dow === 0) continue; // shop closed Sunday
+
+    let count: number;
+    if (dow === 6) count = 24 + Math.floor(Math.random() * 9);     // Sat: 24-32
+    else if (dow === 5) count = 20 + Math.floor(Math.random() * 7); // Fri: 20-26
+    else count = 18 + Math.floor(Math.random() * 9);                 // Mon-Thu: 18-26
+
+    for (let i = 0; i < count; i++) {
+      const useOffice1 = i % 2 === 0;
+      const officeId = useOffice1 ? 'office-1' : 'office-2';
+      const officeStaff = useOffice1 ? office1Staff : office2Staff;
+      const officeServices = useOffice1 ? office1Services : office2Services;
+      if (officeStaff.length === 0 || officeServices.length === 0) continue;
+      const member = pick(officeStaff);
+      const svc = pick(officeServices);
+      const client = pickClient();
+      if (!client) continue;
+
+      // Try up to 25 random slots before giving up — prevents collisions when
+      // the same staff is already booked on the same hour:minute.
+      let placed = false;
+      for (let attempt = 0; attempt < 25 && !placed; attempt++) {
+        const hour = 9 + Math.floor(Math.random() * 9); // 9..17
+        if (hour === 13) continue; // lunch break
+        const minute = Math.random() < 0.5 ? 0 : 30;
+        const slotKey = `${member.id}-${d}-${hour * 60 + minute}`;
+        if (taken.has(slotKey)) continue;
+        taken.add(slotKey);
+
+        const start = new Date(2026, 4, d, hour, minute, 0, 0);
+        const end = new Date(start.getTime() + svc.duration * 60_000);
+        const dayKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+
+        let status: Appointment['status'];
+        if (dayKey < todayKey) {
+          const r = Math.random();
+          status = r < 0.88 ? 'completed' : r < 0.94 ? 'cancelled' : 'no_show';
+        } else if (dayKey === todayKey) {
+          status = hour < nowHour
+            ? 'completed'
+            : Math.random() < 0.6 ? 'confirmed' : 'scheduled';
+        } else {
+          status = Math.random() < 0.4 ? 'confirmed' : 'scheduled';
+        }
+
+        out.push({
+          id: `apt-${id++}`,
+          clientId: client.id,
+          staffId: member.id,
+          serviceId: svc.id,
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          status,
+          notes: '',
+          locationId: officeId,
+          createdAt: new Date().toISOString(),
+        });
+        placed = true;
+      }
+    }
+  }
+  return out;
+}
+
+export const defaultAppointments: Appointment[] = buildMayAppointments(
+  defaultClients,
+  defaultStaff,
+  defaultServices,
+);
 
 // Shifts
 export const defaultShifts: Shift[] = [
@@ -275,7 +418,7 @@ export const defaultAccounts: Account[] = [
 
 // Schema version — bump to force re-seed when the data shape changes
 const SCHEMA_VERSION_KEY = 'barberpro_schema_version';
-const CURRENT_SCHEMA_VERSION = 7; // v7: add `gender` to Client + re-seed (client-3 & client-5 changed)
+const CURRENT_SCHEMA_VERSION = 8; // v8: 30 clients + full May 2026 appointment generation
 
 // Initialize localStorage with default data
 // Wrapped in try/catch so a corrupted localStorage entry can't white-screen the app.

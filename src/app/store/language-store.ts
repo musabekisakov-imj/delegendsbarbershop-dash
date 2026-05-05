@@ -17,7 +17,7 @@ export const useLanguageStore = create<PreferencesState>()(
   persist(
     (set, get) => ({
       language: 'en',
-      timeFormat: '24h',
+      timeFormat: '12h',
 
       setLanguage: (lang) => set({ language: lang }),
       setTimeFormat: (fmt) => set({ timeFormat: fmt }),

@@ -7,6 +7,7 @@ import {
   PencilSquareIcon, TrashIcon, ShieldCheckIcon,
   ClockIcon, LockClosedIcon,
   MagnifyingGlassIcon, MapPinIcon, ChevronDownIcon,
+  ListBulletIcon, Squares2X2Icon, ShareIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 
@@ -31,11 +32,13 @@ import { PhotoIcon } from '@heroicons/react/24/outline';
 import type { Account, StaffRole, AccountStatus, Permission } from '../types';
 
 // Role palette — same hues used on the Staff page so the two pages feel linked.
-const ROLE_STYLE: Record<StaffRole, { chip: string; dot: string; label: string }> = {
-  owner:        { chip: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60',   dot: 'bg-amber-500',   label: 'Owner' },
-  manager:      { chip: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900/60', dot: 'bg-violet-500', label: 'Manager' },
-  receptionist: { chip: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/60',       dot: 'bg-blue-500',    label: 'Receptionist' },
-  barber:       { chip: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/60', dot: 'bg-emerald-500', label: 'Barber' },
+// `bar` is a static Tailwind class for the editorial group-header left stripe;
+// keeping it explicit (not interpolated) so JIT picks it up at build time.
+const ROLE_STYLE: Record<StaffRole, { chip: string; dot: string; bar: string; label: string }> = {
+  owner:        { chip: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60',   dot: 'bg-amber-500',   bar: 'border-l-amber-500',   label: 'Owner' },
+  manager:      { chip: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900/60', dot: 'bg-violet-500', bar: 'border-l-violet-500', label: 'Manager' },
+  receptionist: { chip: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/60',       dot: 'bg-blue-500',    bar: 'border-l-blue-500',    label: 'Receptionist' },
+  barber:       { chip: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/60', dot: 'bg-emerald-500', bar: 'border-l-emerald-500', label: 'Barber' },
 };
 
 type RoleFilter = 'all' | StaffRole;
@@ -48,6 +51,9 @@ export function AccountsPage() {
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  // View comparison toggle — list (current), cards (visual showcase), tree (org chart).
+  // Owner picks which one stays after eyeballing each side-by-side.
+  const [viewMode, setViewMode] = useState<'list' | 'cards' | 'tree'>('list');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
 
@@ -300,8 +306,8 @@ export function AccountsPage() {
             );
           })}
         </div>
-        <div className="p-2.5">
-          <div className="relative">
+        <div className="p-2.5 flex items-center gap-2">
+          <div className="relative flex-1">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="text"
@@ -310,6 +316,33 @@ export function AccountsPage() {
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 h-9 bg-background"
             />
+          </div>
+          {/* View toggle — temporary comparison mode. Once the owner picks a
+              winner, the two losing renderers + this toggle get deleted. */}
+          <div className="flex items-center rounded-md border border-border p-0.5 shrink-0">
+            {([
+              { id: 'list',  Icon: ListBulletIcon,  label: 'List'  },
+              { id: 'cards', Icon: Squares2X2Icon,  label: 'Cards' },
+              { id: 'tree',  Icon: ShareIcon,       label: 'Tree'  },
+            ] as const).map(({ id, Icon, label }) => {
+              const active = viewMode === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setViewMode(id)}
+                  title={label}
+                  aria-pressed={active}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                    active ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -336,6 +369,27 @@ export function AccountsPage() {
           icon={UserCircleIcon}
           title="No accounts match"
           description="Try a different search or clear the role filter."
+        />
+      ) : viewMode === 'cards' ? (
+        <MembersCards
+          accounts={filtered}
+          groupByRole={roleFilter === 'all'}
+          offices={offices}
+          currentUserId={currentUser?.id}
+          canManage={can('accounts.manage')}
+          resolveAvatar={resolveAvatar}
+          onToggleStatus={toggleStatus}
+          onEdit={openEdit}
+          onRemove={handleRemove}
+        />
+      ) : viewMode === 'tree' ? (
+        <MembersTree
+          accounts={filtered}
+          offices={offices}
+          currentUserId={currentUser?.id}
+          canManage={can('accounts.manage')}
+          resolveAvatar={resolveAvatar}
+          onEdit={openEdit}
         />
       ) : (
         <MembersTable
@@ -811,6 +865,9 @@ function ColHeader({ children, className }: { children?: React.ReactNode; classN
 }
 
 // ─── Inline group header (Owners, Managers, Receptionists, Barbers) ─
+// Editorial section banner — left color stripe matches the role palette,
+// label rendered in foreground (not muted) so it reads as a section title,
+// count chip on the right gives instant "how many in this role" stat.
 function GroupHeader({ role, count, index }: { role: StaffRole; count: number; index: number }) {
   const reducedMotion = useReducedMotion();
   const style = ROLE_STYLE[role];
@@ -819,13 +876,17 @@ function GroupHeader({ role, count, index }: { role: StaffRole; count: number; i
       initial={reducedMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2, delay: reducedMotion ? 0 : Math.min(index * 0.02, 0.2) }}
-      className="flex items-center gap-2 bg-muted/40 px-5 py-1.5"
+      className={cn(
+        'flex items-center justify-between gap-2 bg-muted/30 border-l-[3px] px-5 py-2',
+        style.bar,
+      )}
     >
-      <span className={cn('h-1.5 w-1.5 rounded-full', style.dot)} />
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-foreground">
         {style.label}{count === 1 ? '' : 's'}
       </p>
-      <span className="text-[11px] tabular-nums text-muted-foreground/80">{count}</span>
+      <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full bg-card border border-border text-[10px] font-semibold tabular-nums text-muted-foreground">
+        {count}
+      </span>
     </motion.li>
   );
 }
@@ -912,10 +973,15 @@ function MemberRow({
         </div>
       </div>
 
-      {/* Role — md+ */}
-      <div className="hidden md:flex items-center gap-1.5 min-w-0">
-        <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', role.dot)} />
-        <span className="text-sm text-foreground truncate">{role.label}</span>
+      {/* Role — md+. Chip with role color (replaces the bare dot+text). */}
+      <div className="hidden md:flex items-center min-w-0">
+        <span className={cn(
+          'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] truncate',
+          role.chip,
+        )}>
+          <span className={cn('h-1 w-1 rounded-full shrink-0', role.dot)} />
+          {role.label}
+        </span>
       </div>
 
       {/* Offices — lg+ */}
@@ -948,20 +1014,24 @@ function MemberRow({
         <span className="tabular-nums truncate">{seenLabel}</span>
       </div>
 
-      {/* Status — lg+ (only shown when non-active; otherwise empty) */}
+      {/* Status — lg+. Always-visible pill (was text-only when active).
+          Three states each with their own pill, same vocabulary. */}
       <div className="hidden lg:flex items-center min-w-0">
-        {a.status === 'invited' ? (
-          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        {a.status === 'active' ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
+            <span className="h-1 w-1 rounded-full bg-emerald-500" />
+            Active
+          </span>
+        ) : a.status === 'invited' ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
+            <span className="h-1 w-1 rounded-full bg-amber-500" />
             Pending
           </span>
-        ) : a.status === 'disabled' ? (
-          <span className="inline-flex items-center gap-1 rounded-md bg-muted text-muted-foreground px-2 py-0.5 text-[11px] font-medium">
-            <LockClosedIcon className="h-3 w-3" />
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 text-muted-foreground px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
+            <LockClosedIcon className="h-2.5 w-2.5" />
             Disabled
           </span>
-        ) : (
-          <span className="text-[11px] text-muted-foreground/40">Active</span>
         )}
       </div>
 
@@ -1000,5 +1070,292 @@ function MemberRow({
         <span />
       )}
     </motion.li>
+  );
+}
+
+// ─── Members CARDS view ────────────────────────────────────
+// Visual showcase grid. Each account becomes a card with photo +
+// role pill + status + contact + last-seen + actions. Provided
+// here so the owner can compare against the table view and pick
+// which one to keep.
+function MembersCards({
+  accounts, groupByRole, offices, currentUserId, canManage,
+  resolveAvatar, onToggleStatus, onEdit, onRemove,
+}: CardActionProps & {
+  accounts: Account[];
+  groupByRole: boolean;
+}) {
+  // Build group blocks so the response is `[ {header, cards: [...]}, ... ]`.
+  type Block = { header: { role: StaffRole; count: number } | null; cards: Account[] };
+  const blocks: Block[] = [];
+  if (groupByRole) {
+    (['owner', 'manager', 'receptionist', 'barber'] as StaffRole[]).forEach(r => {
+      const cards = accounts.filter(a => a.role === r);
+      if (cards.length === 0) return;
+      blocks.push({ header: { role: r, count: cards.length }, cards });
+    });
+  } else {
+    blocks.push({ header: null, cards: accounts });
+  }
+
+  return (
+    <div className="space-y-6">
+      {blocks.map((b, idx) => (
+        <div key={b.header?.role ?? `block-${idx}`} className="space-y-3">
+          {b.header && (() => {
+            const style = ROLE_STYLE[b.header.role];
+            return (
+              <div className={cn(
+                'flex items-center justify-between rounded-lg bg-muted/30 border-l-[3px] px-4 py-2',
+                style.bar,
+              )}>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-foreground">
+                  {style.label}{b.header.count === 1 ? '' : 's'}
+                </p>
+                <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full bg-card border border-border text-[10px] font-semibold tabular-nums text-muted-foreground">
+                  {b.header.count}
+                </span>
+              </div>
+            );
+          })()}
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {b.cards.map(a => (
+              <MemberCard
+                key={a.id}
+                account={a}
+                offices={offices}
+                currentUserId={currentUserId}
+                canManage={canManage}
+                resolveAvatar={resolveAvatar}
+                onToggleStatus={onToggleStatus}
+                onEdit={onEdit}
+                onRemove={onRemove}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MemberCard({
+  account: a, offices, currentUserId, canManage,
+  resolveAvatar, onToggleStatus, onEdit, onRemove,
+}: CardActionProps & { account: Account }) {
+  const role = ROLE_STYLE[a.role];
+  const initials = `${a.firstName[0] ?? ''}${a.lastName[0] ?? ''}`.toUpperCase();
+  const isSelf = a.id === currentUserId;
+  const officeNames = a.officeIds.map(id => offices.find(o => o.id === id)?.name ?? '—');
+  const photoUrl = resolveAvatar(a);
+  const gradient = AVATAR_GRADIENTS[hashToIndex(a.id, AVATAR_GRADIENTS.length)];
+  const seenLabel = a.lastLoginAt ? formatDistanceToNow(new Date(a.lastLoginAt), { addSuffix: true }) : 'Never';
+
+  return (
+    <div className={cn(
+      'group flex flex-col rounded-xl border border-border bg-card p-4 transition-all hover:border-foreground/20 hover:shadow-sm',
+      a.status === 'disabled' && 'opacity-60',
+    )}>
+      {/* Identity row — avatar + name + role pill */}
+      <div className="flex items-start gap-3">
+        {photoUrl ? (
+          <img src={photoUrl} alt="" className="h-12 w-12 rounded-full object-cover shrink-0" />
+        ) : (
+          <div className={cn(
+            'flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white',
+            gradient,
+          )}>
+            {initials || <UserCircleIcon className="h-6 w-6 text-white/90" />}
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="font-semibold text-foreground truncate leading-tight">
+              {a.firstName} {a.lastName}
+            </p>
+            {isSelf && (
+              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground border border-border rounded px-1 py-px shrink-0">
+                you
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground truncate">{a.email}</p>
+        </div>
+      </div>
+
+      {/* Pills row — role + status */}
+      <div className="mt-3 flex items-center gap-2 flex-wrap">
+        <span className={cn(
+          'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+          role.chip,
+        )}>
+          <span className={cn('h-1 w-1 rounded-full', role.dot)} />
+          {role.label}
+        </span>
+        {a.status === 'active' ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
+            <span className="h-1 w-1 rounded-full bg-emerald-500" />
+            Active
+          </span>
+        ) : a.status === 'invited' ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
+            <span className="h-1 w-1 rounded-full bg-amber-500" />
+            Pending
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 text-muted-foreground px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
+            <LockClosedIcon className="h-2.5 w-2.5" />
+            Disabled
+          </span>
+        )}
+      </div>
+
+      {/* Meta — offices + last seen */}
+      <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+        <p className="flex items-center gap-1.5 truncate">
+          <MapPinIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">
+            {officeNames.length === 0 ? '—' : officeNames.length <= 1 ? officeNames[0] : `${officeNames[0]} +${officeNames.length - 1}`}
+          </span>
+        </p>
+        <p className="flex items-center gap-1.5 truncate tabular-nums">
+          <ClockIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{seenLabel}</span>
+        </p>
+      </div>
+
+      {/* Actions footer */}
+      {canManage && (
+        <div className="mt-4 flex items-center gap-0.5 border-t border-border -mx-4 px-4 pt-3 justify-end">
+          <button
+            onClick={() => onToggleStatus(a)}
+            disabled={isSelf}
+            title={a.status === 'active' ? 'Disable account' : 'Reactivate account'}
+            aria-label={a.status === 'active' ? 'Disable account' : 'Reactivate account'}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <LockClosedIcon className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => onEdit(a)}
+            title="Edit"
+            aria-label="Edit account"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            <PencilSquareIcon className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => onRemove(a)}
+            disabled={isSelf}
+            title="Remove"
+            aria-label="Remove account"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <TrashIcon className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Members TREE view ────────────────────────────────────
+// Org chart — Owner at the top, Managers row below, Receptionists +
+// Barbers as siblings on the bottom row. Connectors drawn with CSS
+// borders (no SVG) so the layout stays responsive. Best for showing
+// reporting structure; overkill for daily access management.
+function MembersTree({
+  accounts, offices, currentUserId, canManage, resolveAvatar, onEdit,
+}: {
+  accounts: Account[];
+  offices: { id: string; name: string }[];
+  currentUserId: string | undefined;
+  canManage: boolean;
+  resolveAvatar: (a: Account) => string | undefined;
+  onEdit: (a: Account) => void;
+}) {
+  const owners = accounts.filter(a => a.role === 'owner');
+  const managers = accounts.filter(a => a.role === 'manager');
+  const receptionists = accounts.filter(a => a.role === 'receptionist');
+  const barbers = accounts.filter(a => a.role === 'barber');
+  void offices; void currentUserId; void canManage;
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-8 overflow-x-auto">
+      <div className="min-w-[640px] flex flex-col items-center gap-10">
+        {/* Owner row */}
+        <TreeRow accounts={owners} resolveAvatar={resolveAvatar} onEdit={onEdit} />
+
+        {owners.length > 0 && managers.length > 0 && <TreeConnector />}
+
+        {/* Manager row */}
+        {managers.length > 0 && (
+          <TreeRow accounts={managers} resolveAvatar={resolveAvatar} onEdit={onEdit} />
+        )}
+
+        {(managers.length > 0 || owners.length > 0) && (receptionists.length + barbers.length > 0) && <TreeConnector />}
+
+        {/* Receptionists + Barbers row */}
+        {(receptionists.length + barbers.length) > 0 && (
+          <TreeRow accounts={[...receptionists, ...barbers]} resolveAvatar={resolveAvatar} onEdit={onEdit} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TreeConnector() {
+  return <span className="block h-8 w-px bg-border" aria-hidden />;
+}
+
+function TreeRow({
+  accounts, resolveAvatar, onEdit,
+}: {
+  accounts: Account[];
+  resolveAvatar: (a: Account) => string | undefined;
+  onEdit: (a: Account) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-stretch justify-center gap-3">
+      {accounts.map(a => {
+        const role = ROLE_STYLE[a.role];
+        const initials = `${a.firstName[0] ?? ''}${a.lastName[0] ?? ''}`.toUpperCase();
+        const photoUrl = resolveAvatar(a);
+        const gradient = AVATAR_GRADIENTS[hashToIndex(a.id, AVATAR_GRADIENTS.length)];
+        return (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => onEdit(a)}
+            className={cn(
+              'group flex flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 transition-all w-[140px]',
+              'hover:border-foreground/30 hover:shadow-sm',
+              a.status === 'disabled' && 'opacity-60',
+            )}
+          >
+            {photoUrl ? (
+              <img src={photoUrl} alt="" className="h-12 w-12 rounded-full object-cover" />
+            ) : (
+              <div className={cn(
+                'flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white',
+                gradient,
+              )}>
+                {initials || <UserCircleIcon className="h-6 w-6 text-white/90" />}
+              </div>
+            )}
+            <p className="text-sm font-semibold text-foreground text-center leading-tight truncate w-full">
+              {a.firstName} {a.lastName}
+            </p>
+            <span className={cn(
+              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+              role.chip,
+            )}>
+              <span className={cn('h-1 w-1 rounded-full', role.dot)} />
+              {role.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
@@ -31,15 +32,35 @@ export default defineConfig({
     },
   },
 
-  // Allow Cloudflare tunnel hostnames so the dev server can be exposed via
-  // `cloudflared tunnel --url http://localhost:5173` for client previews.
+  // Allow ALL hostnames so the dev server can be exposed via tunnel URLs
+  // (cloudflared, ngrok, localtunnel, etc.) which assign random subdomains.
   // Vite 5+ otherwise rejects unknown Host headers with 403 (CVE-2025-24010).
+  // `true` is dev-mode safe; production builds don't run this server.
   server: {
-    allowedHosts: ['.trycloudflare.com', '.loca.lt', '.ngrok-free.app', '.ngrok.io'],
+    allowedHosts: true,
   },
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+
+  // Vitest config — JSDom environment so component tests can render React.
+  // Excludes the customer-site Next.js project, the NestJS server, and
+  // .claude/worktrees (where stale dupes live), so only dashboard tests run.
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.{idea,git,cache,output,temp}/**',
+      '**/.claude/**',
+      '**/customer-site/**',
+      '**/server/**',
+    ],
+    css: false,
+  },
 
   build: {
     chunkSizeWarningLimit: 600,

@@ -14,13 +14,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../components/ui/textarea';
 import { Avatar, AvatarImage, AvatarFallback } from '../components/ui/avatar';
 import { TimeWheelPicker } from '../components/ui/time-wheel-picker';
+import { fileToDataUrl } from '../lib/image-upload';
 import {
   format, parseISO, setHours, setMinutes, startOfDay,
   isToday, isBefore, differenceInMinutes, addDays, subDays,
+  addMonths, subMonths,
 } from 'date-fns';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
   ClockIcon,
   PlusIcon,
   ScissorsIcon,
@@ -37,6 +41,9 @@ import {
   CurrencyEuroIcon,
   PencilSquareIcon,
   MapPinIcon,
+  ArrowRightIcon,
+  UserIcon,
+  CameraIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
@@ -470,7 +477,7 @@ export function CalendarPage() {
   // check the system to know if the customer information is stored".
   const [clientSearch, setClientSearch] = useState('');
   const [isCreatingClient, setIsCreatingClient] = useState(false);
-  const [newClient, setNewClient] = useState({ firstName: '', lastName: '', phone: '', email: '' });
+  const [newClient, setNewClient] = useState({ firstName: '', lastName: '', phone: '', email: '', avatarUrl: '' });
   const [conflictState, setConflictState] = useState<{ conflicts: ReturnType<typeof findConflicts>; pending: Omit<Appointment, 'id' | 'createdAt'> } | null>(null);
   const officeId = useOfficeStore(s => s.currentOfficeId);
   const offices = useOfficeStore(s => s.offices);
@@ -570,7 +577,7 @@ export function CalendarPage() {
     onSuccess: (c) => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       setFormData(f => ({ ...f, clientId: c.id }));
-      setNewClient({ firstName: '', lastName: '', phone: '', email: '' });
+      setNewClient({ firstName: '', lastName: '', phone: '', email: '', avatarUrl: '' });
       setIsCreatingClient(false);
       setClientSearch('');
       toast.success(t('toast.clientCreated'));
@@ -667,7 +674,7 @@ export function CalendarPage() {
     setSelectedSlot(null);
     setClientSearch('');
     setIsCreatingClient(false);
-    setNewClient({ firstName: '', lastName: '', phone: '', email: '' });
+    setNewClient({ firstName: '', lastName: '', phone: '', email: '', avatarUrl: '' });
   }, []);
 
   const openSlot = (hour: number, minute: number, staffId: string) => {
@@ -963,11 +970,17 @@ export function CalendarPage() {
           <Popover open={miniOpen} onOpenChange={setMiniOpen}>
             <PopoverTrigger asChild>
               <button
-                className="group mt-2 inline-flex items-center gap-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums hover:text-foreground/80 transition-colors"
+                className="group mt-2 inline-flex items-center gap-3 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums hover:text-foreground/80 transition-colors"
                 aria-label="Open date picker"
+                title="Click to pick another date"
               >
                 {format(selectedDate, 'EEEE, MMMM d')}
-                <CalendarDaysIcon className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                {/* Always visible so operators know the title is clickable —
+                    not a decorative glyph. Brightens + nudges right on hover
+                    to telegraph the affordance. */}
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground group-hover:text-foreground group-hover:border-foreground/30 group-hover:translate-x-[1px] transition-all">
+                  <CalendarDaysIcon className="h-5 w-5" />
+                </span>
               </button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-[260px]">
@@ -1067,18 +1080,26 @@ export function CalendarPage() {
 
         {/* ── Main Area ── */}
         <div className="flex-1 min-w-0 space-y-3">
-          {/* Date strip */}
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2">
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setSelectedDate(d => subDays(d, 1))}>
-              <ChevronLeftIcon className="h-3.5 w-3.5" />
+          {/* Date strip — month-jump + day-step + today, then 7-day rail.
+              Double chevrons jump a full month; single chevrons step one day.
+              Operator can reach any date in two clicks max. */}
+          <div className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2">
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Previous month" aria-label="Previous month" onClick={() => setSelectedDate(d => subMonths(d, 1))}>
+              <ChevronDoubleLeftIcon className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setSelectedDate(d => addDays(d, 1))}>
-              <ChevronRightIcon className="h-3.5 w-3.5" />
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Previous day" aria-label="Previous day" onClick={() => setSelectedDate(d => subDays(d, 1))}>
+              <ChevronLeftIcon className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Next day" aria-label="Next day" onClick={() => setSelectedDate(d => addDays(d, 1))}>
+              <ChevronRightIcon className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Next month" aria-label="Next month" onClick={() => setSelectedDate(d => addMonths(d, 1))}>
+              <ChevronDoubleRightIcon className="h-4 w-4" />
             </Button>
 
             {!isToday(selectedDate) && (
               <button onClick={() => setSelectedDate(new Date())}
-                className="rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-accent transition-colors">
+                className="ml-1 rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-accent transition-colors">
                 {t('common.today')}
               </button>
             )}
@@ -1105,46 +1126,48 @@ export function CalendarPage() {
 
             <div className="flex-1" />
 
-            {/* View toggle */}
+            {/* View toggle — labels always visible (no md:inline gating) so
+                receptionist can see Day/Week/Grid even on tablet/iPad widths.
+                Icons bumped to h-4 for legibility. */}
             <div className="flex items-center rounded-md border border-border p-0.5">
               <button
-                onClick={() => setViewMode('grid')}
-                title={t('calendar.viewGrid')}
-                aria-label={t('calendar.viewGrid')}
+                onClick={() => setViewMode('day')}
+                title={t('calendar.viewDay')}
+                aria-label={t('calendar.viewDay')}
                 className={cn(
-                  'flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors',
-                  viewMode === 'grid' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                  'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                  viewMode === 'day' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
                 )}
-                aria-pressed={viewMode === 'grid'}
+                aria-pressed={viewMode === 'day'}
               >
-                <Squares2X2Icon className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">{t('calendar.viewGrid')}</span>
+                <ListBulletIcon className="h-4 w-4" />
+                <span>{t('calendar.viewDay')}</span>
               </button>
               <button
                 onClick={() => setViewMode('week')}
                 title={t('calendar.viewWeek')}
                 aria-label={t('calendar.viewWeek')}
                 className={cn(
-                  'flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors',
+                  'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
                   viewMode === 'week' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
                 )}
                 aria-pressed={viewMode === 'week'}
               >
-                <TableCellsIcon className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">{t('calendar.viewWeek')}</span>
+                <TableCellsIcon className="h-4 w-4" />
+                <span>{t('calendar.viewWeek')}</span>
               </button>
               <button
-                onClick={() => setViewMode('day')}
-                title={t('calendar.viewDay')}
-                aria-label={t('calendar.viewDay')}
+                onClick={() => setViewMode('grid')}
+                title={t('calendar.viewGrid')}
+                aria-label={t('calendar.viewGrid')}
                 className={cn(
-                  'flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors',
-                  viewMode === 'day' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                  'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                  viewMode === 'grid' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
                 )}
-                aria-pressed={viewMode === 'day'}
+                aria-pressed={viewMode === 'grid'}
               >
-                <ListBulletIcon className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">{t('calendar.viewDay')}</span>
+                <Squares2X2Icon className="h-4 w-4" />
+                <span>{t('calendar.viewGrid')}</span>
               </button>
             </div>
           </div>
@@ -1303,28 +1326,33 @@ export function CalendarPage() {
                           const timeVal = setMinutes(setHours(startOfDay(selectedDate), hr), mn);
                           const past = isToday(selectedDate) && isBefore(timeVal, now);
                           const unavailable = isUnavailable(hr, mn, member.id);
-                          // Owner + manager can click ANY slot — including breaks and off-duty.
-                          // A warning toast makes sure the action feels deliberate.
+                          // Owner + manager can click ANY slot — past, off-duty, day-off, on-break.
+                          // Toasts make each override feel deliberate (different message per case).
                           const canClickAnyway = canOverride;
-                          const clickable = !past && (!unavailable || canClickAnyway);
+                          const clickable = canClickAnyway || (!past && !unavailable);
                           return (
                             <div key={i}
                               onClick={() => {
                                 if (!clickable) return;
-                                if (unavailable && canClickAnyway) {
+                                if (past && canClickAnyway) {
+                                  toast.warning(`Logging a past appointment for ${member.firstName} (owner override)`);
+                                } else if (unavailable && canClickAnyway) {
                                   toast.warning(`${member.firstName} isn't scheduled at this time — booking anyway`);
                                 }
                                 openSlot(hr, mn, member.id);
                               }}
                               className={cn(
                                 'absolute left-0 right-0 transition-colors group/slot',
-                                clickable && !unavailable && 'hover:bg-blue-50/40 dark:hover:bg-blue-950/20 cursor-pointer',
+                                clickable && !unavailable && !past && 'hover:bg-blue-50/40 dark:hover:bg-blue-950/20 cursor-pointer',
                                 clickable && unavailable && 'hover:bg-amber-50/40 dark:hover:bg-amber-950/20 cursor-pointer z-[9]',
+                                clickable && past && !unavailable && 'hover:bg-muted/60 cursor-pointer',
                                 past && !unavailable && 'bg-muted/30',
                               )}
                               style={{ top: `${(i * SLOT_HEIGHT) / 2}px`, height: `${SLOT_HEIGHT / 2}px` }}
                               title={
-                                clickable && unavailable
+                                past && canClickAnyway
+                                  ? `Log a past appointment for ${member.firstName} (owner override)`
+                                  : clickable && unavailable
                                   ? `Book ${member.firstName} outside their shift (owner override)`
                                   : undefined
                               }>
@@ -1434,106 +1462,174 @@ export function CalendarPage() {
                       {st.avatarUrl && <AvatarImage src={st.avatarUrl} alt={st.firstName} />}
                       <AvatarFallback className={cn('text-[8px] font-bold', c.light, c.label)}>{st.firstName[0]}{st.lastName[0]}</AvatarFallback>
                     </Avatar>
-                    <span>Pre-selected barber: {st.firstName}</span>
+                    <span>{t('calendar.preselectedBarber')}: {st.firstName}</span>
                   </div>
                 </div>
               );
             })()}
 
-            {/* Client autocomplete */}
-            <ClientAutocomplete
-              t={t}
-              clients={clients}
-              selectedClientId={formData.clientId}
-              onSelectClient={(id) => { setFormData(f => ({ ...f, clientId: id })); setClientSearch(''); }}
-              search={clientSearch}
-              onSearchChange={setClientSearch}
-              isCreatingClient={isCreatingClient}
-              onStartCreate={() => {
-                const q = clientSearch.trim();
-                const looksLikePhone = /[\d+()]/.test(q);
-                const looksLikeEmail = q.includes('@');
-                setNewClient({
-                  firstName: !looksLikePhone && !looksLikeEmail ? q : '',
-                  lastName: '',
-                  phone: looksLikePhone ? q : '',
-                  email: looksLikeEmail ? q : '',
-                });
-                setIsCreatingClient(true);
-              }}
-              onCancelCreate={() => setIsCreatingClient(false)}
-              newClient={newClient}
-              onNewClientChange={setNewClient}
-              onSubmitNewClient={() => createClientMut.mutate({
-                firstName: newClient.firstName.trim(),
-                lastName:  newClient.lastName.trim(),
-                phone:     newClient.phone.trim(),
-                email:     newClient.email.trim(),
-                notes:     '',
-                officeIds: [officeId],
-              })}
-              isSubmittingClient={createClientMut.isPending}
-            />
+            {/* ─── WHO section ─────────────────────────────
+                Hairline rule above + tabular eyebrow makes this read as a
+                discrete operator chunk, not just another form field. */}
+            <div className="border-t border-border pt-5">
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.sectionWho')}</p>
 
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.service')}</Label>
-                <Select value={formData.serviceId} onValueChange={v => setFormData(f => ({ ...f, serviceId: v }))}>
-                  <SelectTrigger className="mt-1.5 h-10"><SelectValue placeholder={t('calendar.selectService')} /></SelectTrigger>
-                  <SelectContent>
-                    {services.map(s => (
-                      <SelectItem key={s.id} value={s.id}>
-                        <span className="flex items-center gap-3 w-full">
-                          <span>{s.name}</span>
-                          <span className="ml-auto text-xs text-muted-foreground tabular-nums">€{s.price} · {s.duration}m</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <ClientAutocomplete
+                t={t}
+                clients={clients}
+                selectedClientId={formData.clientId}
+                onSelectClient={(id) => { setFormData(f => ({ ...f, clientId: id })); setClientSearch(''); }}
+                search={clientSearch}
+                onSearchChange={setClientSearch}
+                isCreatingClient={isCreatingClient}
+                onStartCreate={() => {
+                  const q = clientSearch.trim();
+                  const looksLikePhone = /[\d+()]/.test(q);
+                  const looksLikeEmail = q.includes('@');
+                  setNewClient({
+                    firstName: !looksLikePhone && !looksLikeEmail ? q : '',
+                    lastName: '',
+                    phone: looksLikePhone ? q : '',
+                    email: looksLikeEmail ? q : '',
+                    avatarUrl: '',
+                  });
+                  setIsCreatingClient(true);
+                }}
+                onCancelCreate={() => setIsCreatingClient(false)}
+                newClient={newClient}
+                onNewClientChange={setNewClient}
+                onSubmitNewClient={() => createClientMut.mutate({
+                  firstName: newClient.firstName.trim(),
+                  lastName:  newClient.lastName.trim(),
+                  phone:     newClient.phone.trim(),
+                  email:     newClient.email.trim(),
+                  notes:     '',
+                  avatarUrl: newClient.avatarUrl?.trim() || undefined,
+                  officeIds: [officeId],
+                })}
+                isSubmittingClient={createClientMut.isPending}
+              />
 
-              <div>
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
-                <Select value={formData.staffId} onValueChange={v => setFormData(f => ({ ...f, staffId: v }))}>
-                  <SelectTrigger className="mt-1.5 h-10"><SelectValue placeholder={t('calendar.selectBarber')} /></SelectTrigger>
-                  <SelectContent>
-                    {activeStaff.map((m, i) => {
-                      const c = getStaffColor(i);
-                      return (
-                        <SelectItem key={m.id} value={m.id}>
-                          <span className="flex items-center gap-2">
-                            <Avatar className="h-5 w-5">
-                              {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.firstName} />}
-                              <AvatarFallback className={cn('text-[8px]', c.light, c.label)}>{m.firstName[0]}{m.lastName[0]}</AvatarFallback>
-                            </Avatar>
-                            {m.firstName} {m.lastName}
-                          </span>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
+              {/* Barber as a horizontal avatar chip strip — visual, fast to
+                  scan, replaces the cramped dropdown. Wraps on narrow widths. */}
+              <div className="mt-4">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">{t('calendar.barber')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {activeStaff.map((m, i) => {
+                    const c = getStaffColor(i);
+                    const isActive = formData.staffId === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setFormData(f => ({ ...f, staffId: m.id }))}
+                        className={cn(
+                          'group relative inline-flex items-center gap-2 rounded-full border pl-1 pr-3 py-1 transition-all',
+                          isActive
+                            ? 'border-foreground bg-foreground text-background'
+                            : 'border-border bg-card hover:border-foreground/30 hover:bg-accent/40',
+                        )}
+                        aria-pressed={isActive}
+                      >
+                        <Avatar className="h-7 w-7 ring-2 ring-background">
+                          {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.firstName} />}
+                          <AvatarFallback className={cn('text-[10px] font-bold', c.light, c.label)}>
+                            {m.firstName[0]}{m.lastName[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm font-medium">{m.firstName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.notes')}</Label>
+            {/* ─── WHAT section — service ─────────────────── */}
+            <div className="border-t border-border pt-5">
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.sectionWhat')}</p>
+              <Select value={formData.serviceId} onValueChange={v => setFormData(f => ({ ...f, serviceId: v }))}>
+                <SelectTrigger className="h-11 tabular-nums"><SelectValue placeholder={t('calendar.selectService')} /></SelectTrigger>
+                <SelectContent>
+                  {services.map(s => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <span className="flex items-center gap-3 w-full">
+                        <span>{s.name}</span>
+                        <span className="ml-auto text-xs text-muted-foreground tabular-nums">€{s.price} · {s.duration}m</span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* ─── NOTES — optional ─────────────────────── */}
+            <div className="border-t border-border pt-5">
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {t('calendar.sectionNotes')} <span className="text-muted-foreground/50 normal-case tracking-normal">· {t('calendar.notesOptional')}</span>
+              </p>
               <Textarea
                 value={formData.notes}
                 onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))}
                 placeholder={t('calendar.specialRequests')}
-                className="mt-1.5"
                 rows={2}
               />
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" onClick={closeCreate}>{t('common.cancel')}</Button>
-              <Button onClick={handleSubmit} className="flex-1" disabled={createMutation.isPending}>
-                {createMutation.isPending ? t('calendar.creating') : t('calendar.createAppointment')}
-              </Button>
-            </div>
+            {/* ─── Summary + actions ──────────────────────
+                Live booking summary updates as fields fill in, so the
+                receptionist can confirm what's about to be created without
+                scrolling back up. Tabular-nums for prices/durations. */}
+            {(() => {
+              const svc = services.find(s => s.id === formData.serviceId);
+              const staff = activeStaff.find(s => s.id === formData.staffId);
+              const client = clients.find(c => c.id === formData.clientId);
+              const dateLabel = createDate ? format(parseISO(createDate), 'EEE, MMM d') : '—';
+              const summaryReady = !!(svc && staff && client && createDate && createTime);
+              return (
+                <div className="border-t border-border pt-5 space-y-4">
+                  <div className="flex items-baseline justify-between gap-3 flex-wrap text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground tabular-nums">
+                    <span>{t('calendar.summary')}</span>
+                    {svc && (
+                      <span className="text-foreground">€{svc.price} <span className="text-muted-foreground/60">· {svc.duration}m</span></span>
+                    )}
+                  </div>
+                  <p className="text-sm text-foreground tracking-tight">
+                    <span className="tabular-nums">{dateLabel} · {createTime || '—:—'}</span>
+                    {svc && <> · {svc.name}</>}
+                    {staff && <> · with <span className="font-semibold">{staff.firstName}</span></>}
+                    {client && <> · for <span className="font-semibold">{client.firstName} {client.lastName}</span></>}
+                  </p>
+
+                  <div className="flex items-center gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={closeCreate}
+                      className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                    {/* Brutalist mark button — same vocabulary as the customer site CTA. */}
+                    <button
+                      type="button"
+                      onClick={handleSubmit}
+                      disabled={createMutation.isPending || !summaryReady}
+                      className={cn(
+                        'group ml-auto inline-flex items-center bg-primary text-primary-foreground py-0 pl-6 pr-0 text-sm font-semibold uppercase tracking-[0.18em] transition-colors duration-200',
+                        'hover:bg-foreground hover:text-background disabled:opacity-50 disabled:cursor-not-allowed',
+                      )}
+                    >
+                      <span className="py-3 text-left tabular-nums">
+                        {createMutation.isPending ? t('calendar.creating') : t('calendar.createAppointment')}
+                      </span>
+                      <span className="border-l border-black/30 dark:border-white/20 p-3 inline-flex items-center transition-transform duration-200 group-hover:translate-x-[2px]">
+                        <ArrowRightIcon className="h-4 w-4" />
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </DialogContent>
       </Dialog>
@@ -1542,44 +1638,86 @@ export function CalendarPage() {
           Amber eyebrow signals exception state. Conflict
           rows are hairline-divided list (no muted panels). */}
       <Dialog open={!!conflictState} onOpenChange={(open) => !open && setConflictState(null)}>
-        <DialogContent className="sm:max-w-[440px]">
+        <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
             <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-400">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
               Conflict
             </p>
-            <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight">
+            <DialogTitle className="text-2xl sm:text-3xl font-bold tracking-tight">
               Already booked
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            This barber is already booked at another location during this time.
-          </p>
-          <div className="divide-y divide-border border-y border-border -mx-6">
+          {(() => {
+            // Detect whether the conflicts are at the SAME office (true double-book)
+            // or CROSS-OFFICE (barber works at two shops, can't be in two places at once).
+            // The wording adapts so it's never misleading.
+            const conflicts = conflictState?.conflicts ?? [];
+            const pendingLocationId = conflictState?.pending.locationId;
+            const allCrossOffice = conflicts.every((c) => c.office.id !== pendingLocationId);
+            const sameOffice = conflicts.every((c) => c.office.id === pendingLocationId);
+            return (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {allCrossOffice
+                  ? 'This barber is already working at the other shop during this slot.'
+                  : sameOffice
+                    ? 'This time slot already has a booking with this barber.'
+                    : 'This barber has overlapping bookings during this slot.'}
+              </p>
+            );
+          })()}
+
+          {/* Conflict rows — hairline-divided, full-bleed list (no muted panels).
+              Tabular-nums on the date+time so the list reads as a ledger. */}
+          <div className="divide-y divide-border border-y border-border -mx-6 mt-1">
             {conflictState?.conflicts.map(({ appointment, office }) => {
               const cs = new Date(appointment.startTime);
               const ce = new Date(appointment.endTime);
               return (
-                <div key={appointment.id} className="px-6 py-3">
+                <div key={appointment.id} className="px-6 py-3.5">
                   <p className="text-sm font-semibold text-foreground tabular-nums">
-                    {format(cs, 'MMM d')} · {formatTime(cs, timeFormat)} — {formatTime(ce, timeFormat)}
+                    {format(cs, 'EEE, MMM d')} · {formatTime(cs, timeFormat)} — {formatTime(ce, timeFormat)}
                   </p>
-                  <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <p className="mt-1 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                     <MapPinIcon className="h-3 w-3 shrink-0" />
-                    {office.name} · {office.address}
+                    {office.name}
+                    <span className="normal-case tracking-normal text-muted-foreground/70">· {office.address}</span>
                   </p>
                 </div>
               );
             })}
           </div>
-          <div className="flex gap-2 pt-2">
-            <Button variant="outline" className="flex-1" onClick={() => setConflictState(null)}>
+
+          {/* Owner-only override note — sets context for the destructive button */}
+          {canOverride && (
+            <p className="text-[11px] text-muted-foreground/80 leading-relaxed pt-1">
+              <span className="font-semibold text-foreground">Override</span> books this slot anyway —
+              the existing appointment stays. Use only if you're knowingly double-booking.
+            </p>
+          )}
+
+          <div className="flex items-center gap-3 pt-3">
+            <button
+              type="button"
+              onClick={() => setConflictState(null)}
+              className="flex-1 inline-flex items-center justify-center rounded-md border border-border bg-card h-10 px-4 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+            >
               Pick another time
-            </Button>
+            </button>
             {canOverride && (
-              <Button variant="destructive" onClick={confirmOverride}>
-                Override
-              </Button>
+              <button
+                type="button"
+                onClick={confirmOverride}
+                disabled={createMutation.isPending}
+                className="group inline-flex items-center bg-red-600 dark:bg-red-500 text-white py-0 pl-5 pr-0 text-sm font-semibold uppercase tracking-[0.18em] hover:bg-red-700 dark:hover:bg-red-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="py-3 text-left tabular-nums">
+                  {createMutation.isPending ? 'Overriding…' : 'Override'}
+                </span>
+                <span className="border-l border-white/30 p-3 inline-flex items-center transition-transform duration-200 group-hover:translate-x-[2px]">
+                  <ArrowRightIcon className="h-4 w-4" />
+                </span>
+              </button>
             )}
           </div>
         </DialogContent>
@@ -1605,8 +1743,8 @@ interface ClientAutocompleteProps {
   isCreatingClient: boolean;
   onStartCreate: () => void;
   onCancelCreate: () => void;
-  newClient: { firstName: string; lastName: string; phone: string; email: string };
-  onNewClientChange: (v: { firstName: string; lastName: string; phone: string; email: string }) => void;
+  newClient: { firstName: string; lastName: string; phone: string; email: string; avatarUrl: string };
+  onNewClientChange: (v: { firstName: string; lastName: string; phone: string; email: string; avatarUrl: string }) => void;
   onSubmitNewClient: () => void;
   isSubmittingClient: boolean;
 }
@@ -1667,50 +1805,148 @@ function ClientAutocomplete({
     );
   }
 
-  // New-client inline form
+  // New-client inline form — sub-form embedded in the parent dialog.
+  // Stays inline (no nested modal) because stacked dialogs trap focus and
+  // confuse keyboard nav; an inline expansion is the editorial-vocabulary
+  // way to say "you're filling in a child of this dialog."
   if (isCreatingClient) {
     return (
       <div>
         <Label className="text-sm">{t('calendar.client')}</Label>
-        <div className="mt-1.5 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">New client</p>
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              value={newClient.firstName}
-              onChange={(e) => onNewClientChange({ ...newClient, firstName: e.target.value })}
-              placeholder="First name"
-              className="text-sm"
-            />
-            <Input
-              value={newClient.lastName}
-              onChange={(e) => onNewClientChange({ ...newClient, lastName: e.target.value })}
-              placeholder="Last name"
-              className="text-sm"
-            />
-            <Input
-              value={newClient.phone}
-              onChange={(e) => onNewClientChange({ ...newClient, phone: e.target.value })}
-              placeholder="+370..."
-              className="text-sm tabular-nums"
-            />
-            <Input
-              type="email"
-              value={newClient.email}
-              onChange={(e) => onNewClientChange({ ...newClient, email: e.target.value })}
-              placeholder="email (optional)"
-              className="text-sm"
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" size="sm" onClick={onCancelCreate}>Cancel</Button>
-            <Button
-              size="sm"
-              loading={isSubmittingClient}
-              disabled={!newClient.firstName.trim() || !newClient.phone.trim()}
-              onClick={onSubmitNewClient}
+
+        {/* Surface: left-rule + soft surface (instead of dashed full-border).
+            Reads as "currently editing inline", not "drop a file here". */}
+        <div className="mt-1.5 rounded-lg border border-border border-l-[3px] border-l-primary bg-muted/30 p-4 space-y-4">
+          {/* Eyebrow — same vocabulary as the parent dialog's section labels */}
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+            {t('calendar.newClient')}
+          </p>
+
+          {/* Row 1 — clickable avatar + first/last name. The avatar IS the
+              upload control (no separate "Add photo" button), with smart
+              initials fallback as user types and a camera overlay on hover. */}
+          <div className="grid grid-cols-[64px_1fr_1fr] gap-3 items-end">
+            <label
+              htmlFor="new-client-photo"
+              title={newClient.avatarUrl ? t('calendar.changePhoto') : t('calendar.addPhoto')}
+              className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-muted to-accent/60 ring-2 ring-background flex items-center justify-center cursor-pointer hover:ring-primary/40 transition-all"
             >
-              Save &amp; use
-            </Button>
+              <input
+                id="new-client-photo"
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const dataUrl = await fileToDataUrl(file, { maxSide: 400, quality: 0.8 });
+                    onNewClientChange({ ...newClient, avatarUrl: dataUrl });
+                  } catch {
+                    toast.error('Could not read image — try another file');
+                  }
+                  e.target.value = '';
+                }}
+              />
+              {newClient.avatarUrl ? (
+                <img src={newClient.avatarUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              ) : newClient.firstName || newClient.lastName ? (
+                <span className="text-base font-bold text-muted-foreground">
+                  {(newClient.firstName[0] || '').toUpperCase()}{(newClient.lastName[0] || '').toUpperCase()}
+                </span>
+              ) : (
+                <UserIcon className="h-7 w-7 text-muted-foreground/50" />
+              )}
+              {/* Camera overlay on hover — telegraphs "click to upload" */}
+              <span className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <CameraIcon className="h-5 w-5 text-white" />
+              </span>
+            </label>
+
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                {t('calendar.firstName')} <span className="text-primary">*</span>
+              </p>
+              <Input
+                value={newClient.firstName}
+                onChange={(e) => onNewClientChange({ ...newClient, firstName: e.target.value })}
+                autoFocus
+                className="text-sm h-9"
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                {t('calendar.lastName')}
+              </p>
+              <Input
+                value={newClient.lastName}
+                onChange={(e) => onNewClientChange({ ...newClient, lastName: e.target.value })}
+                className="text-sm h-9"
+              />
+            </div>
+          </div>
+
+          {/* Row 2 — phone + email */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                Phone <span className="text-primary">*</span>
+              </p>
+              <Input
+                value={newClient.phone}
+                onChange={(e) => onNewClientChange({ ...newClient, phone: e.target.value })}
+                placeholder="+370 6X XXX XXX"
+                className="text-sm h-9 tabular-nums"
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                Email
+              </p>
+              <Input
+                type="email"
+                value={newClient.email}
+                onChange={(e) => onNewClientChange({ ...newClient, email: e.target.value })}
+                placeholder="optional"
+                className="text-sm h-9"
+              />
+            </div>
+          </div>
+
+          {/* Footer — photo hint + actions on one row */}
+          <div className="flex items-center gap-3 pt-1">
+            <p className="text-[10px] text-muted-foreground/60 flex-1 truncate">
+              {newClient.avatarUrl ? (
+                <button
+                  type="button"
+                  onClick={() => onNewClientChange({ ...newClient, avatarUrl: '' })}
+                  className="underline underline-offset-2 hover:text-foreground transition-colors"
+                >
+                  {t('calendar.removePhoto')}
+                </button>
+              ) : t('calendar.photoHint')}
+            </p>
+            <button
+              type="button"
+              onClick={onCancelCreate}
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+            {/* Brutalist mark Save — same vocabulary as parent dialog's CTA */}
+            <button
+              type="button"
+              onClick={onSubmitNewClient}
+              disabled={isSubmittingClient || !newClient.firstName.trim() || !newClient.phone.trim()}
+              className="group inline-flex items-center bg-primary text-primary-foreground py-0 pl-4 pr-0 text-xs font-semibold uppercase tracking-[0.18em] hover:bg-foreground hover:text-background transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span className="py-2 text-left tabular-nums">
+                {isSubmittingClient ? '...' : t('calendar.saveAndUse')}
+              </span>
+              <span className="border-l border-black/30 dark:border-white/20 p-2 inline-flex items-center transition-transform duration-200 group-hover:translate-x-[2px]">
+                <ArrowRightIcon className="h-3.5 w-3.5" />
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -1724,7 +1960,7 @@ function ClientAutocomplete({
       <Input
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
-        placeholder="Type name, phone or email..."
+        placeholder={t('calendar.searchClient')}
         className="mt-1.5"
         autoFocus
       />

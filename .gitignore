@@ -11,6 +11,10 @@ build
 .env
 .env.local
 .env.*.local
+# sed -i.bak leaves these around; exclude them so secrets don't leak.
+*.bak
+.env.bak
+.env.local.bak
 
 # Editor & OS
 .DS_Store

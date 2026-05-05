@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   addMonths, eachDayOfInterval, endOfMonth, format, getDay,
-  isBefore, isSameDay, isSameMonth, isToday, parseISO, startOfDay,
+  isBefore, isSameDay, isToday, parseISO, startOfDay,
   startOfMonth, subMonths,
 } from 'date-fns';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
@@ -29,11 +29,16 @@ export function MiniCalendar({ selectedDate, onSelectDate, appointments }: MiniC
 
   const [viewMonth, setViewMonth] = useState(startOfMonth(selectedDate));
 
+  // Sync viewMonth → selectedDate WHEN selectedDate changes externally.
+  // The previous version listed `viewMonth` in deps too, which caused a feedback
+  // loop: user clicks `<` to navigate to prev month → viewMonth changes → effect
+  // re-runs → it sees `viewMonth (April) !== selectedDate (May)` → snaps viewMonth
+  // back to May. Result: prev/next month buttons appeared dead. Removing
+  // `viewMonth` from deps lets the user freely navigate without the snap-back.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!isSameMonth(viewMonth, selectedDate)) {
-      setViewMonth(startOfMonth(selectedDate));
-    }
-  }, [selectedDate, viewMonth]);
+    setViewMonth(startOfMonth(selectedDate));
+  }, [selectedDate]);
 
   const monthStart = startOfMonth(viewMonth);
   const monthEnd = endOfMonth(viewMonth);
