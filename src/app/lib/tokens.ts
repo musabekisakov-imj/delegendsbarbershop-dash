@@ -112,6 +112,47 @@ export const RECENCY_STYLE = {
   new: { dot: 'bg-blue-500', text: 'text-blue-600 dark:text-blue-400' },
 } as const;
 
+// ─── Role identity ───────────────────────────────────────
+// Single source of truth for role hues + labels. Promoted from
+// duplicated local maps in accounts.tsx + staff.tsx. Static Tailwind
+// classes only (so JIT picks them up); for runtime CSS values
+// (left rail, ring color), use ROLE_BAR / ROLE_RING with inline style.
+export type Role = 'owner' | 'manager' | 'receptionist' | 'barber';
+
+export const ROLE_LABEL: Record<Role, string> = {
+  owner: 'Owner',
+  manager: 'Manager',
+  receptionist: 'Receptionist',
+  barber: 'Barber',
+};
+
+export const ROLE_CHIP: Record<Role, string> = {
+  owner:        'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+  manager:      'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
+  receptionist: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+  barber:       'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+};
+
+export const ROLE_DOT: Record<Role, string> = {
+  owner: 'bg-amber-500',
+  manager: 'bg-violet-500',
+  receptionist: 'bg-blue-500',
+  barber: 'bg-emerald-500',
+};
+
+// Raw oklch values driven via inline style — used for the role-tinted
+// left rail on the tree node and the avatar ring color. Tailwind's JIT
+// can't ingest a runtime CSS var inside arbitrary-value brackets without
+// a theme.css declaration, so we keep these as strings consumed via
+// `style={{ background: ROLE_BAR[role] }}` / `style={{ '--tw-ring-color': ROLE_RING[role] }}`.
+export const ROLE_BAR: Record<Role, string> = {
+  owner:        'oklch(0.74 0.16 70)',
+  manager:      'oklch(0.62 0.21 295)',
+  receptionist: 'oklch(0.62 0.18 250)',
+  barber:       'oklch(0.66 0.16 160)',
+};
+export const ROLE_RING = ROLE_BAR;
+
 // ─── Deterministic hash → palette index ──────────────────
 // Stable across sessions: same ID always picks the same color.
 export function hashToIndex(id: string, paletteSize: number): number {
@@ -124,9 +165,15 @@ export const serviceGradientFor = (id: string) => SERVICE_GRADIENTS[hashToIndex(
 export const dotFor = (id: string) => CATEGORY_DOTS[hashToIndex(id, CATEGORY_DOTS.length)];
 
 // ─── Motion — reusable durations ──────────────────────────
+// CSS-string variant (transitions, animation-duration, transition-timing-function).
 export const MOTION = {
   fast: '150ms',
   base: '220ms',
   slow: '320ms',
   spring: 'cubic-bezier(0.16, 1, 0.3, 1)',
 } as const;
+
+// framer-motion-friendly numeric companions — same values, different shape.
+// Use these wherever you'd write `transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}`.
+export const MOTION_EASE = [0.16, 1, 0.3, 1] as const;
+export const MOTION_DUR = { fast: 0.15, base: 0.22, slow: 0.32 } as const;

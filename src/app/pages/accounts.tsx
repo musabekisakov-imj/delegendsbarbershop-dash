@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence, useReducedMotion, useMotionValue, useTransform, animate } from 'motion/react';
-import { formatDistanceToNow, differenceInMinutes } from 'date-fns';
+import { motion, AnimatePresence, LayoutGroup, useReducedMotion, useMotionValue, animate } from 'motion/react';
+import { formatDistanceToNow, differenceInMinutes, parseISO } from 'date-fns';
 import {
   PlusIcon, UserCircleIcon, EnvelopeIcon,
   PencilSquareIcon, TrashIcon, ShieldCheckIcon,
-  ClockIcon, LockClosedIcon,
+  ClockIcon, LockClosedIcon, PowerIcon,
   MagnifyingGlassIcon, MapPinIcon, ChevronDownIcon,
-  ListBulletIcon, Squares2X2Icon, ShareIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 
@@ -19,27 +18,24 @@ import { Input } from '../components/ui/input';
 import { Field } from '../components/ui/field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { CardSkeleton } from '../components/shared/page-skeleton';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '../components/ui/hover-card';
 import { usePermission } from '../hooks/use-permission';
 import { useConfirm } from '../hooks/use-confirm';
 import { useAuthStore } from '../store/auth-store';
 import { useOfficeStore } from '../store/office-store';
 import { ROLE_PERMISSIONS } from '../lib/permissions';
-import { AVATAR_GRADIENTS, hashToIndex } from '../lib/tokens';
+import {
+  AVATAR_GRADIENTS, hashToIndex,
+  ROLE_LABEL, ROLE_CHIP, ROLE_DOT, ROLE_BAR, ROLE_RING,
+  MOTION_EASE, MOTION_DUR,
+} from '../lib/tokens';
 import { cn } from '../components/ui/utils';
 import { fileToDataUrl } from '../lib/image-upload';
 import { PhotoIcon } from '@heroicons/react/24/outline';
 import type { Account, StaffRole, AccountStatus, Permission } from '../types';
-
-// Role palette — same hues used on the Staff page so the two pages feel linked.
-// `bar` is a static Tailwind class for the editorial group-header left stripe;
-// keeping it explicit (not interpolated) so JIT picks it up at build time.
-const ROLE_STYLE: Record<StaffRole, { chip: string; dot: string; bar: string; label: string }> = {
-  owner:        { chip: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60',   dot: 'bg-amber-500',   bar: 'border-l-amber-500',   label: 'Owner' },
-  manager:      { chip: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900/60', dot: 'bg-violet-500', bar: 'border-l-violet-500', label: 'Manager' },
-  receptionist: { chip: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/60',       dot: 'bg-blue-500',    bar: 'border-l-blue-500',    label: 'Receptionist' },
-  barber:       { chip: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/60', dot: 'bg-emerald-500', bar: 'border-l-emerald-500', label: 'Barber' },
-};
+// Role palette is now imported from `lib/tokens.ts` (`ROLE_LABEL`, `ROLE_CHIP`,
+// `ROLE_DOT`, `ROLE_BAR`, `ROLE_RING`) so this page and the Staff page share
+// a single source of truth.
 
 type RoleFilter = 'all' | StaffRole;
 
@@ -51,9 +47,6 @@ export function AccountsPage() {
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
-  // View comparison toggle — list (current), cards (visual showcase), tree (org chart).
-  // Owner picks which one stays after eyeballing each side-by-side.
-  const [viewMode, setViewMode] = useState<'list' | 'cards' | 'tree'>('list');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
 
@@ -253,9 +246,9 @@ export function AccountsPage() {
           {(['owner', 'manager', 'receptionist', 'barber'] as StaffRole[]).map(r => (
             <div key={r} className="p-5">
               <div className="flex items-center gap-2 mb-3">
-                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', ROLE_STYLE[r].dot)} />
+                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', ROLE_DOT[r])} />
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  {ROLE_STYLE[r].label}
+                  {ROLE_LABEL[r]}
                 </p>
                 <span className="text-[11px] text-muted-foreground/80 ml-auto tabular-nums">
                   {ROLE_PERMISSIONS[r].length} perms
@@ -274,40 +267,52 @@ export function AccountsPage() {
         </div>
       </details>
 
-      {/* ─── Operator bar — role tabs + search ────────── */}
+      {/* ─── Operator bar — role tabs + search ──────────
+          The active-tab underline is a shared `motion.span` with
+          `layoutId="role-tab-underline"`, so it slides between tabs
+          when the filter changes instead of cutting hard. View
+          toggle is gone — Tree is the canonical render when role
+          is `all`, Table is the fallback for single-role filters. */}
       <div className="rounded-xl border border-border bg-card">
-        <div className="flex items-end gap-1 overflow-x-auto border-b border-border px-2">
-          {ROLE_TABS.map(t => {
-            const active = roleFilter === t.id;
-            const dot = t.id !== 'all' ? ROLE_STYLE[t.id as StaffRole].dot : null;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setRoleFilter(t.id)}
-                aria-pressed={active}
-                className={cn(
-                  'relative inline-flex items-center gap-2 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors',
-                  active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {dot && <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', dot)} />}
-                <span>{t.label}</span>
-                <span className={cn(
-                  'inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
-                  active ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground',
-                )}>
-                  {t.count}
-                </span>
-                {active && (
-                  <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" aria-hidden />
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <div className="p-2.5 flex items-center gap-2">
-          <div className="relative flex-1">
+        <LayoutGroup id="role-tabs">
+          <div className="flex items-end gap-1 overflow-x-auto border-b border-border px-2">
+            {ROLE_TABS.map(t => {
+              const active = roleFilter === t.id;
+              const dot = t.id !== 'all' ? ROLE_DOT[t.id as StaffRole] : null;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setRoleFilter(t.id)}
+                  aria-pressed={active}
+                  className={cn(
+                    'relative inline-flex items-center gap-2 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors',
+                    active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {dot && <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', dot)} />}
+                  <span>{t.label}</span>
+                  <span className={cn(
+                    'inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
+                    active ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground',
+                  )}>
+                    {t.count}
+                  </span>
+                  {active && (
+                    <motion.span
+                      layoutId="role-tab-underline"
+                      className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground"
+                      transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
+                      aria-hidden
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </LayoutGroup>
+        <div className="p-2.5">
+          <div className="relative">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="text"
@@ -317,41 +322,17 @@ export function AccountsPage() {
               className="pl-9 h-9 bg-background"
             />
           </div>
-          {/* View toggle — temporary comparison mode. Once the owner picks a
-              winner, the two losing renderers + this toggle get deleted. */}
-          <div className="flex items-center rounded-md border border-border p-0.5 shrink-0">
-            {([
-              { id: 'list',  Icon: ListBulletIcon,  label: 'List'  },
-              { id: 'cards', Icon: Squares2X2Icon,  label: 'Cards' },
-              { id: 'tree',  Icon: ShareIcon,       label: 'Tree'  },
-            ] as const).map(({ id, Icon, label }) => {
-              const active = viewMode === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setViewMode(id)}
-                  title={label}
-                  aria-pressed={active}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                    active ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{label}</span>
-                </button>
-              );
-            })}
-          </div>
         </div>
       </div>
 
-      {/* ─── Members table ───────────────────────────────
-          Admin pages use tables, not cards. Columns align vertically
-          so scanning roles / last-seen / offices across 20 members
-          is a single glance. Grouped by role (with inline subheaders)
-          when viewing All; flat sorted list otherwise. */}
+      {/* ─── Renderer ─────────────────────────────────────
+          Tree is the canonical view when no role filter is set —
+          it shows the full reporting structure at a glance. Once a
+          single role is filtered, the Tree collapses to a single
+          row (awkward), so we fall back to MembersTable in that
+          case. The Tree handles its own search dimming, so it
+          consumes the unfiltered `accounts` list and only the
+          search query. */}
       {isLoading ? (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -364,44 +345,35 @@ export function AccountsPage() {
             </div>
           ))}
         </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={UserCircleIcon}
-          title="No accounts match"
-          description="Try a different search or clear the role filter."
-        />
-      ) : viewMode === 'cards' ? (
-        <MembersCards
-          accounts={filtered}
-          groupByRole={roleFilter === 'all'}
-          offices={offices}
-          currentUserId={currentUser?.id}
-          canManage={can('accounts.manage')}
-          resolveAvatar={resolveAvatar}
-          onToggleStatus={toggleStatus}
-          onEdit={openEdit}
-          onRemove={handleRemove}
-        />
-      ) : viewMode === 'tree' ? (
-        <MembersTree
-          accounts={filtered}
-          offices={offices}
-          currentUserId={currentUser?.id}
-          canManage={can('accounts.manage')}
-          resolveAvatar={resolveAvatar}
-          onEdit={openEdit}
-        />
+      ) : roleFilter !== 'all' ? (
+        filtered.length === 0 ? (
+          <EmptyState
+            icon={UserCircleIcon}
+            title="No accounts match"
+            description="Try a different search or clear the role filter."
+          />
+        ) : (
+          <MembersTable
+            accounts={filtered}
+            groupByRole={false}
+            offices={offices}
+            currentUserId={currentUser?.id}
+            canManage={can('accounts.manage')}
+            resolveAvatar={resolveAvatar}
+            onToggleStatus={toggleStatus}
+            onEdit={openEdit}
+            onRemove={handleRemove}
+          />
+        )
       ) : (
-        <MembersTable
-          accounts={filtered}
-          groupByRole={roleFilter === 'all'}
+        <MembersTree
+          accounts={accounts}
+          search={search}
           offices={offices}
-          currentUserId={currentUser?.id}
-          canManage={can('accounts.manage')}
           resolveAvatar={resolveAvatar}
-          onToggleStatus={toggleStatus}
           onEdit={openEdit}
-          onRemove={handleRemove}
+          onToggleStatus={toggleStatus}
+          onInvite={openNew}
         />
       )}
 
@@ -870,19 +842,16 @@ function ColHeader({ children, className }: { children?: React.ReactNode; classN
 // count chip on the right gives instant "how many in this role" stat.
 function GroupHeader({ role, count, index }: { role: StaffRole; count: number; index: number }) {
   const reducedMotion = useReducedMotion();
-  const style = ROLE_STYLE[role];
   return (
     <motion.li
       initial={reducedMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2, delay: reducedMotion ? 0 : Math.min(index * 0.02, 0.2) }}
-      className={cn(
-        'flex items-center justify-between gap-2 bg-muted/30 border-l-[3px] px-5 py-2',
-        style.bar,
-      )}
+      className="flex items-center justify-between gap-2 bg-muted/30 border-l-[3px] px-5 py-2"
+      style={{ borderLeftColor: ROLE_BAR[role] }}
     >
       <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-foreground">
-        {style.label}{count === 1 ? '' : 's'}
+        {ROLE_LABEL[role]}{count === 1 ? '' : 's'}
       </p>
       <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full bg-card border border-border text-[10px] font-semibold tabular-nums text-muted-foreground">
         {count}
@@ -904,7 +873,6 @@ function MemberRow({
   index: number;
 }) {
   const reducedMotion = useReducedMotion();
-  const role = ROLE_STYLE[a.role];
   const initials = `${a.firstName[0] ?? ''}${a.lastName[0] ?? ''}`.toUpperCase();
   const isSelf = a.id === currentUserId;
   const officeNames = a.officeIds.map(id => offices.find(o => o.id === id)?.name ?? '—');
@@ -965,22 +933,22 @@ function MemberRow({
           <p className="text-xs text-muted-foreground truncate">{a.email}</p>
           {/* Mobile-only: role + last seen folded into the Member cell */}
           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground md:hidden">
-            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', role.dot)} />
-            <span>{role.label}</span>
+            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', ROLE_DOT[a.role])} />
+            <span>{ROLE_LABEL[a.role]}</span>
             <span className="text-muted-foreground/40">·</span>
             <span className="tabular-nums">{seenLabel}</span>
           </div>
         </div>
       </div>
 
-      {/* Role — md+. Chip with role color (replaces the bare dot+text). */}
+      {/* Role — md+. Chip with role color (no border — bg-tint alone is enough). */}
       <div className="hidden md:flex items-center min-w-0">
         <span className={cn(
-          'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] truncate',
-          role.chip,
+          'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] truncate',
+          ROLE_CHIP[a.role],
         )}>
-          <span className={cn('h-1 w-1 rounded-full shrink-0', role.dot)} />
-          {role.label}
+          <span className={cn('h-1 w-1 rounded-full shrink-0', ROLE_DOT[a.role])} />
+          {ROLE_LABEL[a.role]}
         </span>
       </div>
 
@@ -1073,289 +1041,551 @@ function MemberRow({
   );
 }
 
-// ─── Members CARDS view ────────────────────────────────────
-// Visual showcase grid. Each account becomes a card with photo +
-// role pill + status + contact + last-seen + actions. Provided
-// here so the owner can compare against the table view and pick
-// which one to keep.
-function MembersCards({
-  accounts, groupByRole, offices, currentUserId, canManage,
-  resolveAvatar, onToggleStatus, onEdit, onRemove,
-}: CardActionProps & {
+// ─── Members TREE view ("ATELIER") ──────────────────────────────────────────
+// TODO i18n — strings here are hardcoded English. When `team.tree.*` keys are
+// introduced in en/lt/ru, replace inline labels with `t(…)` calls.
+//
+// Org chart, redesigned: a deterministic CSS-Grid layout with an animated SVG
+// bezier connector overlay, a `layoutId` shared focus ring that morphs between
+// cards, role-tinted left rails + avatar rings, status dots, an atmospheric
+// dot-grid background, and a HoverCard rich preview. Click no longer jumps
+// straight to AccountDialog — the preview's "Edit details" CTA does.
+//
+// Data model note: `Account` has no `managerId`, so reports do not slot under
+// a specific manager; instead we draw N-to-M lines from each manager-bottom
+// to each report-top. With one manager the layout reads as a clean 3-row tree;
+// with multiple, the connector opacity drops to keep the bundle readable.
+
+type Tier = 'owner' | 'manager' | 'report';
+
+interface Edge {
+  fromId: string;
+  toId: string;
+  d: string;
+}
+
+function MembersTree({
+  accounts,
+  search,
+  offices,
+  resolveAvatar,
+  onEdit,
+  onToggleStatus,
+  onInvite,
+}: {
   accounts: Account[];
-  groupByRole: boolean;
+  search: string;
+  offices: { id: string; name: string }[];
+  resolveAvatar: (a: Account) => string | undefined;
+  onEdit: (a: Account) => void;
+  onToggleStatus: (a: Account) => void;
+  onInvite: () => void;
 }) {
-  // Build group blocks so the response is `[ {header, cards: [...]}, ... ]`.
-  type Block = { header: { role: StaffRole; count: number } | null; cards: Account[] };
-  const blocks: Block[] = [];
-  if (groupByRole) {
-    (['owner', 'manager', 'receptionist', 'barber'] as StaffRole[]).forEach(r => {
-      const cards = accounts.filter(a => a.role === r);
-      if (cards.length === 0) return;
-      blocks.push({ header: { role: r, count: cards.length }, cards });
-    });
-  } else {
-    blocks.push({ header: null, cards: accounts });
+  const reducedMotion = useReducedMotion();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const refs = useRef<Map<string, HTMLElement>>(new Map());
+  const [edges, setEdges] = useState<Edge[]>([]);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  const owners   = useMemo(() => accounts.filter(a => a.role === 'owner'), [accounts]);
+  const managers = useMemo(() => accounts.filter(a => a.role === 'manager'), [accounts]);
+  const reports  = useMemo(() => accounts.filter(a => a.role === 'receptionist' || a.role === 'barber'), [accounts]);
+
+  const cols = Math.max(managers.length, reports.length, 1);
+
+  // Search-driven dimming. Tree always receives the unfiltered list so the
+  // structure stays visible; matches stay full-opacity, the rest fade.
+  const dimmedIds = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return new Set<string>();
+    return new Set(
+      accounts
+        .filter(a => !(
+          a.email.toLowerCase().includes(q) ||
+          a.firstName.toLowerCase().includes(q) ||
+          a.lastName.toLowerCase().includes(q)
+        ))
+        .map(a => a.id),
+    );
+  }, [search, accounts]);
+
+  // Compute SVG paths from owner-bottom → manager-top and manager-bottom →
+  // report-top. Reads bounding rects of registered refs against the container,
+  // recomputes on layout / resize / data change.
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const recompute = () => {
+      const cBox = container.getBoundingClientRect();
+      const rectFor = (id: string) => {
+        const el = refs.current.get(id);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return {
+          topX: r.left - cBox.left + r.width / 2,
+          topY: r.top - cBox.top,
+          bottomX: r.left - cBox.left + r.width / 2,
+          bottomY: r.bottom - cBox.top,
+        };
+      };
+      const bezier = (x1: number, y1: number, x2: number, y2: number) => {
+        const my = (y1 + y2) / 2;
+        return `M ${x1},${y1} C ${x1},${my} ${x2},${my} ${x2},${y2}`;
+      };
+
+      const next: Edge[] = [];
+      // Layer 1: owner → managers, OR owner → reports if no managers exist.
+      if (owners.length > 0) {
+        const targets = managers.length > 0 ? managers : reports;
+        for (const o of owners) {
+          const oBox = rectFor(o.id); if (!oBox) continue;
+          for (const t of targets) {
+            const tBox = rectFor(t.id); if (!tBox) continue;
+            next.push({ fromId: o.id, toId: t.id, d: bezier(oBox.bottomX, oBox.bottomY, tBox.topX, tBox.topY) });
+          }
+        }
+      }
+      // Layer 2: managers → reports (only when both exist).
+      if (managers.length > 0 && reports.length > 0) {
+        for (const m of managers) {
+          const mBox = rectFor(m.id); if (!mBox) continue;
+          for (const r of reports) {
+            const rBox = rectFor(r.id); if (!rBox) continue;
+            next.push({ fromId: m.id, toId: r.id, d: bezier(mBox.bottomX, mBox.bottomY, rBox.topX, rBox.topY) });
+          }
+        }
+      }
+      setEdges(next);
+    };
+
+    // Two RAFs — first to wait for layout to settle, second so motion's own
+    // entrance animations don't snap the rects mid-frame. Then ResizeObserver
+    // catches container width changes (sidebar collapse, window resize, etc.).
+    let raf1 = 0, raf2 = 0;
+    raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(recompute); });
+    const ro = new ResizeObserver(recompute);
+    ro.observe(container);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      ro.disconnect();
+    };
+  }, [accounts, owners, managers, reports]);
+
+  if (accounts.length === 0) {
+    return <EmptyTreeState onInvite={onInvite} />;
   }
 
+  const fanFactor = managers.length > 1 ? 0.45 : 0.85;
+  const registerRef = (id: string) => (node: HTMLElement | null) => {
+    if (node) refs.current.set(id, node);
+    else refs.current.delete(id);
+  };
+
+  const reportsCount = (id: string) => {
+    void id;
+    // Without per-manager assignment in the data model, the most truthful
+    // signal a manager card can carry is "reports under this office".
+    return reports.length;
+  };
+
   return (
-    <div className="space-y-6">
-      {blocks.map((b, idx) => (
-        <div key={b.header?.role ?? `block-${idx}`} className="space-y-3">
-          {b.header && (() => {
-            const style = ROLE_STYLE[b.header.role];
-            return (
-              <div className={cn(
-                'flex items-center justify-between rounded-lg bg-muted/30 border-l-[3px] px-4 py-2',
-                style.bar,
-              )}>
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-foreground">
-                  {style.label}{b.header.count === 1 ? '' : 's'}
-                </p>
-                <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full bg-card border border-border text-[10px] font-semibold tabular-nums text-muted-foreground">
-                  {b.header.count}
-                </span>
+    <LayoutGroup id="tree">
+      <div className="rounded-2xl border border-border bg-card tree-grid-bg p-6 sm:p-10 lg:p-14 overflow-x-auto">
+        <div ref={containerRef} className="relative min-w-[640px] mx-auto">
+          {/* SVG connector overlay — sits behind the grid in the same
+              positioned container so getBoundingClientRect deltas line up. */}
+          <svg
+            className="absolute inset-0 h-full w-full pointer-events-none"
+            aria-hidden
+          >
+            {edges.map((e, i) => {
+              const isHi = hoveredId === e.toId || hoveredId === e.fromId;
+              const isDim = dimmedIds.has(e.toId);
+              return (
+                <motion.path
+                  key={`${e.fromId}->${e.toId}`}
+                  d={e.d}
+                  fill="none"
+                  strokeWidth={1.25}
+                  stroke={isHi ? 'var(--foreground)' : 'var(--border)'}
+                  strokeOpacity={isDim ? 0.12 : isHi ? 0.6 : fanFactor}
+                  initial={reducedMotion ? false : { pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  transition={{
+                    duration: MOTION_DUR.slow,
+                    ease: MOTION_EASE,
+                    delay: reducedMotion ? 0 : 0.2 + i * 0.05,
+                  }}
+                />
+              );
+            })}
+          </svg>
+
+          {/* Grid — three rows (owner / managers / reports), col count
+              equals the widest tier so cards space evenly. */}
+          <div
+            className="relative grid gap-x-6 gap-y-14"
+            style={{ gridTemplateColumns: `repeat(${cols}, minmax(164px, 1fr))` }}
+          >
+            <div className="col-span-full flex justify-center">
+              {owners.map((a, i) => (
+                <TreeNode
+                  key={a.id}
+                  a={a}
+                  tier="owner"
+                  idx={i}
+                  registerRef={registerRef(a.id)}
+                  hovered={hoveredId === a.id}
+                  setHoveredId={setHoveredId}
+                  dimmed={dimmedIds.has(a.id)}
+                  resolveAvatar={resolveAvatar}
+                  offices={offices}
+                  reportsCount={reportsCount(a.id)}
+                  onEdit={onEdit}
+                  onToggleStatus={onToggleStatus}
+                />
+              ))}
+            </div>
+
+            {managers.length > 0 && (
+              <div className="col-span-full flex flex-wrap justify-around gap-x-6 gap-y-4">
+                {managers.map((a, i) => (
+                  <TreeNode
+                    key={a.id}
+                    a={a}
+                    tier="manager"
+                    idx={i}
+                    registerRef={registerRef(a.id)}
+                    hovered={hoveredId === a.id}
+                    setHoveredId={setHoveredId}
+                    dimmed={dimmedIds.has(a.id)}
+                    resolveAvatar={resolveAvatar}
+                    offices={offices}
+                    reportsCount={reportsCount(a.id)}
+                    onEdit={onEdit}
+                    onToggleStatus={onToggleStatus}
+                  />
+                ))}
               </div>
-            );
-          })()}
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {b.cards.map(a => (
-              <MemberCard
-                key={a.id}
-                account={a}
-                offices={offices}
-                currentUserId={currentUserId}
-                canManage={canManage}
-                resolveAvatar={resolveAvatar}
-                onToggleStatus={onToggleStatus}
-                onEdit={onEdit}
-                onRemove={onRemove}
-              />
-            ))}
+            )}
+
+            {reports.length > 0 && (
+              <div className="col-span-full flex flex-wrap justify-center gap-6">
+                {reports.map((a, i) => (
+                  <TreeNode
+                    key={a.id}
+                    a={a}
+                    tier="report"
+                    idx={i}
+                    registerRef={registerRef(a.id)}
+                    hovered={hoveredId === a.id}
+                    setHoveredId={setHoveredId}
+                    dimmed={dimmedIds.has(a.id)}
+                    resolveAvatar={resolveAvatar}
+                    offices={offices}
+                    reportsCount={0}
+                    onEdit={onEdit}
+                    onToggleStatus={onToggleStatus}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      ))}
-    </div>
+      </div>
+    </LayoutGroup>
   );
 }
 
-function MemberCard({
-  account: a, offices, currentUserId, canManage,
-  resolveAvatar, onToggleStatus, onEdit, onRemove,
-}: CardActionProps & { account: Account }) {
-  const role = ROLE_STYLE[a.role];
+// ─── Tree node (single card) ─────────────────────────────────────────────────
+// HoverCard wraps the trigger button. Hover/focus opens the preview after
+// 120ms; click also opens the preview (Radix HoverCard handles touch via
+// pointer-events). The preview hosts the explicit Edit / Toggle CTAs so click
+// is no longer destructive.
+function TreeNode({
+  a, tier, idx, registerRef, hovered, setHoveredId, dimmed,
+  resolveAvatar, offices, reportsCount, onEdit, onToggleStatus,
+}: {
+  a: Account;
+  tier: Tier;
+  idx: number;
+  registerRef: (node: HTMLElement | null) => void;
+  hovered: boolean;
+  setHoveredId: (id: string | null) => void;
+  dimmed: boolean;
+  resolveAvatar: (a: Account) => string | undefined;
+  offices: { id: string; name: string }[];
+  reportsCount: number;
+  onEdit: (a: Account) => void;
+  onToggleStatus: (a: Account) => void;
+}) {
+  const reducedMotion = useReducedMotion();
   const initials = `${a.firstName[0] ?? ''}${a.lastName[0] ?? ''}`.toUpperCase();
-  const isSelf = a.id === currentUserId;
-  const officeNames = a.officeIds.map(id => offices.find(o => o.id === id)?.name ?? '—');
   const photoUrl = resolveAvatar(a);
   const gradient = AVATAR_GRADIENTS[hashToIndex(a.id, AVATAR_GRADIENTS.length)];
-  const seenLabel = a.lastLoginAt ? formatDistanceToNow(new Date(a.lastLoginAt), { addSuffix: true }) : 'Never';
+  const officeNames = a.officeIds
+    .map(id => offices.find(o => o.id === id)?.name)
+    .filter((x): x is string => Boolean(x));
+
+  // Tier-aware entrance delays — owner first, managers next, reports last.
+  const enterDelay = reducedMotion
+    ? 0
+    : tier === 'owner'
+    ? 0
+    : tier === 'manager'
+    ? 0.08 + idx * 0.08
+    : 0.4 + idx * 0.06;
+
+  // Footer micro-text — never lies. Owners + managers show last activity,
+  // reports show how many offices they cover (matches the overall page tone
+  // of "scannable economic facts, no marketing copy").
+  const footerLine =
+    tier === 'report'
+      ? officeNames.length === 0
+        ? '—'
+        : `${officeNames.length} office${officeNames.length === 1 ? '' : 's'}`
+      : a.lastLoginAt
+      ? `active ${formatDistanceToNow(parseISO(a.lastLoginAt))} ago`
+      : 'never signed in';
+
+  void reportsCount;
 
   return (
-    <div className={cn(
-      'group flex flex-col rounded-xl border border-border bg-card p-4 transition-all hover:border-foreground/20 hover:shadow-sm',
-      a.status === 'disabled' && 'opacity-60',
-    )}>
-      {/* Identity row — avatar + name + role pill */}
-      <div className="flex items-start gap-3">
-        {photoUrl ? (
-          <img src={photoUrl} alt="" className="h-12 w-12 rounded-full object-cover shrink-0" />
-        ) : (
-          <div className={cn(
-            'flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white',
-            gradient,
-          )}>
-            {initials || <UserCircleIcon className="h-6 w-6 text-white/90" />}
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <p className="font-semibold text-foreground truncate leading-tight">
-              {a.firstName} {a.lastName}
-            </p>
-            {isSelf && (
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground border border-border rounded px-1 py-px shrink-0">
-                you
-              </span>
+    <HoverCard openDelay={120} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <motion.button
+          ref={registerRef}
+          type="button"
+          onMouseEnter={() => setHoveredId(a.id)}
+          onMouseLeave={() => setHoveredId(null)}
+          onFocus={() => setHoveredId(a.id)}
+          onBlur={() => setHoveredId(null)}
+          initial={reducedMotion ? false : { opacity: 0, scale: 0.96 }}
+          animate={{ opacity: dimmed ? 0.3 : 1, scale: 1 }}
+          transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE, delay: enterDelay }}
+          className={cn(
+            'group relative w-[164px] h-[176px] rounded-xl border border-border bg-card p-4',
+            'flex flex-col items-center gap-2 cursor-pointer outline-none',
+            'transition-[border-color,box-shadow,transform] duration-200',
+            'hover:border-foreground/30 hover:-translate-y-0.5',
+            'hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.18)]',
+            'dark:hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.55)]',
+            'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+            a.status === 'disabled' && 'opacity-60',
+          )}
+        >
+          {/* Role-tinted left rail — the single piece of color most pages of
+              this Editorial family carry; here it telegraphs role from
+              across the canvas without needing the chip text. */}
+          <span
+            aria-hidden
+            className="absolute inset-y-3 left-0 w-[3px] rounded-r-full"
+            style={{ background: ROLE_BAR[a.role] }}
+          />
+
+          {/* Status dot — top-right corner. Pending pulses to draw attention
+              to outstanding invites; disabled is muted; active is quiet emerald. */}
+          <span
+            aria-label={a.status === 'active' ? 'Active' : a.status === 'invited' ? 'Pending invite' : 'Disabled'}
+            className={cn(
+              'absolute top-2 right-2 h-2 w-2 rounded-full',
+              a.status === 'active' && 'bg-emerald-500',
+              a.status === 'invited' && 'bg-amber-500',
+              a.status === 'disabled' && 'bg-muted-foreground/40',
+            )}
+          />
+          {a.status === 'invited' && !reducedMotion && (
+            <motion.span
+              className="absolute top-2 right-2 h-2 w-2 rounded-full ring-2 ring-amber-500"
+              initial={{ opacity: 0.6, scale: 1 }}
+              animate={{ opacity: 0, scale: 2.4 }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
+              aria-hidden
+            />
+          )}
+
+          {/* Avatar with role ring */}
+          <div className="mt-0.5">
+            {photoUrl ? (
+              <img
+                src={photoUrl}
+                alt=""
+                className="h-14 w-14 rounded-full object-cover ring-2 ring-offset-2 ring-offset-card"
+                style={{ boxShadow: `0 0 0 2px ${ROLE_RING[a.role]}` }}
+              />
+            ) : (
+              <div
+                className={cn(
+                  'flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white ring-2 ring-offset-2 ring-offset-card',
+                  gradient,
+                )}
+                style={{ boxShadow: `0 0 0 2px ${ROLE_RING[a.role]}` }}
+              >
+                {initials || <UserCircleIcon className="h-7 w-7 text-white/90" />}
+              </div>
             )}
           </div>
-          <p className="text-xs text-muted-foreground truncate">{a.email}</p>
+
+          {/* Name */}
+          <p className="text-[13px] font-semibold tracking-tight text-foreground text-center leading-tight truncate w-full">
+            {a.firstName} {a.lastName}
+          </p>
+
+          {/* Role chip */}
+          <span className={cn(
+            'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+            ROLE_CHIP[a.role],
+          )}>
+            <span className={cn('h-1 w-1 rounded-full', ROLE_DOT[a.role])} />
+            {ROLE_LABEL[a.role]}
+          </span>
+
+          {/* Footer micro-row — hairline above */}
+          <div className="mt-auto w-full pt-1.5 border-t border-border/60 text-[10px] text-muted-foreground tabular-nums text-center truncate">
+            {footerLine}
+          </div>
+
+          {/* Shared focus ring — morphs between hovered cards via layoutId.
+              The single most-impactful framer-motion win on this page. */}
+          {hovered && (
+            <motion.span
+              layoutId="tree-focus-ring"
+              aria-hidden
+              className="absolute -inset-px rounded-xl ring-2 ring-foreground/40 pointer-events-none"
+              transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
+            />
+          )}
+        </motion.button>
+      </HoverCardTrigger>
+
+      <HoverCardContent
+        side="top"
+        align="center"
+        className="w-72 p-0 border border-border bg-popover shadow-lg"
+      >
+        <TreePreview a={a} offices={offices} onEdit={onEdit} onToggleStatus={onToggleStatus} />
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+// ─── Hover preview ───────────────────────────────────────────────────────────
+// Rich card shown on hover — defers the heavy AccountDialog to an explicit
+// Edit CTA so click on the node card is no longer destructive on touch.
+function TreePreview({
+  a, offices, onEdit, onToggleStatus,
+}: {
+  a: Account;
+  offices: { id: string; name: string }[];
+  onEdit: (a: Account) => void;
+  onToggleStatus: (a: Account) => void;
+}) {
+  const initials = `${a.firstName[0] ?? ''}${a.lastName[0] ?? ''}`.toUpperCase();
+  const officeNames = a.officeIds
+    .map(id => offices.find(o => o.id === id)?.name)
+    .filter((x): x is string => Boolean(x));
+  const seen = a.lastLoginAt
+    ? `${formatDistanceToNow(parseISO(a.lastLoginAt))} ago`
+    : null;
+
+  return (
+    <div className="flex flex-col">
+      {/* Header */}
+      <div className="flex items-start gap-3 p-4">
+        <div
+          className={cn(
+            'flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white shrink-0',
+            AVATAR_GRADIENTS[hashToIndex(a.id, AVATAR_GRADIENTS.length)],
+          )}
+          style={{ boxShadow: `0 0 0 2px ${ROLE_RING[a.role]}` }}
+        >
+          {initials || <UserCircleIcon className="h-6 w-6 text-white/90" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground truncate">
+            {a.firstName} {a.lastName}
+          </p>
+          <span className={cn(
+            'mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+            ROLE_CHIP[a.role],
+          )}>
+            <span className={cn('h-1 w-1 rounded-full', ROLE_DOT[a.role])} />
+            {ROLE_LABEL[a.role]}
+          </span>
         </div>
       </div>
 
-      {/* Pills row — role + status */}
-      <div className="mt-3 flex items-center gap-2 flex-wrap">
-        <span className={cn(
-          'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
-          role.chip,
-        )}>
-          <span className={cn('h-1 w-1 rounded-full', role.dot)} />
-          {role.label}
-        </span>
+      {/* Meta */}
+      <div className="px-4 pb-3 space-y-1.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 min-w-0">
+          <EnvelopeIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="select-text truncate">{a.email}</span>
+        </div>
+        <div className="flex items-center gap-2 min-w-0">
+          <ClockIcon className="h-3.5 w-3.5 shrink-0" />
+          {seen
+            ? <span className="tabular-nums">{seen}</span>
+            : <span className="italic text-muted-foreground/70">Never signed in</span>}
+        </div>
+        <div className="flex items-center gap-2 min-w-0">
+          <MapPinIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{officeNames.length === 0 ? '—' : officeNames.join(', ')}</span>
+        </div>
+      </div>
+
+      {/* Status pill */}
+      <div className="px-4 pb-3">
         {a.status === 'active' ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
             <span className="h-1 w-1 rounded-full bg-emerald-500" />
             Active
           </span>
         ) : a.status === 'invited' ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
             <span className="h-1 w-1 rounded-full bg-amber-500" />
-            Pending
+            Pending invite
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 text-muted-foreground px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/40 text-muted-foreground px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">
             <LockClosedIcon className="h-2.5 w-2.5" />
             Disabled
           </span>
         )}
       </div>
 
-      {/* Meta — offices + last seen */}
-      <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-        <p className="flex items-center gap-1.5 truncate">
-          <MapPinIcon className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">
-            {officeNames.length === 0 ? '—' : officeNames.length <= 1 ? officeNames[0] : `${officeNames[0]} +${officeNames.length - 1}`}
-          </span>
-        </p>
-        <p className="flex items-center gap-1.5 truncate tabular-nums">
-          <ClockIcon className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{seenLabel}</span>
-        </p>
-      </div>
-
-      {/* Actions footer */}
-      {canManage && (
-        <div className="mt-4 flex items-center gap-0.5 border-t border-border -mx-4 px-4 pt-3 justify-end">
-          <button
-            onClick={() => onToggleStatus(a)}
-            disabled={isSelf}
-            title={a.status === 'active' ? 'Disable account' : 'Reactivate account'}
-            aria-label={a.status === 'active' ? 'Disable account' : 'Reactivate account'}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            <LockClosedIcon className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => onEdit(a)}
-            title="Edit"
-            aria-label="Edit account"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-          >
-            <PencilSquareIcon className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => onRemove(a)}
-            disabled={isSelf}
-            title="Remove"
-            aria-label="Remove account"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            <TrashIcon className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Members TREE view ────────────────────────────────────
-// Org chart — Owner at the top, Managers row below, Receptionists +
-// Barbers as siblings on the bottom row. Connectors drawn with CSS
-// borders (no SVG) so the layout stays responsive. Best for showing
-// reporting structure; overkill for daily access management.
-function MembersTree({
-  accounts, offices, currentUserId, canManage, resolveAvatar, onEdit,
-}: {
-  accounts: Account[];
-  offices: { id: string; name: string }[];
-  currentUserId: string | undefined;
-  canManage: boolean;
-  resolveAvatar: (a: Account) => string | undefined;
-  onEdit: (a: Account) => void;
-}) {
-  const owners = accounts.filter(a => a.role === 'owner');
-  const managers = accounts.filter(a => a.role === 'manager');
-  const receptionists = accounts.filter(a => a.role === 'receptionist');
-  const barbers = accounts.filter(a => a.role === 'barber');
-  void offices; void currentUserId; void canManage;
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-8 overflow-x-auto">
-      <div className="min-w-[640px] flex flex-col items-center gap-10">
-        {/* Owner row */}
-        <TreeRow accounts={owners} resolveAvatar={resolveAvatar} onEdit={onEdit} />
-
-        {owners.length > 0 && managers.length > 0 && <TreeConnector />}
-
-        {/* Manager row */}
-        {managers.length > 0 && (
-          <TreeRow accounts={managers} resolveAvatar={resolveAvatar} onEdit={onEdit} />
-        )}
-
-        {(managers.length > 0 || owners.length > 0) && (receptionists.length + barbers.length > 0) && <TreeConnector />}
-
-        {/* Receptionists + Barbers row */}
-        {(receptionists.length + barbers.length) > 0 && (
-          <TreeRow accounts={[...receptionists, ...barbers]} resolveAvatar={resolveAvatar} onEdit={onEdit} />
-        )}
+      {/* Actions */}
+      <div className="flex items-center gap-2 border-t border-border px-3 py-2.5">
+        <Button size="sm" className="flex-1" onClick={() => onEdit(a)}>
+          <PencilSquareIcon className="h-4 w-4 mr-1.5" />
+          Edit details
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => onToggleStatus(a)} title="Toggle status">
+          <PowerIcon className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
 }
 
-function TreeConnector() {
-  return <span className="block h-8 w-px bg-border" aria-hidden />;
-}
-
-function TreeRow({
-  accounts, resolveAvatar, onEdit,
-}: {
-  accounts: Account[];
-  resolveAvatar: (a: Account) => string | undefined;
-  onEdit: (a: Account) => void;
-}) {
+// ─── Empty state ─────────────────────────────────────────────────────────────
+// One dashed-border card centered in the boardroom canvas. Reuses the same
+// dot-grid background so empty + populated states share the same visual frame.
+function EmptyTreeState({ onInvite }: { onInvite: () => void }) {
   return (
-    <div className="flex flex-wrap items-stretch justify-center gap-3">
-      {accounts.map(a => {
-        const role = ROLE_STYLE[a.role];
-        const initials = `${a.firstName[0] ?? ''}${a.lastName[0] ?? ''}`.toUpperCase();
-        const photoUrl = resolveAvatar(a);
-        const gradient = AVATAR_GRADIENTS[hashToIndex(a.id, AVATAR_GRADIENTS.length)];
-        return (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => onEdit(a)}
-            className={cn(
-              'group flex flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 transition-all w-[140px]',
-              'hover:border-foreground/30 hover:shadow-sm',
-              a.status === 'disabled' && 'opacity-60',
-            )}
-          >
-            {photoUrl ? (
-              <img src={photoUrl} alt="" className="h-12 w-12 rounded-full object-cover" />
-            ) : (
-              <div className={cn(
-                'flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white',
-                gradient,
-              )}>
-                {initials || <UserCircleIcon className="h-6 w-6 text-white/90" />}
-              </div>
-            )}
-            <p className="text-sm font-semibold text-foreground text-center leading-tight truncate w-full">
-              {a.firstName} {a.lastName}
-            </p>
-            <span className={cn(
-              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
-              role.chip,
-            )}>
-              <span className={cn('h-1 w-1 rounded-full', role.dot)} />
-              {role.label}
-            </span>
-          </button>
-        );
-      })}
+    <div className="rounded-2xl border border-border bg-card tree-grid-bg p-10 lg:p-14 flex justify-center">
+      <div className="w-[280px] rounded-xl border border-dashed border-border bg-card/50 p-8 flex flex-col items-center gap-3 text-center">
+        <EnvelopeIcon className="h-8 w-8 text-muted-foreground" />
+        <p className="text-sm font-medium text-foreground">Invite your first member</p>
+        <p className="text-xs text-muted-foreground">
+          Add an owner, manager, receptionist, or barber to get started.
+        </p>
+        <Button size="sm" onClick={onInvite} className="mt-1">
+          <PlusIcon className="h-4 w-4 mr-1" />
+          Invite member
+        </Button>
+      </div>
     </div>
   );
 }

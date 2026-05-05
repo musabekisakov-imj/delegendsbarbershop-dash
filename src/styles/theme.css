@@ -428,3 +428,15 @@
     transition: none;
   }
 }
+
+/* Team & Access — boardroom dot-grid background for the org tree.
+   24px lattice; dot color derives from --border so it auto-adapts to
+   light/dark themes. Static, no animation, no reduced-motion handling. */
+.tree-grid-bg {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in oklab, var(--border) 65%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 24px 24px;
+}
