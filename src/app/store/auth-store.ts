@@ -10,9 +10,12 @@ interface AuthState {
   login: (user: User, token: string) => void;
   logout: () => void;
   initialize: () => void;
+  /** Patch a subset of fields on the current user (used by /profile self-edit
+   *  so the topbar name + initials update without a re-login). */
+  setUser: (patch: Partial<User>) => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: null,
   isAuthenticated: false,
@@ -29,6 +32,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user: null, token: null, isAuthenticated: false });
   },
   
+  setUser: (patch) => {
+    const current = get().user;
+    if (!current) return;
+    const next = { ...current, ...patch };
+    localStorage.setItem('barberpro_auth_user', JSON.stringify(next));
+    set({ user: next });
+  },
+
   initialize: () => {
     const token = localStorage.getItem('barberpro_auth_token');
     const userStr = localStorage.getItem('barberpro_auth_user');

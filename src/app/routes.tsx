@@ -21,6 +21,7 @@ const SettingsPage = lazy(() => import('./pages/settings').then(m => ({ default:
 const HelpPage = lazy(() => import('./pages/help').then(m => ({ default: m.HelpPage })));
 const AnalyticsPage = lazy(() => import('./pages/analytics').then(m => ({ default: m.AnalyticsPage })));
 const AccountsPage = lazy(() => import('./pages/accounts').then(m => ({ default: m.AccountsPage })));
+const ProfilePage = lazy(() => import('./pages/profile').then(m => ({ default: m.ProfilePage })));
 
 // Wrap each lazy page with Suspense + ErrorBoundary so one broken chunk
 // doesn't white-screen the whole app and loading states are consistent.
@@ -58,6 +59,7 @@ export const router = createBrowserRouter([
       { path: 'staff', element: page(StaffPage, 'staff.view') },
       { path: 'services', element: page(ServicesPage, 'services.view') },
       { path: 'accounts', element: page(AccountsPage, 'accounts.view') },
+      { path: 'profile', element: page(ProfilePage) },
       { path: 'settings', element: page(SettingsPage, 'settings.view') },
       { path: 'help', element: page(HelpPage) },
     ],

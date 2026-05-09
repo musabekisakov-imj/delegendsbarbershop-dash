@@ -7,6 +7,7 @@ import type {
   Category,
   Appointment,
   Shift,
+  ShiftOverride,
   Break,
   Tenant,
   WorkingHours,
@@ -46,12 +47,20 @@ export const defaultOffices: Office[] = [
   },
 ];
 
-// Default tenant
+// Default tenant — schema v14 fields are seeded with sensible defaults so a
+// fresh install doesn't have to run the migration step.
 export const defaultTenant: Tenant = {
   id: 'tenant-1',
-  name: 'BarberPro Shop',
-  email: 'contact@barberpro.com',
+  name: 'DeLegends Barbershop',
+  displayName: 'DeLegends',
+  email: 'contact@delegendsbarbershop.com',
   phone: '+1 (555) 123-4567',
+  website: '',
+  instagram: '',
+  currency: 'EUR',
+  timezone: 'Europe/Vilnius',
+  holidays: [],
+  bookingRules: {},
   offices: defaultOffices,
   workingHours: defaultWorkingHours,
   theme: 'light',
@@ -316,6 +325,11 @@ export const defaultShifts: Shift[] = [
   { id: 'shift-26', staffId: 'staff-6', dayOfWeek: 'saturday', startTime: '10:00', endTime: '18:00' }
 ];
 
+// Shift overrides — empty by default. Operator creates them via the calendar
+// "Edit day" modal when they need to change a single date's schedule without
+// touching the weekly recurring shift.
+export const defaultShiftOverrides: ShiftOverride[] = [];
+
 // Breaks
 export const defaultBreaks: Break[] = [
   // John Smith - lunch on working days
@@ -418,11 +432,19 @@ export const defaultAccounts: Account[] = [
 
 // Schema version — bump to force re-seed when the data shape changes
 const SCHEMA_VERSION_KEY = 'barberpro_schema_version';
-const CURRENT_SCHEMA_VERSION = 8; // v8: 30 clients + full May 2026 appointment generation
+const CURRENT_SCHEMA_VERSION = 14; // v14: settings expansion — Tenant gets displayName/website/instagram/currency/vatRate/timezone/logoUrl/holidays/bookingRules; WorkingHoursDay gets lunchStart/lunchEnd; legacy BarberPro email rewritten
 
 // Initialize localStorage with default data
 // Wrapped in try/catch so a corrupted localStorage entry can't white-screen the app.
 export function initializeMockData() {
+  // Safety guard — schema migrations re-seed user data from defaults, which
+  // is *fine* in mock-data demo mode but would destroy real customer rows in
+  // a remote-backed deployment. When VITE_API_URL is set (REMOTE=true), the
+  // server owns its own schema lifecycle; client-side migrations are a no-op.
+  // (Audit P2 #10.)
+  if (import.meta.env.VITE_API_URL) {
+    return;
+  }
   try {
     _initializeMockData();
   } catch (err) {
@@ -463,8 +485,117 @@ function _initializeMockData() {
   if (!localStorage.getItem('barberpro_breaks')) {
     localStorage.setItem('barberpro_breaks', JSON.stringify(defaultBreaks));
   }
+  if (!localStorage.getItem('barberpro_shift_overrides')) {
+    localStorage.setItem('barberpro_shift_overrides', JSON.stringify(defaultShiftOverrides));
+  }
   if (needsMigration || !localStorage.getItem('barberpro_accounts')) {
     localStorage.setItem('barberpro_accounts', JSON.stringify(defaultAccounts));
+  }
+
+  // v9 patch: ensure existing breaks/absences carry an explicit recurrence flag.
+  // The validator treats absent recurrence as 'weekly', so this is cosmetic — it
+  // just makes stored rows well-formed for read-back consistency.
+  if (storedVersion < 9) {
+    const breaksRaw = localStorage.getItem('barberpro_breaks');
+    if (breaksRaw) {
+      const breaks = JSON.parse(breaksRaw) as Array<Record<string, unknown>>;
+      const patched = breaks.map(b => b.recurrence ? b : { ...b, recurrence: 'weekly' });
+      localStorage.setItem('barberpro_breaks', JSON.stringify(patched));
+    }
+    const absencesRaw = localStorage.getItem('barberpro_absences');
+    if (absencesRaw) {
+      const absences = JSON.parse(absencesRaw) as Array<Record<string, unknown>>;
+      const patched = absences.map(a => a.recurrence ? a : { ...a, recurrence: 'weekly' });
+      localStorage.setItem('barberpro_absences', JSON.stringify(patched));
+    }
+  }
+
+  // Audit-trail backfill — runs on EVERY load, not just on version bumps.
+  // Each step is idempotent: only writes when a field is missing. Without
+  // this always-run guarantee, a new schema bump (e.g. v11→v12) would
+  // re-seed appointments from defaults that don't carry `createdBy`, and
+  // the audit footer would silently degrade to the timestamp-only line on
+  // those rows. Default attribution is the seeded owner ('acc-1') since
+  // we have no historical signal for who took each call.
+  const nowIso = new Date().toISOString();
+  const apptsRaw = localStorage.getItem('barberpro_appointments');
+  if (apptsRaw) {
+    const appts = JSON.parse(apptsRaw) as Array<Record<string, unknown>>;
+    let patched = false;
+    const next = appts.map(a => {
+      if (a.createdBy && a.createdAt) return a;
+      patched = true;
+      return { ...a, createdBy: a.createdBy ?? 'acc-1', createdAt: a.createdAt ?? nowIso };
+    });
+    if (patched) localStorage.setItem('barberpro_appointments', JSON.stringify(next));
+  }
+  const breaksRaw = localStorage.getItem('barberpro_breaks');
+  if (breaksRaw) {
+    const breaks = JSON.parse(breaksRaw) as Array<Record<string, unknown>>;
+    let patched = false;
+    const next = breaks.map(b => {
+      if (b.createdBy && b.createdAt) return b;
+      patched = true;
+      return { ...b, createdBy: b.createdBy ?? 'acc-1', createdAt: b.createdAt ?? nowIso };
+    });
+    if (patched) localStorage.setItem('barberpro_breaks', JSON.stringify(next));
+  }
+  const absencesRaw = localStorage.getItem('barberpro_absences');
+  if (absencesRaw) {
+    const absences = JSON.parse(absencesRaw) as Array<Record<string, unknown>>;
+    let patched = false;
+    const next = absences.map(a => {
+      if (a.createdBy && a.createdAt) return a;
+      patched = true;
+      return { ...a, createdBy: a.createdBy ?? 'acc-1', createdAt: a.createdAt ?? nowIso };
+    });
+    if (patched) localStorage.setItem('barberpro_absences', JSON.stringify(next));
+  }
+
+  // v13 — DeLegends rebrand. Idempotent: only rewrites the legacy literal.
+  // Doesn't touch a tenant the user has already renamed manually.
+  const tenantRaw = localStorage.getItem('barberpro_tenant');
+  if (tenantRaw) {
+    const tenant = JSON.parse(tenantRaw) as Record<string, unknown>;
+    let touched = false;
+
+    if (tenant.name === 'BarberPro Shop') {
+      tenant.name = 'DeLegends Barbershop';
+      touched = true;
+    }
+
+    // v14 — settings expansion. Each step is idempotent: only writes when the
+    // field is missing OR matches the legacy literal. Won't override
+    // user-customized values.
+    if (tenant.email === 'contact@barberpro.com') {
+      tenant.email = 'contact@delegendsbarbershop.com';
+      touched = true;
+    }
+    if (typeof tenant.displayName !== 'string') {
+      // Derive "DeLegends" from "DeLegends Barbershop" by stripping common
+      // suffixes; fall back to the full name if no suffix matches.
+      const fullName = String(tenant.name ?? '');
+      tenant.displayName = fullName.replace(/\s+(Barbershop|Barber Shop|Shop)$/i, '') || fullName;
+      touched = true;
+    }
+    if (typeof tenant.currency !== 'string') {
+      tenant.currency = 'EUR';
+      touched = true;
+    }
+    if (typeof tenant.timezone !== 'string') {
+      tenant.timezone = 'Europe/Vilnius';
+      touched = true;
+    }
+    if (!Array.isArray(tenant.holidays)) {
+      tenant.holidays = [];
+      touched = true;
+    }
+    if (typeof tenant.bookingRules !== 'object' || tenant.bookingRules === null) {
+      tenant.bookingRules = {};
+      touched = true;
+    }
+
+    if (touched) localStorage.setItem('barberpro_tenant', JSON.stringify(tenant));
   }
 
   localStorage.setItem(SCHEMA_VERSION_KEY, String(CURRENT_SCHEMA_VERSION));

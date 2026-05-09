@@ -23,3 +23,35 @@ export function useTimeFormat(): [TimeFormat, (fmt: TimeFormat) => void] {
   const setTimeFormat = useLanguageStore(s => s.setTimeFormat);
   return [timeFormat, setTimeFormat];
 }
+
+import type { TimeGranularity, BreakCutMode, Density } from '../store/language-store';
+export function useTimeGranularity(): [TimeGranularity, (g: TimeGranularity) => void] {
+  const timeGranularity = useLanguageStore(s => s.timeGranularity);
+  const setTimeGranularity = useLanguageStore(s => s.setTimeGranularity);
+  return [timeGranularity, setTimeGranularity];
+}
+
+export function useBreakCutMode(): [BreakCutMode, (m: BreakCutMode) => void] {
+  const breakCutMode = useLanguageStore(s => s.breakCutMode);
+  const setBreakCutMode = useLanguageStore(s => s.setBreakCutMode);
+  return [breakCutMode, setBreakCutMode];
+}
+
+export function useDensity(): [Density, (d: Density) => void] {
+  const density = useLanguageStore(s => s.density);
+  const setDensity = useLanguageStore(s => s.setDensity);
+  return [density, setDensity];
+}
+
+import type { CalendarGridDensity } from '../store/language-store';
+export function useCalendarGridDensity(): [CalendarGridDensity, (d: CalendarGridDensity) => void] {
+  const v = useLanguageStore(s => s.calendarGridDensity);
+  const set = useLanguageStore(s => s.setCalendarGridDensity);
+  return [v, set];
+}
+
+export function useWeekViewStaffId(): [string | null, (id: string | null) => void] {
+  const v = useLanguageStore(s => s.weekViewStaffId);
+  const set = useLanguageStore(s => s.setWeekViewStaffId);
+  return [v, set];
+}

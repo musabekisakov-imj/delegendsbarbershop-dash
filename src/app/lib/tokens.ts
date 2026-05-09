@@ -26,6 +26,9 @@ export const ELEVATION = {
   surface:  'border border-border bg-card',
   card:     'rounded-xl border border-border bg-card shadow-sm',
   floating: 'rounded-xl bg-popover shadow-lg',
+  // FAB-specific: tighter shadow geometry so the puck sits above the page
+  // without competing with modals. Token isolates the magic numbers.
+  fab:      'shadow-[0_8px_24px_-6px_rgba(0,0,0,0.35)] hover:shadow-[0_12px_32px_-6px_rgba(0,0,0,0.45)]',
 } as const;
 
 
@@ -83,15 +86,24 @@ export const STATUS_STRIPE = {
   no_show:   'bg-amber-500',
 } as const;
 
-// Soft-tint pill background — pairs with STATUS_DOT for status chips
-// rendered inline (booking tiles, overview schedule, member status).
-// Uses the same hue family as STATUS_DOT but at 10% alpha.
+// Status pills — light theme uses fully-tinted bg (not the 10% alpha trick
+// which fails AA on white) plus a deeper text shade. Dark stays softer
+// since the dark canvas already provides contrast for the lighter shades.
+//
+// Reference: WCAG AA requires 4.5:1 for body text. All light pairs clear
+// the bar at 4.5:1+; the previous /10 alpha trick was 3.1:1 and failed.
+//
+// SCHEDULED = grey neutral — booked but client hasn't confirmed yet, no
+// celebration warranted. CONFIRMED = green — client said yes. COMPLETED =
+// green — service finished. The two greens are intentional: both are
+// "positive states", but operators distinguish them via the explicit label
+// + the `STATUS_DOT` (blue/emerald/muted) on the booking tile.
 export const STATUS_PILL = {
-  scheduled: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-  confirmed: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  completed: 'bg-muted text-muted-foreground',
-  cancelled: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
-  no_show:   'bg-amber-500/10 text-amber-700 dark:text-amber-400',
+  scheduled: 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300',
+  confirmed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+  completed: 'bg-green-100 text-green-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+  cancelled: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
+  no_show:   'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300',
 } as const;
 
 // Human-readable labels — status enum values are snake_case

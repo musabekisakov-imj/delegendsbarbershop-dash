@@ -68,10 +68,19 @@ export interface Appointment {
   notes: string;
   locationId: string;
   createdAt: string;
+  /** Sibling rows from a multi-service booking share this id, generated at
+   *  submit-time. Tile rendering groups siblings into one stacked card; edit
+   *  and cancel propagate via groupId lookup. Absent on standalone bookings. */
+  groupId?: string;
   /** Soft-delete timestamp. Appointments are preserved in storage so that
    *  audit (payroll, no-show disputes, receipts) stays intact. Default reads
    *  filter this out; an "Archived" view can opt in. */
   deletedAt?: string | null;
+  /** Account.id of the operator who created this booking (receptionist /
+   *  manager / owner). Stamped at create-time from `useAuthStore.user.id`.
+   *  Optional so existing rows in storage still load; resolved to a display
+   *  name via `accountsApi.getAll()` at render-time. */
+  createdBy?: string;
 }
 
 export interface Shift {
@@ -82,18 +91,49 @@ export interface Shift {
   endTime: string; // HH:mm format
 }
 
+/** A date-specific override for a staff member's daily schedule.
+ *  When present for (staffId, date), it supersedes the weekly Shift lookup
+ *  in the calendar — letting the operator change just one day without
+ *  touching the recurring weekly schedule.
+ *  - kind='day-off': barber is off this date (regardless of weekly shift).
+ *  - kind='custom':  barber works startTime–endTime this date only. */
+export interface ShiftOverride {
+  id: string;
+  staffId: string;
+  date: string; // YYYY-MM-DD
+  kind: 'day-off' | 'custom';
+  startTime?: string; // HH:mm — required when kind='custom'
+  endTime?: string;   // HH:mm — required when kind='custom'
+}
+
 export type AbsenceReason = 'day-off' | 'vacation' | 'sick' | 'training';
 
-/** A recurring weekly absence reason. Stored only when there is no Shift
- *  for that day — the Shift is the source of truth for "working." */
+/** A weekly or one-off absence reason. Stored only when there is no Shift
+ *  for that day — the Shift is the source of truth for "working."
+ *  Recurrence semantics:
+ *  - `recurrence: 'weekly'` (default): repeats every {dayOfWeek} forever, or
+ *    bounded by [startDate, endDate] if provided.
+ *  - `recurrence: 'one-off'`: applies only on `startDate` (single date). */
 export interface Absence {
   id: string;
   staffId: string;
   dayOfWeek: DayOfWeek;
   reason: AbsenceReason;
+  recurrence?: 'weekly' | 'one-off';
+  startDate?: string; // YYYY-MM-DD; one-off uses this as the date, ranged-weekly uses this as range start
+  endDate?: string;   // YYYY-MM-DD; ranged-weekly only
+  /** ISO timestamp + Account.id of the operator who created this block.
+   *  Optional so legacy rows still load; backfilled to the seeded owner via
+   *  schema-v11 migration. New blocks stamp the real current user. */
+  createdAt?: string;
+  createdBy?: string;
+  /** Dates (YYYY-MM-DD) on which this weekly absence is overridden — mirror
+   *  of `Break.exceptionDates`, populated by drag-to-reschedule "Only this".
+   *  (Schema v12.) */
+  exceptionDates?: string[];
 }
 
-export type BreakType = 'lunch' | 'dinner' | 'rest';
+export type BreakType = 'lunch' | 'dinner' | 'rest' | 'custom';
 
 export interface Break {
   id: string;
@@ -102,14 +142,41 @@ export interface Break {
   startTime: string; // HH:mm format
   endTime: string; // HH:mm format
   type: BreakType;
+  /** ISO timestamp + Account.id of the operator who created this block.
+   *  Optional so legacy rows still load; backfilled to the seeded owner via
+   *  schema-v11 migration. New blocks stamp the real current user. */
+  createdAt?: string;
+  createdBy?: string;
+  /** Optional free-text label for `type === 'custom'`. Used when the
+   *  preset categories (lunch/dinner/rest) don't fit — e.g. "Coffee run",
+   *  "Equipment maintenance". Ignored for non-custom types. */
+  customLabel?: string;
+  /** Recurrence semantics — see Absence for the same shape.
+   *  - 'weekly' (default): repeats every {dayOfWeek}, optionally bounded.
+   *  - 'one-off': applies only on `startDate`. */
+  recurrence?: 'weekly' | 'one-off';
+  startDate?: string; // YYYY-MM-DD; one-off uses this as the date, ranged-weekly uses this as range start
+  endDate?: string;   // YYYY-MM-DD; ranged-weekly only
+  /** Dates (YYYY-MM-DD) on which this weekly break is overridden by a one-off
+   *  block. Drag-to-reschedule populates this when the operator picks "Only
+   *  this {day}" — the original weekly stays intact, today's date is excluded
+   *  from rendering and conflict checks, and a new one-off Break is created
+   *  with the dropped time range. (Schema v12.) */
+  exceptionDates?: string[];
+}
+
+export interface WorkingHoursDay {
+  isOpen: boolean;
+  openTime: string;          // HH:mm format
+  closeTime: string;
+  /** Optional shop-wide lunch break — separate from per-staff Break records.
+   *  Both fields must be set for the lunch to render. (Schema v14.) */
+  lunchStart?: string;
+  lunchEnd?: string;
 }
 
 export interface WorkingHours {
-  [key: string]: {
-    isOpen: boolean;
-    openTime: string; // HH:mm format
-    closeTime: string; // HH:mm format
-  };
+  [key: string]: WorkingHoursDay;
 }
 
 export interface Office {
@@ -120,11 +187,42 @@ export interface Office {
   timezone?: string;
 }
 
+/** Shop-level holiday or one-off closure. Separate from staff Absence
+ *  records (which are per-staff full-day blocks). Schema v14. */
+export interface Holiday {
+  date: string;            // YYYY-MM-DD
+  label: string;           // human-readable, e.g. "National holiday"
+}
+
+/** Booking-level rules — applied at create time in the booking flow. All
+ *  fields optional; falsy means "no constraint". Schema v14. */
+export interface BookingRules {
+  leadTimeMinutes?: number;          // min advance notice for a new booking
+  cancellationCutoffHours?: number;  // free-cancel window before start
+  bufferMinutes?: number;            // auto-gap between adjacent bookings
+}
+
 export interface Tenant {
   id: string;
-  name: string;
+  name: string;                      // full legal name (DeLegends Barbershop)
+  /** Short version used in the top nav. Falls back to `name` when missing.
+   *  Schema v14. */
+  displayName?: string;
   email: string;
   phone: string;
+  /** Optional contact + brand fields. All Schema v14. */
+  website?: string;
+  instagram?: string;
+  /** Currency for prices throughout the app. Default 'EUR'. Schema v14. */
+  currency?: 'EUR' | 'USD' | 'GBP';
+  vatRate?: number;                  // VAT % e.g. 20 for 20%
+  timezone?: string;                 // IANA, e.g. 'Europe/Vilnius'
+  /** Reserved for future logo upload UI. Schema v14 (field only, no UI yet). */
+  logoUrl?: string;
+  /** Shop-wide closure dates. Schema v14. */
+  holidays?: Holiday[];
+  /** Booking-time policy. Schema v14. */
+  bookingRules?: BookingRules;
   offices: Office[];
   workingHours: WorkingHours;
   theme: Theme;

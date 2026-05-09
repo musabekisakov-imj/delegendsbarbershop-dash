@@ -15,6 +15,7 @@ import type {
   Category,
   Appointment,
   Shift,
+  ShiftOverride,
   Break,
   Absence,
   AbsenceReason,
@@ -693,7 +694,16 @@ export const absencesApi = {
     await delay();
     return getFromStorage<Absence>('barberpro_absences');
   },
-  upsert: async (data: { staffId: string; dayOfWeek: DayOfWeek; reason: AbsenceReason }): Promise<Absence> => {
+  upsert: async (data: {
+    staffId: string;
+    dayOfWeek: DayOfWeek;
+    reason: AbsenceReason;
+    recurrence?: 'weekly' | 'one-off';
+    startDate?: string;
+    endDate?: string;
+    createdAt?: string;
+    createdBy?: string;
+  }): Promise<Absence> => {
     if (REMOTE) {
       return httpPut<Absence>(`/staff/${data.staffId}/absences/${data.dayOfWeek}`, { reason: data.reason });
     }
@@ -701,8 +711,25 @@ export const absencesApi = {
     const all = getFromStorage<Absence>('barberpro_absences');
     const idx = all.findIndex(a => a.staffId === data.staffId && a.dayOfWeek === data.dayOfWeek);
     const next: Absence = idx >= 0
-      ? { ...all[idx], reason: data.reason }
-      : { id: `abs-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ...data };
+      ? {
+          ...all[idx],
+          reason: data.reason,
+          ...(data.recurrence ? { recurrence: data.recurrence } : {}),
+          ...(data.startDate ? { startDate: data.startDate } : {}),
+          ...(data.endDate ? { endDate: data.endDate } : {}),
+          ...(data.createdBy ? { createdBy: data.createdBy } : {}),
+        }
+      : {
+          id: `abs-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          staffId: data.staffId,
+          dayOfWeek: data.dayOfWeek,
+          reason: data.reason,
+          ...(data.recurrence ? { recurrence: data.recurrence } : {}),
+          ...(data.startDate ? { startDate: data.startDate } : {}),
+          ...(data.endDate ? { endDate: data.endDate } : {}),
+          ...(data.createdAt ? { createdAt: data.createdAt } : { createdAt: new Date().toISOString() }),
+          ...(data.createdBy ? { createdBy: data.createdBy } : {}),
+        };
     const out = idx >= 0 ? all.map((a, i) => i === idx ? next : a) : [...all, next];
     setToStorage('barberpro_absences', out);
     return next;
@@ -730,6 +757,99 @@ export const breaksApi = {
     await delay();
     const breaks = getFromStorage<Break>('barberpro_breaks');
     return breaks.filter(b => b.staffId === staffId);
+  },
+
+  // Multiple breaks per dayOfWeek are valid (lunch + rest), so keyed by id —
+  // unlike Shift/Absence which are keyed by {staffId, dayOfWeek}.
+  upsert: async (data: Omit<Break, 'id'> & { id?: string }): Promise<Break> => {
+    if (REMOTE) {
+      if (data.id) return httpPut<Break>(`/staff/${data.staffId}/breaks/${data.id}`, data);
+      return httpPost<Break>(`/staff/${data.staffId}/breaks`, data);
+    }
+    await delay();
+    const breaks = getFromStorage<Break>('barberpro_breaks');
+    if (data.id) {
+      const idx = breaks.findIndex(b => b.id === data.id);
+      if (idx === -1) throw new Error(`Break ${data.id} not found`);
+      const next: Break = { ...breaks[idx], ...data, id: data.id };
+      setToStorage('barberpro_breaks', breaks.map((b, i) => i === idx ? next : b));
+      return next;
+    }
+    const next: Break = {
+      id: `brk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      staffId: data.staffId,
+      dayOfWeek: data.dayOfWeek,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      type: data.type,
+      // Carry through any optional free-text label for type='custom'.
+      // Spread keeps undefined out of localStorage when not set.
+      ...(data.customLabel ? { customLabel: data.customLabel } : {}),
+      ...(data.recurrence ? { recurrence: data.recurrence } : {}),
+      ...(data.startDate ? { startDate: data.startDate } : {}),
+      ...(data.endDate ? { endDate: data.endDate } : {}),
+      ...(data.createdAt ? { createdAt: data.createdAt } : { createdAt: new Date().toISOString() }),
+      ...(data.createdBy ? { createdBy: data.createdBy } : {}),
+    };
+    setToStorage('barberpro_breaks', [...breaks, next]);
+    return next;
+  },
+
+  remove: async (params: { id: string; staffId: string }): Promise<void> => {
+    if (REMOTE) {
+      await httpDelete(`/staff/${params.staffId}/breaks/${params.id}`);
+      return;
+    }
+    await delay();
+    const breaks = getFromStorage<Break>('barberpro_breaks');
+    setToStorage('barberpro_breaks', breaks.filter(b => b.id !== params.id));
+  },
+};
+
+// ─── Shift overrides ──────────────────────────────────────────────
+// Per-date schedule changes that supersede the weekly Shift table.
+// Keyed by (staffId, date). Calendar resolver reads these first.
+export const shiftOverridesApi = {
+  getAll: async (): Promise<ShiftOverride[]> => {
+    if (REMOTE) return fanOutByStaff<ShiftOverride>(id => `/staff/${id}/shift-overrides`);
+    await delay();
+    return getFromStorage<ShiftOverride>('barberpro_shift_overrides');
+  },
+
+  getByStaffId: async (staffId: string): Promise<ShiftOverride[]> => {
+    if (REMOTE) return httpGet<ShiftOverride[]>(`/staff/${staffId}/shift-overrides`);
+    await delay();
+    const all = getFromStorage<ShiftOverride>('barberpro_shift_overrides');
+    return all.filter(o => o.staffId === staffId);
+  },
+
+  upsert: async (data: { staffId: string; date: string; kind: 'day-off' | 'custom'; startTime?: string; endTime?: string }): Promise<ShiftOverride> => {
+    if (REMOTE) {
+      return httpPut<ShiftOverride>(`/staff/${data.staffId}/shift-overrides/${data.date}`, {
+        kind: data.kind,
+        startTime: data.startTime,
+        endTime: data.endTime,
+      });
+    }
+    await delay();
+    const all = getFromStorage<ShiftOverride>('barberpro_shift_overrides');
+    const idx = all.findIndex(o => o.staffId === data.staffId && o.date === data.date);
+    const next: ShiftOverride = idx >= 0
+      ? { ...all[idx], kind: data.kind, startTime: data.startTime, endTime: data.endTime }
+      : { id: `ovr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ...data };
+    const out = idx >= 0 ? all.map((o, i) => i === idx ? next : o) : [...all, next];
+    setToStorage('barberpro_shift_overrides', out);
+    return next;
+  },
+
+  remove: async (params: { staffId: string; date: string }): Promise<void> => {
+    if (REMOTE) {
+      await httpDelete(`/staff/${params.staffId}/shift-overrides/${params.date}`);
+      return;
+    }
+    await delay();
+    const all = getFromStorage<ShiftOverride>('barberpro_shift_overrides');
+    setToStorage('barberpro_shift_overrides', all.filter(o => !(o.staffId === params.staffId && o.date === params.date)));
   },
 };
 

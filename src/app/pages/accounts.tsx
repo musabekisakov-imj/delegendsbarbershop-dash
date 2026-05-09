@@ -103,6 +103,14 @@ export function AccountsPage() {
     return { active, pending, disabled };
   }, [accounts]);
 
+  // Per-role pending count — feeds the small amber dot on each tab's
+  // count chip so the operator sees which roles have outstanding invites.
+  const pendingByRole = useMemo(() => {
+    const m: Record<StaffRole, number> = { owner: 0, manager: 0, receptionist: 0, barber: 0 };
+    for (const a of accounts) if (a.status === 'invited') m[a.role]++;
+    return m;
+  }, [accounts]);
+
   const currentOfficeId = useOfficeStore(s => s.currentOfficeId);
   const currentOffice = useMemo(() => offices.find(o => o.id === currentOfficeId), [offices, currentOfficeId]);
 
@@ -166,12 +174,12 @@ export function AccountsPage() {
     updateMut.mutate({ id: a.id, data: { status: next } });
   };
 
-  const ROLE_TABS: { id: RoleFilter; label: string; count: number }[] = [
-    { id: 'all',          label: 'All',          count: accounts.length },
-    { id: 'owner',        label: 'Owner',        count: roleCounts.owner },
-    { id: 'manager',      label: 'Manager',      count: roleCounts.manager },
-    { id: 'receptionist', label: 'Receptionist', count: roleCounts.receptionist },
-    { id: 'barber',       label: 'Barber',       count: roleCounts.barber },
+  const ROLE_TABS: { id: RoleFilter; label: string; count: number; pending: number }[] = [
+    { id: 'all',          label: 'All',          count: accounts.length,         pending: statusCounts.pending },
+    { id: 'owner',        label: 'Owner',        count: roleCounts.owner,        pending: pendingByRole.owner },
+    { id: 'manager',      label: 'Manager',      count: roleCounts.manager,      pending: pendingByRole.manager },
+    { id: 'receptionist', label: 'Receptionist', count: roleCounts.receptionist, pending: pendingByRole.receptionist },
+    { id: 'barber',       label: 'Barber',       count: roleCounts.barber,       pending: pendingByRole.barber },
   ];
 
   return (
@@ -227,102 +235,151 @@ export function AccountsPage() {
         />
       )}
 
-      {/* ─── Permission cheat-sheet (collapsible) ────────
-          Editorial chrome: no shadow, chevron heroicon
-          instead of ▾. Role columns get uppercase eyebrow
-          + subtle dot — same rhythm as the Staff cards. */}
+      {/* ─── Permission cheat-sheet — MATRIX direction ───
+          Single dense table: rows = capabilities, columns = roles.
+          Scans horizontally (who has THIS) and vertically (which
+          capabilities does THIS role cover) without re-rendering
+          labels four times. Each cell carries one of three glyphs:
+          a filled role-tinted dot (full access), a half-opacity
+          dot + "X/Y" fraction (partial), or a hollow ring (none).
+          The Owner column reads as a near-solid color stripe;
+          Barber as mostly hollow rings — power gradient at a
+          glance, no text needed. */}
       <details className="group rounded-xl border border-border bg-card overflow-hidden">
         <summary className="cursor-pointer list-none px-4 py-3 flex items-center gap-3 hover:bg-accent/30 transition-colors">
           <ShieldCheckIcon className="h-5 w-5 text-muted-foreground shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Reference
+              Permissions · matrix
             </p>
-            <p className="text-sm font-medium text-foreground">What each role can do</p>
+            <p className="text-sm font-medium text-foreground">
+              Who can do what
+              <span className="ml-2 font-normal text-muted-foreground">— hover any row to compare</span>
+            </p>
           </div>
           <ChevronDownIcon className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
         </summary>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border border-t border-border">
-          {(['owner', 'manager', 'receptionist', 'barber'] as StaffRole[]).map(r => (
-            <div key={r} className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', ROLE_DOT[r])} />
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  {ROLE_LABEL[r]}
-                </p>
-                <span className="text-[11px] text-muted-foreground/80 ml-auto tabular-nums">
-                  {ROLE_PERMISSIONS[r].length} perms
-                </span>
-              </div>
-              <ul className="space-y-1.5">
-                {PERMISSION_SUMMARY.map(row => (
-                  <li key={row.key} className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{row.label}</span>
-                    <PermissionDots role={r} permissions={row.permissions} />
-                  </li>
+        <div className="border-t border-border overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm border-collapse">
+            <thead>
+              <tr className="bg-muted/20">
+                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground w-1/2">
+                  Capability
+                </th>
+                {(['owner', 'manager', 'receptionist', 'barber'] as StaffRole[]).map(r => (
+                  <th key={r} className="px-3 py-3 align-bottom">
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-foreground">
+                        <span className={cn('h-1.5 w-1.5 rounded-full', ROLE_DOT[r])} />
+                        {ROLE_LABEL[r]}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                        {ROLE_PERMISSIONS[r].length} perms
+                      </span>
+                    </div>
+                  </th>
                 ))}
-              </ul>
-            </div>
-          ))}
+              </tr>
+            </thead>
+            <tbody>
+              {PERMISSION_SUMMARY.map(row => (
+                <tr
+                  key={row.key}
+                  className="border-t border-border transition-colors hover:bg-muted/30"
+                >
+                  <td className="px-5 py-2.5 text-[13px] text-foreground/90">
+                    {row.label}
+                  </td>
+                  {(['owner', 'manager', 'receptionist', 'barber'] as StaffRole[]).map(r => (
+                    <td key={r} className="px-3 py-2.5 text-center">
+                      <div className="inline-flex items-center justify-center min-h-[1rem]">
+                        <PermissionGlyph role={r} permissions={row.permissions} />
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </details>
 
-      {/* ─── Operator bar — role tabs + search ──────────
-          The active-tab underline is a shared `motion.span` with
-          `layoutId="role-tab-underline"`, so it slides between tabs
-          when the filter changes instead of cutting hard. View
-          toggle is gone — Tree is the canonical render when role
-          is `all`, Table is the fallback for single-role filters. */}
-      <div className="rounded-xl border border-border bg-card">
+      {/* ─── Operator bar — TUNER direction ────────────────
+          One horizontal rail, no card frame. Hairlines top + bottom.
+          Tabs flex-grow on the left; search anchors right with a
+          hairline divider between them. Each role count chip carries
+          a tiny amber ring-fenced dot when that role has outstanding
+          invites — surfaces "what needs attention" without opening
+          the page. The active-tab underline is a shared `motion.span`
+          with `layoutId="role-tab-underline"` for sliding state. */}
+      <div className="border-y border-border">
         <LayoutGroup id="role-tabs">
-          <div className="flex items-end gap-1 overflow-x-auto border-b border-border px-2">
-            {ROLE_TABS.map(t => {
-              const active = roleFilter === t.id;
-              const dot = t.id !== 'all' ? ROLE_DOT[t.id as StaffRole] : null;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setRoleFilter(t.id)}
-                  aria-pressed={active}
+          <div className="flex flex-col sm:flex-row sm:items-stretch">
+            <div className="flex items-end gap-1 flex-1 min-w-0 overflow-x-auto px-2 border-b sm:border-b-0 border-border">
+              {ROLE_TABS.map(t => {
+                const active = roleFilter === t.id;
+                const dot = t.id !== 'all' ? ROLE_DOT[t.id as StaffRole] : null;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setRoleFilter(t.id)}
+                    aria-pressed={active}
+                    className={cn(
+                      'relative inline-flex items-center gap-2 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors',
+                      active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {dot && <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', dot)} />}
+                    <span>{t.label}</span>
+                    <span className={cn(
+                      'relative inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
+                      active ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground',
+                    )}>
+                      {t.count}
+                      {t.pending > 0 && (
+                        <span
+                          aria-hidden
+                          title={`${t.pending} pending invite${t.pending === 1 ? '' : 's'}`}
+                          className={cn(
+                            'absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-amber-500',
+                            active ? 'ring-2 ring-foreground' : 'ring-2 ring-background',
+                          )}
+                        />
+                      )}
+                    </span>
+                    {active && (
+                      <motion.span
+                        layoutId="role-tab-underline"
+                        className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground"
+                        transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
+                        aria-hidden
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="hidden sm:block w-px bg-border self-stretch shrink-0" />
+            <div className="flex items-center px-3 py-1.5 sm:py-0">
+              <div className="relative w-full sm:w-56 lg:w-64">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search by name or email…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
                   className={cn(
-                    'relative inline-flex items-center gap-2 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors',
-                    active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                    'w-full h-9 pl-9 pr-3 text-sm bg-transparent rounded-none',
+                    'border-0 border-b border-transparent transition-colors',
+                    'focus:outline-none focus:border-foreground/40',
+                    'placeholder:text-muted-foreground',
                   )}
-                >
-                  {dot && <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', dot)} />}
-                  <span>{t.label}</span>
-                  <span className={cn(
-                    'inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
-                    active ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground',
-                  )}>
-                    {t.count}
-                  </span>
-                  {active && (
-                    <motion.span
-                      layoutId="role-tab-underline"
-                      className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground"
-                      transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
-                      aria-hidden
-                    />
-                  )}
-                </button>
-              );
-            })}
+                />
+              </div>
+            </div>
           </div>
         </LayoutGroup>
-        <div className="p-2.5">
-          <div className="relative">
-            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search by name or email…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 bg-background"
-            />
-          </div>
-        </div>
       </div>
 
       {/* ─── Renderer ─────────────────────────────────────
@@ -404,12 +461,47 @@ const PERMISSION_SUMMARY: { key: string; label: string; permissions: Permission[
   { key: 'accounts', label: 'Invite & remove users',  permissions: ['accounts.manage'] },
 ];
 
-function PermissionDots({ role, permissions }: { role: StaffRole; permissions: Permission[] }) {
+// Three-state glyph for the permission matrix:
+//  • full access  → solid role-tinted dot   (gives Owner column its
+//                                            uninterrupted color stripe)
+//  • partial      → half-opacity dot + "X/Y" fraction in muted ink
+//  • none         → hollow ring             (de-emphasized; reads as absence)
+//
+// Using oklch colors via inline `style` (not Tailwind classes) keeps the dot
+// in lockstep with the same `ROLE_BAR` token used by the tree-node left rails
+// and avatar rings — single source of truth.
+function PermissionGlyph({ role, permissions }: { role: StaffRole; permissions: Permission[] }) {
   const granted = permissions.filter(p => ROLE_PERMISSIONS[role].includes(p)).length;
   const total = permissions.length;
-  if (granted === 0) return <span className="text-rose-500/70">—</span>;
-  if (granted === total) return <span className="text-emerald-600 dark:text-emerald-400 font-medium">✓</span>;
-  return <span className="text-amber-600 dark:text-amber-400 font-medium">{granted}/{total}</span>;
+  if (granted === 0) {
+    return (
+      <span
+        aria-label="Not granted"
+        className="inline-block h-2 w-2 rounded-full ring-1 ring-muted-foreground/25"
+      />
+    );
+  }
+  if (granted === total) {
+    return (
+      <span
+        aria-label="Full access"
+        className="inline-block h-2 w-2 rounded-full"
+        style={{ background: ROLE_BAR[role] }}
+      />
+    );
+  }
+  return (
+    <span
+      aria-label={`Partial — ${granted} of ${total}`}
+      className="inline-flex items-center gap-1 text-[11px] font-semibold tabular-nums text-muted-foreground"
+    >
+      <span
+        className="inline-block h-2 w-2 rounded-full"
+        style={{ background: ROLE_BAR[role], opacity: 0.5 }}
+      />
+      {granted}/{total}
+    </span>
+  );
 }
 
 // ─── Dialog ─────────────────────────────────────

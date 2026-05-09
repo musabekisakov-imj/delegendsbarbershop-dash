@@ -1,32 +1,39 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { appointmentsApi, clientsApi, staffApi, servicesApi, shiftsApi, breaksApi } from '../lib/api';
+import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from 'motion/react';
+import { useNavigate } from 'react-router';
+import { appointmentsApi, clientsApi, staffApi, servicesApi, shiftsApi, breaksApi, absencesApi, shiftOverridesApi, categoriesApi, accountsApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
 import { useAuthStore } from '../store/auth-store';
-import { findConflicts } from '../lib/booking-validation';
-import { useT, useTimeFormat } from '../hooks/use-t';
+import { findConflicts, findBreakConflicts, type BreakConflict } from '../lib/booking-validation';
+import { useT, useLanguage, useTimeFormat, useTimeGranularity, useBreakCutMode, useCalendarGridDensity, useWeekViewStaffId } from '../hooks/use-t';
+import { ru as ruLocale, lt as ltLocale, enUS as enLocale } from 'date-fns/locale';
+import type { Locale as DateFnsLocale } from 'date-fns';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '../components/ui/hover-card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { Textarea } from '../components/ui/textarea';
 import { Avatar, AvatarImage, AvatarFallback } from '../components/ui/avatar';
-import { TimeWheelPicker } from '../components/ui/time-wheel-picker';
+import { Switch } from '../components/ui/switch';
 import { fileToDataUrl } from '../lib/image-upload';
 import {
-  format, parseISO, setHours, setMinutes, startOfDay,
+  format, parseISO, setHours, setMinutes, startOfDay, startOfWeek,
   isToday, isBefore, differenceInMinutes, addDays, subDays,
-  addMonths, subMonths,
+  addWeeks,
 } from 'date-fns';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  ChevronDoubleLeftIcon,
-  ChevronDoubleRightIcon,
+  ChevronDownIcon,
+  MagnifyingGlassIcon,
   ClockIcon,
   PlusIcon,
+  MinusIcon,
   ScissorsIcon,
   PhoneIcon,
   ChatBubbleLeftIcon,
@@ -34,17 +41,40 @@ import {
   XCircleIcon,
   CalendarDaysIcon,
   Squares2X2Icon,
+  ArrowsPointingInIcon,
+  ArrowsPointingOutIcon,
   ListBulletIcon,
   TableCellsIcon,
   CheckBadgeIcon,
   TrashIcon,
-  CurrencyEuroIcon,
   PencilSquareIcon,
   MapPinIcon,
   ArrowRightIcon,
+  ArrowLeftIcon,
+  CheckIcon,
   UserIcon,
   CameraIcon,
+  EllipsisHorizontalIcon,
+  NoSymbolIcon,
+  AdjustmentsHorizontalIcon,
+  BoltIcon,
+  UsersIcon,
+  ArrowTopRightOnSquareIcon,
+  CakeIcon,
+  MoonIcon,
+  PaperAirplaneIcon,
+  AcademicCapIcon,
+  HeartIcon,
+  ArrowPathIcon,
+  PlusCircleIcon,
+  XMarkIcon,
+  EnvelopeIcon,
+  KeyIcon,
+  ExclamationTriangleIcon,
+  ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
+import { MOTION_EASE, MOTION_DUR } from '../lib/tokens';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
 import { formatTime, formatHourLabel } from '../lib/time';
@@ -52,27 +82,100 @@ import { assignLanes } from '../lib/calendar-lanes';
 import { MiniCalendar } from '../components/calendar/mini-calendar';
 import { DayAgenda } from '../components/calendar/day-agenda';
 import { WeekView } from '../components/calendar/week-view';
-import type { Appointment, AppointmentStatus, AppointmentWithDetails, Shift, Break, DayOfWeek, Client } from '../types';
+import { StaffCard } from '../components/calendar/StaffCard';
+import type { Appointment, AppointmentStatus, AppointmentWithDetails, Service, Category, Shift, ShiftOverride, Break, Absence, AbsenceReason, DayOfWeek, Client, Language } from '../types';
 import type { TranslationKey } from '../i18n';
-import { AVATAR_GRADIENTS, hashToIndex, STATUS_DOT, STATUS_LABEL } from '../lib/tokens';
+import { AVATAR_GRADIENTS, ELEVATION, hashToIndex, ROLE_CHIP, ROLE_DOT, ROLE_LABEL, STATUS_DOT, STATUS_LABEL, STATUS_PILL, STATUS_STRIPE } from '../lib/tokens';
 
 // ─── Grid constants ─────────────────────────────────────
+// MINUTES_PER_SLOT is the minutes represented by SLOT_HEIGHT pixels —
+// keep at 60 so the visual cadence stays one-row-per-hour. SLOT_MINUTES
+// controls click + DnD granularity (15 min = four sub-slots per hour).
+// SLOT_HEIGHT trimmed from 100 → 96 so each sub-slot is a clean 24 px.
 const DAY_START_HOUR = 8;
 const DAY_END_HOUR = 21;
-const SLOT_HEIGHT = 100;
+const SLOT_HEIGHT = 96;
 const MINUTES_PER_SLOT = 60;
-const STAFF_COL_MIN_W = 200;
+const SLOT_MINUTES = 15;
+const SUB_SLOTS_PER_HOUR = 60 / SLOT_MINUTES; // 4
+// Two presets driven by user preference. Standard = roomy booking-card grammar;
+// Compact lets ~9 columns fit on iPad-portrait without horizontal scroll.
+const STAFF_COL_MIN_W_STANDARD = 200;
+const STAFF_COL_MIN_W_COMPACT = 110;
 const TIME_GUTTER_W = 56;
 
-// ─── Per-staff accent colors (dark-mode aware) ──────────
+// Split a free-text full name into firstName + lastName for the
+// CreateClientModal save path. The first whitespace-separated token is
+// the first name; everything after it is the last name (so "Jonas Petras
+// Kazlauskas" becomes { first: 'Jonas', last: 'Petras Kazlauskas' }).
+function splitFullName(full: string): { firstName: string; lastName: string } {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: '', lastName: '' };
+  if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+}
+
+const EMPTY_NEW_CLIENT_DRAFT = {
+  fullName: '',
+  phone: '',
+  email: '',
+  notes: '',
+  avatarUrl: '',
+  marketingOk: false,
+};
+
+// Map AppointmentStatus → translation key. The render-direct STATUS_LABEL
+// in lib/tokens.ts is hardcoded English; this companion map routes the
+// status through the i18n dictionary so the operator's locale shows up.
+const STATUS_TKEY: Record<AppointmentStatus, TranslationKey> = {
+  scheduled: 'status.scheduled',
+  confirmed: 'status.confirmed',
+  completed: 'status.completed',
+  cancelled: 'status.cancelled',
+  no_show: 'status.no_show',
+};
+
+// CLDR-style plural category resolver for Russian and Lithuanian.
+// English keeps two forms (One / Many); the suffix matches the i18n
+// keys (`...One`, `...Few`, `...Many`). 'Few' falls through to 'Many'
+// for English.
+function pluralKey(lang: Language, n: number): 'One' | 'Few' | 'Many' {
+  if (lang === 'ru') {
+    const last2 = n % 100;
+    if (last2 >= 11 && last2 <= 14) return 'Many';
+    const last1 = n % 10;
+    if (last1 === 1) return 'One';
+    if (last1 >= 2 && last1 <= 4) return 'Few';
+    return 'Many';
+  }
+  if (lang === 'lt') {
+    const last2 = n % 100;
+    if (last2 >= 11 && last2 <= 19) return 'Many';
+    const last1 = n % 10;
+    if (last1 === 1) return 'One';
+    if (last1 >= 2 && last1 <= 9) return 'Few';
+    return 'Many';
+  }
+  return n === 1 ? 'One' : 'Many';
+}
+
+// ─── Per-staff accent colors ─────────────────────────────
+// Tile backgrounds collapse to neutral `bg-card`; the staff signature lives
+// in the 4 px left rail (`border`) + accent dot. Avatar fallback (`light` +
+// `label`) and ring-halo (`ring`) keep their tinted variants because those
+// surfaces already read as "this is the staff member's chip".
+//
+// Light-theme stripes use the -600 shades (saturated, deep) so they actually
+// read against #FFFFFF cards. -500 was too bright/desaturated for light bg.
+// Dark theme keeps -500 — on dark canvas, -600 is too muddy.
 const STAFF_COLORS = [
-  { bg: 'bg-blue-50/80 dark:bg-blue-950/60',       border: 'border-l-blue-500',    text: 'text-blue-900 dark:text-blue-100',     sub: 'text-blue-600 dark:text-blue-300',     dot: 'bg-blue-500',    light: 'bg-blue-100 dark:bg-blue-900/70',   label: 'text-blue-700 dark:text-blue-200',    ring: 'ring-blue-400'   },
-  { bg: 'bg-violet-50/80 dark:bg-violet-950/60',   border: 'border-l-violet-500',  text: 'text-violet-900 dark:text-violet-100', sub: 'text-violet-600 dark:text-violet-300', dot: 'bg-violet-500',  light: 'bg-violet-100 dark:bg-violet-900/70', label: 'text-violet-700 dark:text-violet-200', ring: 'ring-violet-400' },
-  { bg: 'bg-amber-50/80 dark:bg-amber-950/60',     border: 'border-l-amber-500',   text: 'text-amber-900 dark:text-amber-100',   sub: 'text-amber-700 dark:text-amber-300',   dot: 'bg-amber-500',   light: 'bg-amber-100 dark:bg-amber-900/70',  label: 'text-amber-700 dark:text-amber-200',  ring: 'ring-amber-400'  },
-  { bg: 'bg-emerald-50/80 dark:bg-emerald-950/60', border: 'border-l-emerald-500', text: 'text-emerald-900 dark:text-emerald-100', sub:'text-emerald-600 dark:text-emerald-300', dot:'bg-emerald-500', light:'bg-emerald-100 dark:bg-emerald-900/70', label:'text-emerald-700 dark:text-emerald-200', ring:'ring-emerald-400' },
-  { bg: 'bg-rose-50/80 dark:bg-rose-950/60',       border: 'border-l-rose-500',    text: 'text-rose-900 dark:text-rose-100',     sub: 'text-rose-600 dark:text-rose-300',     dot: 'bg-rose-500',    light: 'bg-rose-100 dark:bg-rose-900/70',   label: 'text-rose-700 dark:text-rose-200',    ring: 'ring-rose-400'   },
-  { bg: 'bg-cyan-50/80 dark:bg-cyan-950/60',       border: 'border-l-cyan-500',    text: 'text-cyan-900 dark:text-cyan-100',     sub: 'text-cyan-600 dark:text-cyan-300',     dot: 'bg-cyan-500',    light: 'bg-cyan-100 dark:bg-cyan-900/70',   label: 'text-cyan-700 dark:text-cyan-200',    ring: 'ring-cyan-400'   },
-  { bg: 'bg-orange-50/80 dark:bg-orange-950/60',   border: 'border-l-orange-500',  text: 'text-orange-900 dark:text-orange-100', sub: 'text-orange-600 dark:text-orange-300', dot: 'bg-orange-500',  light: 'bg-orange-100 dark:bg-orange-900/70', label: 'text-orange-700 dark:text-orange-200', ring: 'ring-orange-400' },
+  { bg: 'bg-card',  border: 'border-l-blue-600 dark:border-l-blue-500',     text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-blue-500',    light: 'bg-blue-100 dark:bg-blue-900/70',       label: 'text-blue-700 dark:text-blue-200',       ring: 'ring-blue-400'    },
+  { bg: 'bg-card',  border: 'border-l-violet-600 dark:border-l-violet-500', text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-violet-500',  light: 'bg-violet-100 dark:bg-violet-900/70',   label: 'text-violet-700 dark:text-violet-200',   ring: 'ring-violet-400'  },
+  { bg: 'bg-card',  border: 'border-l-amber-600 dark:border-l-amber-500',   text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-amber-500',   light: 'bg-amber-100 dark:bg-amber-900/70',     label: 'text-amber-700 dark:text-amber-200',     ring: 'ring-amber-400'   },
+  { bg: 'bg-card',  border: 'border-l-green-600 dark:border-l-emerald-500', text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-emerald-500', light: 'bg-emerald-100 dark:bg-emerald-900/70', label: 'text-emerald-700 dark:text-emerald-200', ring: 'ring-emerald-400' },
+  { bg: 'bg-card',  border: 'border-l-rose-600 dark:border-l-rose-500',     text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-rose-500',    light: 'bg-rose-100 dark:bg-rose-900/70',       label: 'text-rose-700 dark:text-rose-200',       ring: 'ring-rose-400'    },
+  { bg: 'bg-card',  border: 'border-l-cyan-600 dark:border-l-cyan-500',     text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-cyan-500',    light: 'bg-cyan-100 dark:bg-cyan-900/70',       label: 'text-cyan-700 dark:text-cyan-200',       ring: 'ring-cyan-400'    },
+  { bg: 'bg-card',  border: 'border-l-orange-600 dark:border-l-orange-500', text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-orange-500',  light: 'bg-orange-100 dark:bg-orange-900/70',   label: 'text-orange-700 dark:text-orange-200',   ring: 'ring-orange-400'  },
 ];
 
 const getStaffColor = (idx: number) => STAFF_COLORS[idx % STAFF_COLORS.length];
@@ -90,7 +193,84 @@ function getDayOfWeek(date: Date): DayOfWeek {
 
 type ViewMode = 'grid' | 'day' | 'week';
 
+// ─── Block-dialog vocabulary ────────────────────────────
+// `Break` is intra-day (lunch/dinner/rest) — partial overlay on a working day.
+// `Absence` is whole-day (day-off / vacation / sick / training) — replaces the
+// shift entirely. The Block dialog routes the chosen type to the right store.
+type BlockType = 'lunch' | 'dinner' | 'rest' | 'custom' | 'day-off' | 'vacation' | 'sick' | 'training';
+type BlockKind = 'break' | 'absence';
+
+const BLOCK_KIND: Record<BlockType, BlockKind> = {
+  lunch:    'break',
+  dinner:   'break',
+  rest:     'break',
+  custom:   'break',
+  'day-off': 'absence',
+  vacation: 'absence',
+  sick:     'absence',
+  training: 'absence',
+};
+
+// Custom fork-knife icon — heroicons has no cutlery glyph. Earlier draft had 6
+// thin stroke paths that blurred at 12px (became Greek-letter mush). Rewritten
+// as 4 simple paths: U-shape fork head + filled blade for the knife. Filled
+// silhouette on the blade gives the icon enough visual mass to read at any
+// size; rounded line caps + thicker 1.8 stroke survive scale-down.
+function ForkKnifeIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      {/* Fork — outer U-shape (prong tops + sides) merging into the stem */}
+      <path d="M5 3v4a3 3 0 0 0 6 0V3" />
+      {/* Fork stem — single vertical line down the center */}
+      <path d="M8 9v12" />
+      {/* Knife — triangular blade with a faint fill so the silhouette reads */}
+      <path d="M14 11h3V3c-2 1-3 4-3 8z" fill="currentColor" fillOpacity={0.18} />
+      {/* Knife handle */}
+      <path d="M17 11v10" />
+    </svg>
+  );
+}
+
+const BLOCK_ICON: Record<BlockType, typeof CakeIcon> = {
+  lunch:    ForkKnifeIcon as unknown as typeof CakeIcon,
+  dinner:   MoonIcon,
+  rest:     HeartIcon,
+  custom:   PencilSquareIcon,
+  'day-off': NoSymbolIcon,
+  vacation: PaperAirplaneIcon,
+  sick:     XCircleIcon,
+  training: AcademicCapIcon,
+};
+
+// Translation keys are the `break.*` namespace; same vocabulary already
+// shipped in en/ru/lt for the four extra types.
+const BLOCK_TKEY: Record<BlockType, TranslationKey> = {
+  lunch:    'break.lunch',
+  dinner:   'break.dinner',
+  rest:     'break.rest',
+  custom:   'break.custom',
+  'day-off': 'break.day-off',
+  vacation: 'break.vacation',
+  sick:     'break.sick',
+  training: 'break.training',
+};
+
+// Owner-only types — receptionists/barbers see Lunch/Dinner/Rest only.
+const OWNER_ONLY_TYPES: BlockType[] = ['day-off', 'vacation', 'sick', 'training'];
+
 // ─── Appointment Detail Modal ───────────────────────────
+// PendingSlot — additional appointment block added inline via "Add next service".
+// Stored locally until the user hits Save; then created via onCreatePending.
+interface PendingSlot {
+  tempId: string;
+  serviceId: string;
+  date: string;       // YYYY-MM-DD
+  time: string;       // HH:mm (24h internal)
+  durationMin: number;
+  staffId: string;
+  notes: string;
+}
+
 function AppointmentDetailModal({
   apt,
   staffColorMap,
@@ -101,11 +281,15 @@ function AppointmentDetailModal({
   onChangeStatus,
   onDelete,
   onFullUpdate,
+  onCreatePending,
+  onRebook,
   canEditFully,
   staffList,
   serviceList,
   isUpdating,
   isDeleting,
+  creatorName,
+  creatorChip,
 }: {
   apt: AppointmentWithDetails;
   staffColorMap: Map<string, number>;
@@ -116,27 +300,34 @@ function AppointmentDetailModal({
   onChangeStatus: (id: string, status: AppointmentStatus) => void;
   onDelete: (id: string, clientName: string) => void;
   onFullUpdate: (id: string, changes: { startTime?: string; endTime?: string; staffId?: string; serviceId?: string; notes?: string }) => void;
+  onCreatePending: (clientId: string, slots: PendingSlot[]) => Promise<void>;
+  onRebook: (apt: AppointmentWithDetails) => void;
   canEditFully: boolean;
   staffList: { id: string; firstName: string; lastName: string; isActive: boolean }[];
   serviceList: { id: string; name: string; price: number; duration: number }[];
   isUpdating: boolean;
   isDeleting: boolean;
+  /** Resolved display name of the operator who created this booking. Threaded
+   *  in from the page-level accountById lookup; null when the row predates the
+   *  createdBy field or the account was deleted. */
+  creatorName?: string | null;
+  /** Pre-rendered creator chip — clickable button + Popover with profile.
+   *  Built at the page level so this component doesn't need to know about
+   *  accountById, navigate, or auth-store. Falls back to plain text via
+   *  `creatorName` when null. */
+  creatorChip?: React.ReactNode;
 }) {
   const start = parseISO(apt.startTime);
   const end = parseISO(apt.endTime);
   const duration = differenceInMinutes(end, start);
-  const colors = getStaffColor(staffColorMap.get(apt.staffId) ?? 0);
-  // statusMap kept on the props interface for backward-compat with DayAgenda /
-  // WeekView, but the modal now reads STATUS_DOT / STATUS_LABEL from tokens.
-  void statusMap;
+  void statusMap; // kept for backward-compat with DayAgenda/WeekView contracts
 
   const busy = isUpdating || isDeleting;
 
-  // ── Full-edit state (owner/manager only) ───────────────────
-  // Toggle between "view" mode (status buttons, delete) and "edit" mode
-  // (time, duration, barber, service, notes all editable).
-  const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState(() => ({
+  // Single always-editable form. No view/edit toggle — fields edit inline,
+  // Save button is enabled only when the form is dirty (matches the
+  // competitor's flow where the operator scans + tweaks in one motion).
+  const [form, setForm] = useState(() => ({
     date: format(start, 'yyyy-MM-dd'),
     time: format(start, 'HH:mm'),
     durationMin: duration,
@@ -145,136 +336,478 @@ function AppointmentDetailModal({
     notes: apt.notes ?? '',
   }));
 
-  const saveEdit = () => {
-    // Rebuild ISO timestamps from date + time; recompute endTime from duration.
-    const [y, m, d] = editForm.date.split('-').map(Number);
-    const [hh, mm] = editForm.time.split(':').map(Number);
-    const newStart = new Date(y, m - 1, d, hh, mm, 0, 0);
-    const newEnd = new Date(newStart.getTime() + editForm.durationMin * 60_000);
-    onFullUpdate(apt.id, {
-      startTime: newStart.toISOString(),
-      endTime: newEnd.toISOString(),
-      staffId: editForm.staffId,
-      serviceId: editForm.serviceId,
-      notes: editForm.notes,
-    });
-    setIsEditing(false);
+  const dirty = (
+    form.date !== format(start, 'yyyy-MM-dd') ||
+    form.time !== format(start, 'HH:mm') ||
+    form.durationMin !== duration ||
+    form.staffId !== apt.staffId ||
+    form.serviceId !== apt.serviceId ||
+    form.notes !== (apt.notes ?? '')
+  );
+
+  // Live "ends at HH:mm" computed from the form's time + duration. Useful
+  // because a barber tweaking duration sees the end immediately, no math.
+  const computedEndLabel = useMemo(() => {
+    const [hh, mm] = form.time.split(':').map(Number);
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+    const s = new Date();
+    s.setHours(hh, mm, 0, 0);
+    const e = new Date(s.getTime() + form.durationMin * 60_000);
+    return formatTime(e, timeFormat);
+  }, [form.time, form.durationMin, timeFormat]);
+
+  // Pending slots — additional appointments added inline via "Add next service".
+  // Each slot becomes its own appointment record on Save (sequential creates).
+  const [pendingSlots, setPendingSlots] = useState<PendingSlot[]>([]);
+  const [savingPending, setSavingPending] = useState(false);
+  // Cancel-confirmation — instead of an instant status flip, the operator
+  // sees a dedicated "Are you sure?" dialog with the appointment context
+  // and a destructive Confirm button. Mirrors the competitor's pattern.
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+
+  // Compute "next slot" defaults from the end of the most recent block —
+  // either the last pending slot, or the primary appointment.
+  const computeNextSlotDefaults = (): { date: string; time: string; staffId: string } => {
+    const last = pendingSlots[pendingSlots.length - 1];
+    const baseDate = last?.date ?? form.date;
+    const baseTime = last?.time ?? form.time;
+    const baseDuration = last?.durationMin ?? form.durationMin;
+    const baseStaff = last?.staffId ?? form.staffId;
+
+    const [hh, mm] = baseTime.split(':').map(Number);
+    const baseEnd = new Date();
+    baseEnd.setHours(hh, mm + baseDuration, 0, 0);
+    const endTime = `${String(baseEnd.getHours()).padStart(2, '0')}:${String(baseEnd.getMinutes()).padStart(2, '0')}`;
+
+    return { date: baseDate, time: endTime, staffId: baseStaff };
   };
+
+  const addPendingSlot = () => {
+    const defaults = computeNextSlotDefaults();
+    setPendingSlots((prev) => [
+      ...prev,
+      {
+        tempId: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        serviceId: '',
+        date: defaults.date,
+        time: defaults.time,
+        durationMin: 30,
+        staffId: defaults.staffId,
+        notes: '',
+      },
+    ]);
+  };
+
+  const updatePendingSlot = (tempId: string, patch: Partial<PendingSlot>) => {
+    setPendingSlots((prev) => prev.map((s) => (s.tempId === tempId ? { ...s, ...patch } : s)));
+  };
+
+  const deletePendingSlot = (tempId: string) => {
+    setPendingSlots((prev) => prev.filter((s) => s.tempId !== tempId));
+  };
+
+  const computeEndLabel = (time: string, durationMin: number): string => {
+    const [hh, mm] = time.split(':').map(Number);
+    if (Number.isNaN(hh)) return '—';
+    const e = new Date();
+    e.setHours(hh, mm + durationMin, 0, 0);
+    return formatTime(e, timeFormat);
+  };
+
+  const allPendingValid = pendingSlots.every((s) => s.serviceId);
+  const hasPending = pendingSlots.length > 0;
+  const isSavable = (dirty || hasPending) && (!hasPending || allPendingValid);
+
+  const save = async () => {
+    if (hasPending && !allPendingValid) {
+      toast.error(t('toast.fillRequired'));
+      return;
+    }
+    // 1. Save primary if dirty (mutation; fire-and-forget per existing pattern)
+    if (dirty) {
+      const [y, m, d] = form.date.split('-').map(Number);
+      const [hh, mm] = form.time.split(':').map(Number);
+      const newStart = new Date(y, m - 1, d, hh, mm, 0, 0);
+      const newEnd = new Date(newStart.getTime() + form.durationMin * 60_000);
+      onFullUpdate(apt.id, {
+        startTime: newStart.toISOString(),
+        endTime: newEnd.toISOString(),
+        staffId: form.staffId,
+        serviceId: form.serviceId,
+        notes: form.notes,
+      });
+    }
+    // 2. Create each pending slot. Sequential awaits so a partial failure
+    //    leaves a clean cursor (slots before the failure get created).
+    if (hasPending) {
+      try {
+        setSavingPending(true);
+        await onCreatePending(apt.clientId, pendingSlots);
+        setPendingSlots([]);
+        onClose();
+      } catch (err) {
+        toast.error((err as Error).message ?? 'Failed to create appointments');
+      } finally {
+        setSavingPending(false);
+      }
+    }
+  };
+
+  // No-show prevention: nudge to fill in client phone/email if missing
+  // (matches the competitor's banner). Only owner/manager sees this since
+  // they're typically the ones who'd contact clients.
+  const missingContact = !apt.client.phone && !apt.client.email;
+
+  // Refs for the top toolbar's "Add note" / "Reschedule" actions —
+  // both shortcuts focus a field below rather than open a sub-popup.
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+  const timeFieldRef = useRef<HTMLDivElement>(null);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const focusNotes = () => {
+    notesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    notesRef.current?.focus();
+  };
+  const focusTime = () => {
+    timeFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimePickerOpen(true);
+  };
+
+  // Locale lookup for date-fns (matches EditDayShiftModal). Required so the
+  // date trigger displays "6 май 2026" / "geg. 6 2026" / "6 May 2026" in the
+  // active language instead of always-English.
+  const [language] = useLanguage();
+  const dateLocale: DateFnsLocale =
+    language === 'ru' ? ruLocale : language === 'lt' ? ltLocale : enLocale;
+
+  // Derive a payment status from appointment status — we don't yet have a
+  // real payment flag in the data model, so this is a pragmatic mapping:
+  //   completed → paid · cancelled → voided · everything else → unpaid.
+  const paymentStatus: 'paid' | 'voided' | 'unpaid' =
+    apt.status === 'completed' ? 'paid'
+    : apt.status === 'cancelled' ? 'voided'
+    : 'unpaid';
+  const paymentLabel =
+    paymentStatus === 'paid' ? t('calendar.paid')
+    : paymentStatus === 'voided' ? t('calendar.voided')
+    : t('calendar.notPaid');
+
+  // Live hero values — recompute from form state so the headline time range
+  // and service line update as the operator tweaks the form before saving.
+  const reduceMotion = useReducedMotion();
+  const liveStart = useMemo(() => {
+    const [y, m, d] = form.date.split('-').map(Number);
+    const [hh, mm] = form.time.split(':').map(Number);
+    if (Number.isNaN(y) || Number.isNaN(hh)) return null;
+    return new Date(y, m - 1, d, hh, mm, 0, 0);
+  }, [form.date, form.time]);
+  const liveEnd = useMemo(() => {
+    if (!liveStart) return null;
+    return new Date(liveStart.getTime() + form.durationMin * 60_000);
+  }, [liveStart, form.durationMin]);
+  const liveTimeRange = liveStart && liveEnd
+    ? `${formatTime(liveStart, timeFormat)} — ${formatTime(liveEnd, timeFormat)}`
+    : '—';
+
+  const selectedService = serviceList.find(s => s.id === form.serviceId) ?? apt.service;
+  const selectedStaff = staffList.find(s => s.id === form.staffId);
+  const heroPrice = selectedService?.price ?? apt.service.price;
+
+  // Avatar — gradient + initials for the client (matches column header style).
+  const clientGradient = AVATAR_GRADIENTS[hashToIndex(apt.clientId, AVATAR_GRADIENTS.length)];
+  const clientInitials = `${apt.client.firstName[0] ?? ''}${apt.client.lastName[0] ?? ''}`.toUpperCase();
+
+  // Stagger entrance — sections fade up sequentially. Reduced motion bypasses.
+  const containerVariants = {
+    hidden: {},
+    visible: {
+      transition: {
+        staggerChildren: reduceMotion ? 0 : 0.045,
+        delayChildren: reduceMotion ? 0 : 0.03,
+      },
+    },
+  };
+  const itemVariants = {
+    hidden: reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 6 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.32, ease: MOTION_EASE } },
+  };
+
+  // Status-colored "spine" — runs full height on the LEFT edge of the modal
+  // as a 4px accent bar. Same hue as STATUS_DOT but at full saturation. The
+  // dark hero stays solid bg-foreground; the spine only shows on the light
+  // body below the hero (where it reads as a vertical highlight).
+  const spineCls =
+    apt.status === 'confirmed' ? 'bg-emerald-500'
+      : apt.status === 'completed' ? 'bg-foreground'
+      : apt.status === 'cancelled' ? 'bg-rose-500'
+      : apt.status === 'no-show' ? 'bg-amber-500'
+      : 'bg-blue-500';
 
   return (
     <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden max-h-[92vh] overflow-y-auto">
+      <DialogContent
+        className="!w-[calc(100vw-2rem)] !max-w-[600px] p-0 gap-0 overflow-hidden max-h-[92vh] overflow-y-auto overflow-x-hidden [&>button]:hidden"
+      >
         <DialogHeader className="sr-only">
           <DialogTitle>{t('calendar.appointmentDetails')}</DialogTitle>
         </DialogHeader>
 
-        {/* ─── Editorial header — eyebrow + name ────────
-            No top color stripe (was demo-feel). Status moves
-            to the eyebrow as a tiny dot + label. Time becomes
-            secondary text in the same row. */}
-        <div className="px-7 pt-7 pb-5">
-          <div className="flex items-start gap-4">
-            <div className={cn('flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold shrink-0', colors.light, colors.label)}>
-              {apt.client.firstName[0]}{apt.client.lastName[0]}
+        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="relative">
+          {/* Status spine — 4px accent on the left edge of the modal body
+              (sits BELOW the dark hero, runs the rest of the way down). The
+              spine is the modal's identity at a glance: emerald=confirmed,
+              blue=scheduled, rose=cancelled, amber=no-show. */}
+          <div className={cn('absolute left-0 top-0 bottom-0 w-1 z-10', spineCls)} />
+
+          {/* HERO — uniform theme-aware surface. Editorial typography carries
+              the visual weight; subtle border-bottom separates from the action
+              toolbar. Same palette as the rest of the modal — no theme-inverting
+              dark/white split that previously read as two stitched-together
+              cards. */}
+          <motion.div variants={itemVariants} className="relative bg-card text-foreground pl-7 pr-5 pt-6 pb-5 border-b border-border">
+            {/* Custom close — theme-aware contrast */}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="absolute top-3 right-3 inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+            >
+              <XMarkIcon className="h-4 w-4" />
+            </button>
+
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground pr-10">
+              {apt.client.firstName} {apt.client.lastName}
+              <span className="mx-1.5 text-muted-foreground/40">·</span>
+              {format(start, 'EEE, MMM d')}
+            </p>
+            <h2 className="mt-2 text-[28px] sm:text-[30px] font-bold leading-none tracking-tight tabular-nums text-foreground break-words">
+              {liveTimeRange}
+            </h2>
+            <p className="mt-2 text-[12px] text-muted-foreground truncate">
+              <span className="text-foreground font-semibold">{selectedService?.name ?? apt.service.name}</span>
+              {selectedStaff && (
+                <>
+                  <span className="mx-1.5 text-muted-foreground/40">·</span>
+                  {selectedStaff.firstName} {selectedStaff.lastName}
+                </>
+              )}
+              <span className="mx-1.5 text-muted-foreground/40">·</span>
+              <span className="tabular-nums">{form.durationMin}m</span>
+            </p>
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              {/* Status chip — neutral muted background, text-foreground. The
+                  status dot keeps its semantic color for instant recognition. */}
+              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] bg-muted text-foreground">
+                <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[apt.status])} />
+                {t(`status.${apt.status}` as TranslationKey)}
+              </span>
+              {/* Payment chip — theme-aware semantic colors. dark: variants flip
+                  text shade so emerald/rose stay legible on both light and dark
+                  card surfaces. */}
+              <span className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]',
+                paymentStatus === 'paid' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                  : paymentStatus === 'voided' ? 'bg-muted text-muted-foreground'
+                  : 'bg-rose-500/15 text-rose-700 dark:text-rose-300',
+              )}>
+                {paymentLabel}
+                <span className="tabular-nums font-bold opacity-90">€{heroPrice}</span>
+              </span>
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[apt.status])} />
-                <span>{STATUS_LABEL[apt.status]}</span>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="normal-case tracking-normal tabular-nums">
-                  {formatTime(start, timeFormat)} – {formatTime(end, timeFormat)}
-                </span>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="normal-case tracking-normal tabular-nums">{duration} min</span>
-              </div>
-              <p className="mt-1 text-2xl sm:text-3xl font-bold text-foreground tracking-tight truncate leading-tight">
-                {apt.client.firstName} {apt.client.lastName}
-              </p>
-              <a
-                href={`tel:${apt.client.phone}`}
-                className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground tabular-nums transition-colors"
+          </motion.div>
+
+          {/* ACTION TOOLBAR — single horizontal row, icon + label per action.
+              Soft scroll on overflow so a Russian/Lithuanian translation
+              (longer words) stays usable on narrower screens. */}
+          <motion.div variants={itemVariants} className="px-5 pt-3 pb-3 border-b border-border bg-background">
+            {/* Wrap to multiple rows on narrow widths instead of horizontal
+                scroll — long Russian/Lithuanian labels could push the modal
+                past the viewport otherwise. The toolbar grows vertically as
+                needed; each button keeps `whitespace-nowrap` per-label. */}
+            <div className="flex items-center gap-x-0.5 gap-y-1 flex-wrap">
+              <button
+                type="button"
+                onClick={focusNotes}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
               >
-                <PhoneIcon className="h-3 w-3" />
-                {apt.client.phone}
-              </a>
+                <PencilSquareIcon className="h-3.5 w-3.5 shrink-0" />
+                {t('calendar.addNote')}
+              </button>
+              <button
+                type="button"
+                onClick={focusTime}
+                disabled={busy || !canEditFully || apt.status === 'cancelled' || apt.status === 'completed'}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
+              >
+                <CalendarDaysIcon className="h-3.5 w-3.5 shrink-0" />
+                {t('calendar.reschedule')}
+              </button>
+              <span className="mx-0.5 h-4 w-px bg-border/70 shrink-0" aria-hidden />
+              {apt.status === 'scheduled' && (
+                <button
+                  type="button"
+                  onClick={() => onChangeStatus(apt.id, 'confirmed')}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400 transition-colors hover:bg-emerald-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
+                >
+                  <CheckCircleIcon className="h-3.5 w-3.5 shrink-0" />
+                  {t('common.confirm')}
+                </button>
+              )}
+              {(apt.status === 'scheduled' || apt.status === 'confirmed') && (
+                <button
+                  type="button"
+                  onClick={() => onChangeStatus(apt.id, 'completed')}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
+                >
+                  <CheckBadgeIcon className="h-3.5 w-3.5 shrink-0" />
+                  {t('status.completed')}
+                </button>
+              )}
+              {(apt.status !== 'cancelled' && apt.status !== 'completed') && (
+                <button
+                  type="button"
+                  onClick={() => setCancelConfirmOpen(true)}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-rose-600 dark:text-rose-400 transition-colors hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
+                >
+                  <XCircleIcon className="h-3.5 w-3.5 shrink-0" />
+                  {t('calendar.cancelAppointment')}
+                </button>
+              )}
+              {apt.status === 'cancelled' && (
+                <button
+                  type="button"
+                  onClick={() => onChangeStatus(apt.id, 'scheduled')}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-blue-600 dark:text-blue-400 transition-colors hover:bg-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
+                >
+                  <ArrowPathIcon className="h-3.5 w-3.5 shrink-0" />
+                  {t('common.restore')}
+                </button>
+              )}
             </div>
-          </div>
-        </div>
+          </motion.div>
 
-        {/* ─── Body — hairline rows OR edit form ────── */}
-        {isEditing ? (
-          <div className="border-t border-border px-7 py-6 space-y-6">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Edit</p>
-
-            {/* Wheel picker centered as the visual hero of edit mode */}
-            <div className="flex justify-center py-2">
-              <TimeWheelPicker
-                value={editForm.time}
-                onChange={(time) => setEditForm(f => ({ ...f, time }))}
-                startHour={DAY_START_HOUR}
-                endHour={DAY_END_HOUR}
-                minuteStep={5}
-                format={timeFormat}
-                ariaLabel="Appointment start time"
-              />
-            </div>
-
-            {/* Date + Duration in a 2-col grid below the picker */}
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Date</Label>
-                <Input
-                  type="date"
-                  value={editForm.date}
-                  onChange={(e) => setEditForm(f => ({ ...f, date: e.target.value }))}
-                  className="mt-1.5 h-10 tabular-nums"
-                />
+          {/* CLIENT CARD — avatar circle + name + contact.
+              Replaces the previous read-only Input pair, which had a
+              "form field" feel that didn't match the rest of the modal. */}
+          <motion.div variants={itemVariants} className="px-7 py-4 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                'flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br text-[12px] font-semibold text-white shrink-0 ring-2 ring-background shadow-sm',
+                clientGradient,
+              )}>
+                {clientInitials || <UserIcon className="h-5 w-5" />}
               </div>
-              <div>
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Duration (min)</Label>
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-semibold tracking-tight text-foreground truncate leading-tight">
+                  {apt.client.firstName} {apt.client.lastName}
+                </p>
+                <p className="text-[12px] text-muted-foreground tabular-nums truncate mt-0.5">
+                  {apt.client.phone || apt.client.email || '—'}
+                </p>
+              </div>
+              {apt.client.phone && (
+                <a
+                  href={`tel:${apt.client.phone}`}
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-card/50 text-muted-foreground hover:text-foreground hover:bg-card transition-colors shrink-0"
+                  aria-label={`Call ${apt.client.firstName}`}
+                >
+                  <PhoneIcon className="h-4 w-4" />
+                </a>
+              )}
+            </div>
+            {missingContact && (
+              <div className="mt-2.5 inline-flex items-start gap-1.5 rounded-md bg-emerald-500/5 border border-emerald-500/20 px-2.5 py-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                <span className="shrink-0 mt-px">ⓘ</span>
+                <span>{t('calendar.noShowHint')}</span>
+              </div>
+            )}
+          </motion.div>
+
+          {/* EDIT FORM — service select + 4-input grid + notes textarea.
+              Status pill is no longer here; it lives in the hero now. */}
+          <motion.div variants={itemVariants} className="px-7 py-5 space-y-4">
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {t('calendar.service')}
+              </Label>
+              <Select
+                value={form.serviceId}
+                onValueChange={(v) => {
+                  const svc = serviceList.find(s => s.id === v);
+                  setForm(f => ({
+                    ...f,
+                    serviceId: v,
+                    durationMin: svc?.duration ?? f.durationMin,
+                  }));
+                }}
+                disabled={!canEditFully}
+              >
+                <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {serviceList.map(s => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name} — €{s.price} · {s.duration}m
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 2x2 stack on mobile, 4-column with proportional widths on sm+.
+                `min-w-0` on each grid item allows children (CompactDateField,
+                Select trigger) to truncate via their own `truncate` rule
+                instead of forcing the grid (and modal) to grow. */}
+            <div className="grid grid-cols-2 sm:grid-cols-[1.1fr_1fr_70px_1.3fr] gap-3">
+              <div className="min-w-0">
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.date')}</Label>
+                <div className="mt-1.5">
+                  <CompactDateField
+                    value={form.date}
+                    onChange={(v) => setForm(f => ({ ...f, date: v }))}
+                    locale={dateLocale}
+                    ariaLabel={t('common.date')}
+                    disabled={!canEditFully}
+                    className="h-10 w-full"
+                  />
+                </div>
+              </div>
+              <div ref={timeFieldRef} className="min-w-0">
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.time')}</Label>
+                <div className="mt-1.5">
+                  <TimePickerField
+                    value={form.time}
+                    onChange={(v) => setForm(f => ({ ...f, time: v }))}
+                    timeFormat={timeFormat}
+                    disabled={!canEditFully}
+                    ariaLabel={t('common.time')}
+                    open={timePickerOpen}
+                    onOpenChange={setTimePickerOpen}
+                  />
+                </div>
+              </div>
+              <div className="min-w-0">
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.duration')}</Label>
                 <Input
                   type="number"
                   min={5}
                   max={480}
                   step={5}
-                  value={editForm.durationMin}
-                  onChange={(e) => setEditForm(f => ({ ...f, durationMin: parseInt(e.target.value) || 0 }))}
+                  value={form.durationMin}
+                  onChange={(e) => setForm(f => ({ ...f, durationMin: parseInt(e.target.value) || 0 }))}
+                  disabled={!canEditFully}
                   className="mt-1.5 h-10 tabular-nums"
                 />
               </div>
-            </div>
-
-            {/* Service + Barber */}
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Service</Label>
+              <div className="min-w-0">
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
                 <Select
-                  value={editForm.serviceId}
-                  onValueChange={(v) => {
-                    const svc = serviceList.find(s => s.id === v);
-                    setEditForm(f => ({
-                      ...f,
-                      serviceId: v,
-                      durationMin: svc?.duration ?? f.durationMin,
-                    }));
-                  }}
-                >
-                  <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {serviceList.map(s => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name} — €{s.price} · {s.duration}m
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Barber</Label>
-                <Select
-                  value={editForm.staffId}
-                  onValueChange={(v) => setEditForm(f => ({ ...f, staffId: v }))}
+                  value={form.staffId}
+                  onValueChange={(v) => setForm(f => ({ ...f, staffId: v }))}
+                  disabled={!canEditFully}
                 >
                   <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -287,94 +820,342 @@ function AppointmentDetailModal({
             </div>
 
             <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Notes</Label>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.notes')}</Label>
               <Textarea
+                ref={notesRef}
                 rows={2}
-                value={editForm.notes}
-                onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Preferences, allergies…"
+                value={form.notes}
+                onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder={t('calendar.specialRequests')}
+                disabled={!canEditFully}
                 className="mt-1.5"
               />
             </div>
-          </div>
-        ) : (
-          <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border border-y border-border">
-            <DetailRow icon={ScissorsIcon} label="Service" value={apt.service.name} secondary={`€${apt.service.price}`} />
-            <DetailRow
-              icon={ClockIcon}
-              label="Barber"
-              value={`${apt.staff.firstName} ${apt.staff.lastName}`}
-              dot={colors.dot}
-            />
-            {apt.notes && (
-              <div className="sm:col-span-2 border-t border-border">
-                <DetailRow icon={ChatBubbleLeftIcon} label="Notes" value={apt.notes} multiline />
-              </div>
-            )}
-          </div>
-        )}
+          </motion.div>
 
-        {/* ─── Footer — single row of icon-only quick actions
-            + Edit + Delete. No more 5-button colored stack. */}
-        <div className="px-7 py-5 space-y-3">
-          {isEditing ? (
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setIsEditing(false)} disabled={busy}>
-                {t('common.cancel')}
-              </Button>
-              <Button className="flex-1" onClick={saveEdit} disabled={busy}>
-                {t('common.saveChanges')}
-              </Button>
-            </div>
-          ) : (
-            <>
-              {/* Status quick actions — neutral icon buttons, dot indicates target state */}
-              <div className="flex flex-wrap gap-1.5">
-                {apt.status === 'scheduled' && (
-                  <>
-                    <QuickAction icon={CheckCircleIcon} label={t('common.confirm')} dotClass="bg-emerald-500" onClick={() => onChangeStatus(apt.id, 'confirmed')} disabled={busy} />
-                    <QuickAction icon={CheckBadgeIcon} label={t('status.completed')} dotClass="bg-muted-foreground/50" onClick={() => onChangeStatus(apt.id, 'completed')} disabled={busy} />
-                    <QuickAction icon={XCircleIcon} label={t('common.cancel')} dotClass="bg-rose-500" onClick={() => onChangeStatus(apt.id, 'cancelled')} disabled={busy} />
-                  </>
-                )}
-                {apt.status === 'confirmed' && (
-                  <>
-                    <QuickAction icon={CheckBadgeIcon} label={t('status.completed')} dotClass="bg-muted-foreground/50" onClick={() => onChangeStatus(apt.id, 'completed')} disabled={busy} />
-                    <QuickAction icon={XCircleIcon} label={t('common.cancel')} dotClass="bg-rose-500" onClick={() => onChangeStatus(apt.id, 'cancelled')} disabled={busy} />
-                  </>
-                )}
-                {apt.status === 'cancelled' && (
-                  <QuickAction icon={CheckCircleIcon} label={t('status.scheduled')} dotClass="bg-blue-500" onClick={() => onChangeStatus(apt.id, 'scheduled')} disabled={busy} />
-                )}
-              </div>
-
-              {/* Manage row — Edit + Delete as subtle text-buttons */}
-              {(canEditFully || true) && (
-                <div className="flex items-center justify-between border-t border-border pt-3">
-                  {canEditFully ? (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      disabled={busy}
-                      className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-foreground/70 transition-colors disabled:opacity-50"
-                    >
-                      <PencilSquareIcon className="h-3.5 w-3.5" />
-                      {t('common.edit') || 'Edit appointment'}
-                    </button>
-                  ) : <span />}
-                  <button
-                    onClick={() => onDelete(apt.id, `${apt.client.firstName} ${apt.client.lastName}`)}
-                    disabled={busy}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 transition-colors disabled:opacity-50"
-                  >
-                    <TrashIcon className="h-3.5 w-3.5" />
-                    {t('common.delete')}
-                  </button>
-                </div>
+          {/* AUDIT — single subtle line. The "ends at" line was removed because
+              the hero already shows the full time range live. Creator name (if
+              the booking was stamped post-schema-v10) sits between the eyebrow
+              and the date so an operator can see *who took the call* without
+              opening a separate audit log. */}
+          <motion.div variants={itemVariants} className="px-7 pb-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60 tabular-nums">
+              <span>{t('calendar.created')}</span>
+              {(creatorChip || creatorName) && (
+                <>
+                  <span className="mx-1.5 text-muted-foreground/40">·</span>
+                  {creatorChip ?? (
+                    <span className="font-bold text-foreground/80 normal-case tracking-normal">{creatorName}</span>
+                  )}
+                </>
               )}
-            </>
-          )}
-        </div>
+              <span className="mx-1.5 text-muted-foreground/40">·</span>
+              <span>{format(parseISO(apt.createdAt), 'MMM d, yyyy · HH:mm')}</span>
+            </p>
+          </motion.div>
+
+          {/* PENDING SLOTS — additional appointment blocks added via the
+              "Add next service" button. Each is editable inline and gets
+              created as its own appointment when the modal saves. */}
+          <AnimatePresence initial={false}>
+            {pendingSlots.map((slot, idx) => {
+              const slotEnd = computeEndLabel(slot.time, slot.durationMin);
+              const slotService = serviceList.find((s) => s.id === slot.serviceId);
+              const slotPrice = slotService?.price ?? 0;
+              return (
+                <motion.div
+                  key={slot.tempId}
+                  initial={reduceMotion ? false : { opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+                  transition={{ duration: 0.28, ease: MOTION_EASE }}
+                  className="border-t border-border bg-muted/15 overflow-hidden"
+                >
+                  <div className="px-7 py-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                        + {t('calendar.addNextService')}
+                        <span className="mx-1.5 text-muted-foreground/40">·</span>
+                        <span className="tabular-nums">#{idx + 2}</span>
+                        {slotPrice > 0 && (
+                          <>
+                            <span className="mx-1.5 text-muted-foreground/40">·</span>
+                            <span className="tabular-nums text-foreground/70 font-bold">€{slotPrice}</span>
+                          </>
+                        )}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => deletePendingSlot(slot.tempId)}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline transition-colors"
+                      >
+                        <TrashIcon className="h-3 w-3" />
+                        {t('common.delete')}
+                      </button>
+                    </div>
+
+                    <div>
+                      <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        {t('calendar.service')}
+                      </Label>
+                      <Select
+                        value={slot.serviceId}
+                        onValueChange={(v) => {
+                          const svc = serviceList.find((s) => s.id === v);
+                          updatePendingSlot(slot.tempId, {
+                            serviceId: v,
+                            durationMin: svc?.duration ?? slot.durationMin,
+                          });
+                        }}
+                      >
+                        <SelectTrigger className={cn('mt-1.5 h-10', !slot.serviceId && 'text-muted-foreground')}>
+                          <SelectValue placeholder={t('calendar.selectService')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {serviceList.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name} — €{s.price} · {s.duration}m
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-[1.1fr_1fr_72px_1.4fr] gap-3">
+                      <div>
+                        <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.date')}</Label>
+                        <div className="mt-1.5">
+                          <CompactDateField
+                            value={slot.date}
+                            onChange={(v) => updatePendingSlot(slot.tempId, { date: v })}
+                            locale={dateLocale}
+                            ariaLabel={t('common.date')}
+                            className="h-10 w-full"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.time')}</Label>
+                        <div className="mt-1.5">
+                          <TimePickerField
+                            value={slot.time}
+                            onChange={(v) => updatePendingSlot(slot.tempId, { time: v })}
+                            timeFormat={timeFormat}
+                            ariaLabel={t('common.time')}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.duration')}</Label>
+                        <Input
+                          type="number"
+                          min={5}
+                          max={480}
+                          step={5}
+                          value={slot.durationMin}
+                          onChange={(e) => updatePendingSlot(slot.tempId, { durationMin: parseInt(e.target.value) || 0 })}
+                          className="mt-1.5 h-10 tabular-nums"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
+                        <Select
+                          value={slot.staffId}
+                          onValueChange={(v) => updatePendingSlot(slot.tempId, { staffId: v })}
+                        >
+                          <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {staffList.filter((s) => s.isActive).map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70 tabular-nums">
+                      {t('calendar.endsAt').replace('{time}', slotEnd)}
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+
+          {/* Follow-up actions — "Add next service" appends a slot inline
+              (no redirect), "Rebook" still opens the create flow with
+              prefilled context for a future date. */}
+          <motion.div variants={itemVariants} className="px-7 py-3 border-t border-border grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={addPendingSlot}
+              disabled={busy || savingPending || !canEditFully}
+              className="group inline-flex items-center justify-center gap-2 h-10 rounded-md border border-border bg-card/50 px-3 text-[13px] font-semibold text-foreground transition-colors hover:bg-card hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <PlusCircleIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+              {t('calendar.addNextService')}
+            </button>
+            <button
+              type="button"
+              onClick={() => onRebook(apt)}
+              disabled={busy || savingPending}
+              className="group inline-flex items-center justify-center gap-2 h-10 rounded-md border border-border bg-card/50 px-3 text-[13px] font-semibold text-foreground transition-colors hover:bg-card hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ArrowPathIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+              {t('calendar.rebook')}
+            </button>
+          </motion.div>
+
+          {/* Footer — phone link · Delete (subtle) · Cancel · Save (dirty-gated) */}
+          <motion.div variants={itemVariants} className="px-7 py-3.5 border-t border-border flex items-center gap-3">
+            {apt.client.phone ? (
+              <a
+                href={`tel:${apt.client.phone}`}
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground tabular-nums transition-colors"
+              >
+                <PhoneIcon className="h-3 w-3" />
+                {apt.client.phone}
+              </a>
+            ) : (
+              <span className="text-xs text-muted-foreground/40">—</span>
+            )}
+            <button
+              onClick={() => onDelete(apt.id, `${apt.client.firstName} ${apt.client.lastName}`)}
+              disabled={busy}
+              className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground/70 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-40"
+              title={t('common.delete')}
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={onClose}
+              disabled={busy}
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <Button
+              onClick={save}
+              disabled={!isSavable || busy || savingPending || !canEditFully}
+              className="min-w-[120px] gap-1.5"
+            >
+              <span>{t('common.saveChanges')}</span>
+              {hasPending && allPendingValid && (
+                <span className="text-[10px] tabular-nums opacity-80 px-1.5 py-0.5 -mr-1 rounded bg-foreground/10">
+                  +{pendingSlots.length}
+                </span>
+              )}
+            </Button>
+          </motion.div>
+        </motion.div>
       </DialogContent>
+
+      {/* Cancel-confirmation — secondary Dialog opened by the toolbar's
+          "Cancel appointment" link. Replaces the previous instant status
+          flip with a deliberate Confirm step that surfaces what's about
+          to happen. Closes back to the detail modal on Keep; performs
+          the status change + closes the entire detail modal on Confirm. */}
+      <AnimatePresence>
+        {cancelConfirmOpen && (
+          <Dialog open onOpenChange={(o) => { if (!o) setCancelConfirmOpen(false); }}>
+            <DialogContent className="sm:max-w-[440px] p-0 gap-0 overflow-hidden">
+              <motion.div
+                initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.28, ease: MOTION_EASE }}
+              >
+                <DialogHeader className="px-7 pt-6 pb-4 space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-600 dark:text-rose-400">
+                    {t('calendar.cancelConfirmEyebrow')}
+                  </p>
+                  <DialogTitle className="text-xl font-bold tracking-tight">
+                    {t('calendar.cancelConfirmTitle')}
+                  </DialogTitle>
+                  <p className="text-[13px] text-muted-foreground leading-relaxed">
+                    {t('calendar.cancelConfirmHint').replace(
+                      '{name}',
+                      `${apt.client.firstName} ${apt.client.lastName}`,
+                    )}
+                  </p>
+                </DialogHeader>
+
+                {/* Context cards — preserve the "what am I cancelling" anchor */}
+                <div className="px-7 pb-4 grid grid-cols-2 gap-2">
+                  <div className="rounded-md bg-muted/40 ring-1 ring-border/40 px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                      {t('calendar.when')}
+                    </p>
+                    <p className="mt-1.5 text-[13px] font-semibold tabular-nums text-foreground leading-tight">
+                      {formatTime(start, timeFormat)} — {formatTime(end, timeFormat)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
+                      {format(start, 'EEE, MMM d')}
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-muted/40 ring-1 ring-border/40 px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                      {t('calendar.service')}
+                    </p>
+                    <p className="mt-1.5 text-[13px] font-semibold text-foreground leading-tight truncate">
+                      {apt.service.name}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
+                      €{apt.service.price} · {duration}m
+                    </p>
+                  </div>
+                </div>
+
+                {/* Effect bullets — one Confirm leads to these consequences */}
+                <div className="px-7 pb-5 border-t border-border pt-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground mb-2.5">
+                    {t('calendar.cancelConfirmWhat')}
+                  </p>
+                  <ul className="space-y-2 text-[13px] text-foreground/85 leading-snug">
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-2 h-1 w-1 rounded-full bg-rose-500 shrink-0" />
+                      <span>{t('calendar.cancelConfirmEffect1')}</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-2 h-1 w-1 rounded-full bg-muted-foreground/60 shrink-0" />
+                      <span>{t('calendar.cancelConfirmEffect2')}</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-2 h-1 w-1 rounded-full bg-muted-foreground/60 shrink-0" />
+                      <span>{t('calendar.cancelConfirmEffect3')}</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="border-t border-border bg-muted/15 px-7 py-3.5 flex items-center justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCancelConfirmOpen(false)}
+                    disabled={busy}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    {t('common.keep')}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      onChangeStatus(apt.id, 'cancelled');
+                      setCancelConfirmOpen(false);
+                      onClose();
+                    }}
+                    disabled={busy}
+                    className="min-w-[160px] gap-1.5"
+                  >
+                    <XCircleIcon className="h-3.5 w-3.5" />
+                    {t('calendar.cancelAppointment')}
+                  </Button>
+                </div>
+              </motion.div>
+            </DialogContent>
+          </Dialog>
+        )}
+      </AnimatePresence>
     </Dialog>
   );
 }
@@ -432,6 +1213,2532 @@ function QuickAction({
   );
 }
 
+// ─── Block Dialog ────────────────────────────────────────
+// Single dialog covers both stores: lunch/dinner/rest go to `breaksApi`,
+// day-off / vacation / sick / training go to `absencesApi`. Switching the
+// type chip swaps the bottom of the form (time-range pickers vs. all-day).
+const DOW_ORDER: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DOW_LABEL: Record<DayOfWeek, string> = {
+  monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu',
+  friday: 'Fri', saturday: 'Sat', sunday: 'Sun',
+};
+
+function BlockDialog({
+  state,
+  onClose,
+  onSaved,
+  onSwitchToBooking,
+  staffList,
+  isOwner,
+  defaultDow,
+}: {
+  state: NonNullable<{
+    mode: 'create'; staffId?: string; dayOfWeek?: DayOfWeek;
+  } | { mode: 'edit-break'; brk: Break } | { mode: 'edit-absence'; absence: Absence; staffId: string }>;
+  onClose: () => void;
+  onSaved: () => void;
+  /** Optional: provided in create-mode entry from "+" Popover so the user can
+   *  flip to the booking flow without losing the chosen staff. Edit-mode
+   *  callers omit this — mid-edit you don't want a tab that throws away
+   *  the record under the cursor. */
+  onSwitchToBooking?: (carry: { staffId?: string }) => void;
+  staffList: { id: string; firstName: string; lastName: string; isActive: boolean; avatarUrl?: string }[];
+  isOwner: boolean;
+  defaultDow: DayOfWeek;
+}) {
+  const queryClient = useQueryClient();
+  const reduce = useReducedMotion();
+  const currentUserId = useAuthStore(s => s.user?.id);
+
+  // Derive initial form values from the state
+  const init = useMemo(() => {
+    if (state.mode === 'edit-break') {
+      return {
+        type: state.brk.type as BlockType,
+        staffId: state.brk.staffId,
+        dayOfWeek: state.brk.dayOfWeek,
+        startTime: state.brk.startTime,
+        endTime: state.brk.endTime,
+        editingId: state.brk.id,
+      };
+    }
+    if (state.mode === 'edit-absence') {
+      return {
+        type: state.absence.reason as BlockType,
+        staffId: state.absence.staffId,
+        dayOfWeek: state.absence.dayOfWeek,
+        startTime: '12:00',
+        endTime: '13:00',
+        editingId: undefined,
+      };
+    }
+    return {
+      type: 'lunch' as BlockType,
+      staffId: state.staffId ?? staffList.find(s => s.isActive)?.id ?? '',
+      dayOfWeek: state.dayOfWeek ?? defaultDow,
+      startTime: '12:00',
+      endTime: '13:00',
+      editingId: undefined,
+    };
+  }, [state, staffList, defaultDow]);
+
+  const [type, setType] = useState<BlockType>(init.type);
+  const [staffId, setStaffId] = useState<string>(init.staffId);
+  // In edit mode the day is fixed (each Break/Absence is keyed to one day).
+  // In create mode we let the operator multi-select — saving fans out one
+  // Break/Absence per selected day so a "every Mon/Wed/Fri" block becomes
+  // three independent records that can be edited separately later.
+  const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek>(init.dayOfWeek);
+  const [dayOfWeeks, setDayOfWeeks] = useState<Set<DayOfWeek>>(() => new Set([init.dayOfWeek]));
+  const [startTime, setStartTime] = useState(init.startTime);
+  const [endTime, setEndTime] = useState(init.endTime);
+  // Free-text label for `type === 'custom'`. Carries through edits when the
+  // existing break already has a customLabel; otherwise starts blank.
+  const [customLabel, setCustomLabel] = useState<string>(
+    state.mode === 'edit-break' && state.brk.type === 'custom' ? (state.brk.customLabel ?? '') : '',
+  );
+  // Recurrence — 'weekly' is the historical default (repeats forever on selected days).
+  // 'never' = single date (one-off). 'ranged' = weekly bounded by [startDate, endDate].
+  type BlockRecurrence = 'never' | 'weekly' | 'ranged';
+  const initRecurrence: BlockRecurrence = state.mode === 'edit-break' && state.brk.recurrence === 'one-off'
+    ? 'never'
+    : state.mode === 'edit-break' && (state.brk.startDate || state.brk.endDate)
+      ? 'ranged'
+      : 'weekly';
+  const todayYMD = format(new Date(), 'yyyy-MM-dd');
+  const [recurrence, setRecurrence] = useState<BlockRecurrence>(initRecurrence);
+  const [oneOffDate, setOneOffDate] = useState<string>(
+    state.mode === 'edit-break' && state.brk.startDate ? state.brk.startDate : todayYMD,
+  );
+  const [rangeStart, setRangeStart] = useState<string>(
+    state.mode === 'edit-break' && state.brk.startDate ? state.brk.startDate : todayYMD,
+  );
+  const [rangeEnd, setRangeEnd] = useState<string>(
+    state.mode === 'edit-break' && state.brk.endDate
+      ? state.brk.endDate
+      : format(addDays(new Date(), 7), 'yyyy-MM-dd'),
+  );
+  const [oneOffDateOpen, setOneOffDateOpen] = useState(false);
+  const [rangeStartOpen, setRangeStartOpen] = useState(false);
+  const [rangeEndOpen, setRangeEndOpen] = useState(false);
+
+  const kind = BLOCK_KIND[type];
+  const isEdit = state.mode !== 'create';
+  // Sorted by Mon→Sun order so the recurrence note and save iteration both
+  // read in the user's mental order, regardless of the click sequence used
+  // to toggle the chips.
+  const targetDays: DayOfWeek[] = isEdit ? [dayOfWeek] : DOW_ORDER.filter(d => dayOfWeeks.has(d));
+
+  const upsertMut = useMutation({
+    mutationFn: async () => {
+      if (isEdit) {
+        // Single-day update — same as before.
+        if (kind === 'break') {
+          if (state.mode === 'edit-absence') {
+            await absencesApi.remove({ staffId, dayOfWeek });
+          }
+          return breaksApi.upsert({
+            id: init.editingId,
+            staffId,
+            dayOfWeek,
+            startTime,
+            endTime,
+            type: type as 'lunch' | 'dinner' | 'rest' | 'custom',
+            customLabel: type === 'custom' ? (customLabel.trim() || undefined) : undefined,
+          });
+        }
+        if (state.mode === 'edit-break') {
+          await breaksApi.remove({ id: init.editingId!, staffId });
+        }
+        return absencesApi.upsert({
+          staffId,
+          dayOfWeek,
+          reason: type as AbsenceReason,
+        });
+      }
+      // Create-mode fan-out: across staff (1 specific OR all active) × days.
+      // Sequential awaits so a partial failure leaves a consistent set —
+      // earlier rows land, the toast catches the failure, the operator can
+      // retry from a half-saved state. `breaksApi.upsert` and `absencesApi.upsert`
+      // are idempotent (absence by {staffId, dayOfWeek}; break creates new id
+      // on retry — duplicates possible there if user retries, but rare in practice).
+      const targetStaff = staffId === 'all'
+        ? staffList.filter(s => s.isActive).map(s => s.id)
+        : [staffId];
+      // Recurrence semantics drive both the day-set and the persisted fields:
+      // - 'never': single record per staff, dayOfWeek derived from oneOffDate.
+      // - 'weekly': legacy behavior — one record per (staff, dow), unbounded.
+      // - 'ranged': one record per (staff, dow), bounded by startDate/endDate.
+      const recurrenceMeta: Pick<Break, 'recurrence' | 'startDate' | 'endDate'> = recurrence === 'never'
+        ? { recurrence: 'one-off', startDate: oneOffDate }
+        : recurrence === 'ranged'
+          ? { recurrence: 'weekly', startDate: rangeStart, endDate: rangeEnd }
+          : { recurrence: 'weekly' };
+      // Audit stamp — same shape as Appointment so the hover-card can render
+      // a "СОЗДАНО · {operator name} · {timestamp}" footer on block tiles.
+      const auditMeta = {
+        createdBy: currentUserId,
+        createdAt: new Date().toISOString(),
+      };
+      const oneOffDow = recurrence === 'never'
+        ? DOW_ORDER[(parseISO(oneOffDate).getDay() + 6) % 7]
+        : null;
+      const daysToWrite: DayOfWeek[] = recurrence === 'never' && oneOffDow
+        ? [oneOffDow]
+        : targetDays;
+      const results = [];
+      for (const sid of targetStaff) {
+        for (const d of daysToWrite) {
+          if (kind === 'break') {
+            results.push(await breaksApi.upsert({
+              staffId: sid, dayOfWeek: d, startTime, endTime,
+              type: type as 'lunch' | 'dinner' | 'rest' | 'custom',
+              customLabel: type === 'custom' ? (customLabel.trim() || undefined) : undefined,
+              ...recurrenceMeta,
+              ...auditMeta,
+            }));
+          } else {
+            results.push(await absencesApi.upsert({
+              staffId: sid, dayOfWeek: d, reason: type as AbsenceReason,
+              ...recurrenceMeta,
+              ...auditMeta,
+            }));
+          }
+        }
+      }
+      return results;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['breaks'] });
+      queryClient.invalidateQueries({ queryKey: ['absences'] });
+      const nStaff = staffId === 'all' ? staffList.filter(s => s.isActive).length : 1;
+      const nDays = targetDays.length;
+      const total = nStaff * nDays;
+      toast.success(
+        isEdit ? 'Block updated'
+          : total === 1 ? 'Block added'
+          : nStaff > 1 && nDays > 1 ? `Block added · ${nStaff} staff × ${nDays} days`
+          : nStaff > 1 ? `Block added on ${nStaff} staff`
+          : `Block added on ${nDays} days`,
+      );
+      onSaved();
+    },
+    onError: () => toast.error('Could not save block'),
+  });
+
+  const removeMut = useMutation({
+    mutationFn: async () => {
+      if (state.mode === 'edit-break') {
+        return breaksApi.remove({ id: state.brk.id, staffId: state.brk.staffId });
+      }
+      if (state.mode === 'edit-absence') {
+        return absencesApi.remove({ staffId: state.absence.staffId, dayOfWeek: state.absence.dayOfWeek });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['breaks'] });
+      queryClient.invalidateQueries({ queryKey: ['absences'] });
+      toast.success('Block removed');
+      onSaved();
+    },
+    onError: () => toast.error('Could not remove block'),
+  });
+
+  // Validate break time ranges
+  const startMin = parseTimeToMinutes(startTime);
+  const endMin = parseTimeToMinutes(endTime);
+  const breakInvalid = kind === 'break' && endMin <= startMin;
+  const busy = upsertMut.isPending || removeMut.isPending;
+
+  const allTypes: BlockType[] = ['lunch', 'dinner', 'rest', 'custom', 'day-off', 'vacation', 'sick', 'training'];
+  const visibleTypes = allTypes.filter(tp => isOwner || !OWNER_ONLY_TYPES.includes(tp));
+
+  const t = useT();
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden max-h-[92vh] overflow-y-auto">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{isEdit ? t('calendar.blockEditTitle') : t('calendar.blockTitle')}</DialogTitle>
+        </DialogHeader>
+
+        {/* Editorial header */}
+        <div className="px-7 pt-7 pb-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {isEdit ? 'Edit · Block time' : 'Add to calendar'}
+          </p>
+          <p className="mt-1 text-2xl sm:text-3xl font-bold text-foreground tracking-tight leading-tight">
+            {isEdit ? t('calendar.blockEditTitle') : t('calendar.blockTitle')}
+          </p>
+        </div>
+
+        {/* Mode tabs — visible only in create mode (edit is locked to one record).
+            Clicking "Booking" closes this dialog and opens the New Appointment
+            flow with the chosen staff carried over. Underline is per-dialog
+            (no shared layoutId across dialogs) since we can't morph between
+            two Radix Dialog roots cleanly. */}
+        {!isEdit && onSwitchToBooking && (
+          <div className="flex border-b border-border px-7">
+            <button
+              type="button"
+              onClick={() => {
+                onSwitchToBooking({ staffId: staffId === 'all' ? undefined : staffId });
+              }}
+              className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Booking
+            </button>
+            <button
+              type="button"
+              className="relative px-3 py-2 text-sm font-semibold text-foreground"
+              aria-pressed
+            >
+              Block
+              <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" />
+            </button>
+          </div>
+        )}
+
+        {/* Type chips — partitioned into Break vs Absence sub-sections.
+            BLOCK_KIND already routes the save to the right store; the UI
+            now reflects that bisection visually. "Свой" (custom) lives in
+            the Break group as the last chip with a dashed border to
+            communicate "this one is a free-text label" before the click. */}
+        <div className="border-t border-border px-7 py-5">
+          <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {t('calendar.blockType')}
+          </p>
+          {(() => {
+            const breakTypes = visibleTypes.filter(tp => BLOCK_KIND[tp] === 'break');
+            const absenceTypes = visibleTypes.filter(tp => BLOCK_KIND[tp] === 'absence');
+
+            const renderChip = (tp: BlockType) => {
+              const Icon = BLOCK_ICON[tp];
+              const active = type === tp;
+              const owner = OWNER_ONLY_TYPES.includes(tp);
+              const isCustom = tp === 'custom';
+              return (
+                <button
+                  key={tp}
+                  type="button"
+                  onClick={() => setType(tp)}
+                  className={cn(
+                    'group inline-flex items-center gap-1.5 rounded-full border pl-2 pr-3 py-1 text-xs font-medium transition-colors',
+                    isCustom && 'border-dashed',
+                    active
+                      ? isCustom
+                        ? 'border-background/60 bg-foreground text-background'
+                        : 'border-foreground bg-foreground text-background'
+                      : isCustom
+                        ? 'border-foreground/40 bg-card text-foreground hover:border-foreground/60 hover:bg-accent/40'
+                        : 'border-border bg-card text-foreground hover:bg-accent/40',
+                  )}
+                  aria-pressed={active}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {t(BLOCK_TKEY[tp])}
+                  {owner && !active && (
+                    <KeyIcon className="ml-0.5 h-3 w-3 text-amber-500/70" aria-label="Owner only" />
+                  )}
+                </button>
+              );
+            };
+
+            return (
+              <div className="space-y-3.5">
+                {breakTypes.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                      {t('block.groupBreak')}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {breakTypes.map(renderChip)}
+                    </div>
+                  </div>
+                )}
+                {absenceTypes.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                      {t('block.groupAbsence')}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {absenceTypes.map(renderChip)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          {/* Custom label input — appears with a height-collapse animation
+              when the user picks "Custom". The label is optional; an empty
+              field falls back to the translated "Custom" label on the tile. */}
+          <AnimatePresence initial={false}>
+            {type === 'custom' && (
+              <motion.div
+                key="custom-label"
+                initial={reduce ? false : { height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
+                className="overflow-hidden"
+              >
+                <div className="pt-3">
+                  <Input
+                    value={customLabel}
+                    onChange={(e) => setCustomLabel(e.target.value)}
+                    onBlur={() => {
+                      // Detect keyboard-mash labels like "xxxxx" / "kjkjk" —
+                      // 4+ consonants only. Non-blocking nudge so the
+                      // operator can still save a deliberate cipher.
+                      const trimmed = customLabel.trim();
+                      if (/^[bcdfghjklmnpqrstvwxyz]{4,}$/i.test(trimmed)) {
+                        toast.warning(t('toast.breakNameSuspicious'));
+                      }
+                    }}
+                    placeholder={t('calendar.customBlockPlaceholder')}
+                    maxLength={48}
+                    className="h-10"
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Staff picker. The "All team" chip leads — clicking it fans the save
+            out across every active staff member (e.g. salon-wide holiday). Only
+            available in create mode; edit always targets one record. */}
+        <div className="border-t border-border px-7 py-5">
+          <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {t('calendar.blockStaff')}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {!isEdit && (
+              <button
+                key="__all"
+                type="button"
+                onClick={() => setStaffId('all')}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-full border pl-2.5 pr-3 py-1 transition-colors',
+                  staffId === 'all'
+                    ? 'border-foreground bg-foreground text-background'
+                    : 'border-border bg-card text-foreground hover:bg-accent/40',
+                )}
+                aria-pressed={staffId === 'all'}
+              >
+                <UsersIcon className="h-4 w-4" />
+                <span className="text-xs font-medium">All team</span>
+              </button>
+            )}
+            {staffList.filter(s => s.isActive).map(s => {
+              const active = staffId === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStaffId(s.id)}
+                  className={cn(
+                    'inline-flex items-center gap-2 rounded-full border pl-1 pr-3 py-1 transition-colors',
+                    active
+                      ? 'border-foreground bg-foreground text-background'
+                      : 'border-border bg-card text-foreground hover:bg-accent/40',
+                  )}
+                  aria-pressed={active}
+                >
+                  <Avatar className="h-6 w-6 ring-2 ring-background">
+                    {s.avatarUrl && <AvatarImage src={s.avatarUrl} alt={s.firstName} />}
+                    <AvatarFallback className="text-[10px] font-bold bg-muted">
+                      {s.firstName[0]}{s.lastName[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-xs font-medium">{s.firstName}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* When — day of week + (break only) time range */}
+        <div className="border-t border-border px-7 py-5">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              {t('calendar.blockWhen')}
+            </p>
+            {/* Quick-select shortcuts — only meaningful in create mode where
+                multi-day pick is allowed. "Mon–Fri" is the typical "weekday
+                routine" pattern (recurring lunch break for the working week);
+                "All week" handles e.g. permanent rest day for receptionist. */}
+            {!isEdit && (
+              <div className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+                <button
+                  type="button"
+                  onClick={() => setDayOfWeeks(new Set(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']))}
+                  className="rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground transition-colors"
+                >
+                  Mon–Fri
+                </button>
+                <span className="text-muted-foreground/40">·</span>
+                <button
+                  type="button"
+                  onClick={() => setDayOfWeeks(new Set(DOW_ORDER))}
+                  className="rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground transition-colors"
+                >
+                  All week
+                </button>
+                <span className="text-muted-foreground/40">·</span>
+                <button
+                  type="button"
+                  onClick={() => setDayOfWeeks(new Set([defaultDow]))}
+                  className="rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground transition-colors"
+                >
+                  Today
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Recurrence selector — Never (one-off) / Every week (current behavior) /
+              In defined time (weekly bounded by date range). */}
+          {!isEdit && (
+            <div className="mb-4 space-y-3">
+              <Select value={recurrence} onValueChange={v => setRecurrence(v as BlockRecurrence)}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="never">{t('calendar.repeatNever')}</SelectItem>
+                  <SelectItem value="weekly">{t('calendar.repeatWeekly')}</SelectItem>
+                  <SelectItem value="ranged">{t('calendar.repeatRanged')}</SelectItem>
+                </SelectContent>
+              </Select>
+              {recurrence === 'never' && (
+                <div>
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    {t('calendar.blockWhen')}
+                  </Label>
+                  <Popover open={oneOffDateOpen} onOpenChange={setOneOffDateOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="mt-1.5 inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 h-10 text-sm font-medium tabular-nums hover:bg-accent transition-colors w-full"
+                      >
+                        {format(parseISO(oneOffDate), 'EEE, MMM d, yyyy')}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="p-0">
+                      <MiniCalendar
+                        selectedDate={parseISO(oneOffDate)}
+                        onSelectDate={(d) => {
+                          setOneOffDate(format(d, 'yyyy-MM-dd'));
+                          setOneOffDateOpen(false);
+                        }}
+                        appointments={[]}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
+              {recurrence === 'ranged' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('calendar.from')}</Label>
+                    <Popover open={rangeStartOpen} onOpenChange={setRangeStartOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="mt-1.5 inline-flex items-center justify-center rounded-md border border-border bg-card px-3 h-9 text-sm font-medium tabular-nums hover:bg-accent transition-colors w-full"
+                        >
+                          {format(parseISO(rangeStart), 'MMM d')}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="p-0">
+                        <MiniCalendar
+                          selectedDate={parseISO(rangeStart)}
+                          onSelectDate={(d) => { setRangeStart(format(d, 'yyyy-MM-dd')); setRangeStartOpen(false); }}
+                          appointments={[]}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('calendar.to')}</Label>
+                    <Popover open={rangeEndOpen} onOpenChange={setRangeEndOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="mt-1.5 inline-flex items-center justify-center rounded-md border border-border bg-card px-3 h-9 text-sm font-medium tabular-nums hover:bg-accent transition-colors w-full"
+                        >
+                          {format(parseISO(rangeEnd), 'MMM d')}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="p-0">
+                        <MiniCalendar
+                          selectedDate={parseISO(rangeEnd)}
+                          onSelectDate={(d) => { setRangeEnd(format(d, 'yyyy-MM-dd')); setRangeEndOpen(false); }}
+                          appointments={[]}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className={cn('flex flex-wrap gap-1', !isEdit && recurrence === 'never' && 'hidden')}>
+            {DOW_ORDER.map(d => {
+              const active = isEdit ? dayOfWeek === d : dayOfWeeks.has(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => {
+                    if (isEdit) {
+                      setDayOfWeek(d);
+                      return;
+                    }
+                    setDayOfWeeks(prev => {
+                      const next = new Set(prev);
+                      if (next.has(d)) {
+                        // Don't allow emptying the set — at least one day must remain
+                        // selected so Save isn't a no-op the operator has to debug.
+                        if (next.size === 1) return next;
+                        next.delete(d);
+                      } else {
+                        next.add(d);
+                      }
+                      return next;
+                    });
+                  }}
+                  className={cn(
+                    'flex h-9 w-12 items-center justify-center rounded-md border text-[11px] font-semibold uppercase tracking-wider transition-colors',
+                    active
+                      ? 'border-foreground bg-foreground text-background'
+                      : 'border-border bg-card text-muted-foreground hover:bg-accent/40 hover:text-foreground',
+                  )}
+                  aria-pressed={active}
+                >
+                  {DOW_LABEL[d]}
+                </button>
+              );
+            })}
+          </div>
+
+          <AnimatePresence mode="wait" initial={false}>
+            {kind === 'break' ? (
+              <motion.div
+                key="break-times"
+                initial={reduce ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduce ? undefined : { opacity: 0, y: -6 }}
+                transition={{ duration: MOTION_DUR.fast, ease: MOTION_EASE }}
+                className="mt-4 grid grid-cols-2 gap-3"
+              >
+                <div>
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Starts</Label>
+                  <Input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="mt-1.5 h-10 tabular-nums"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ends</Label>
+                  <Input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className={cn('mt-1.5 h-10 tabular-nums', breakInvalid && 'border-rose-500')}
+                  />
+                </div>
+                {breakInvalid && (
+                  <p className="col-span-2 text-[11px] text-rose-600 dark:text-rose-400">
+                    End time must be after start time.
+                  </p>
+                )}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="absence-allday"
+                initial={reduce ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduce ? undefined : { opacity: 0, y: -6 }}
+                transition={{ duration: MOTION_DUR.fast, ease: MOTION_EASE }}
+                className="mt-4 inline-flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+              >
+                <ClockIcon className="h-3.5 w-3.5" />
+                <span>{t('calendar.allDay')}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Recurrence note — three variants based on the selected mode:
+              - never:  "On {date} only"
+              - weekly: "Repeats every {day} until removed"
+              - ranged: "Every {day} from {start} to {end}" */}
+          <p className="mt-3 text-[11px] text-muted-foreground/80 leading-relaxed">
+            {(() => {
+              if (!isEdit && recurrence === 'never') {
+                return t('calendar.blockRecurrenceNever').replace('{date}', format(parseISO(oneOffDate), 'MMM d, yyyy'));
+              }
+              const dayLabel = targetDays.length === 7 ? 'day' : targetDays.map(d => DOW_LABEL[d]).join(', ');
+              if (!isEdit && recurrence === 'ranged') {
+                return t('calendar.blockRecurrenceRanged')
+                  .replace('{day}', dayLabel)
+                  .replace('{start}', format(parseISO(rangeStart), 'MMM d'))
+                  .replace('{end}', format(parseISO(rangeEnd), 'MMM d'));
+              }
+              return t('calendar.blockRecurrence').replace('{day}', dayLabel);
+            })()}
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div className="px-7 py-5 flex items-center gap-3 border-t border-border">
+          {isEdit ? (
+            <button
+              type="button"
+              onClick={() => removeMut.mutate()}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 transition-colors disabled:opacity-50"
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+              {t('calendar.removeBlock')}
+            </button>
+          ) : <span />}
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="ml-auto text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {t('common.cancel')}
+          </button>
+          <Button
+            onClick={() => upsertMut.mutate()}
+            disabled={
+              busy
+              || breakInvalid
+              || !staffId
+              || (isEdit ? false : (recurrence === 'never' ? false : targetDays.length === 0))
+              || (recurrence === 'ranged' && rangeEnd < rangeStart)
+            }
+          >
+            {upsertMut.isPending
+              ? '…'
+              : (() => {
+                  if (isEdit) return t('common.saveChanges');
+                  if (recurrence === 'never') return t('common.saveChanges');
+                  const nStaff = staffId === 'all' ? staffList.filter(s => s.isActive).length : 1;
+                  const total = nStaff * targetDays.length;
+                  return total > 1 ? `Save · ${total}` : t('common.saveChanges');
+                })()}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Walk-in Dialog ──────────────────────────────────────
+// Quick "client without a prior booking" flow. Faster than the full
+// New Appointment dialog — just client + service + barber, with the
+// time defaulted to the next 15-min slot from now.
+function WalkInDialog({
+  open,
+  onClose,
+  activeStaff,
+  services,
+  clients,
+  officeId,
+  staffColorMap,
+  prefillName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  activeStaff: { id: string; firstName: string; lastName: string; isActive: boolean; avatarUrl?: string }[];
+  services: { id: string; name: string; price: number; duration: number }[];
+  clients: Client[];
+  officeId: string;
+  staffColorMap: Map<string, number>;
+  /** When the operator launches walk-in via the booking picker's
+   *  "Save as walk-in (query)" shortcut, this carries the typed name
+   *  through so the inner client search starts pre-filled. */
+  prefillName?: string;
+}) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const reduce = useReducedMotion();
+  const currentUserId = useAuthStore(s => s.user?.id);
+
+  // Round "now" up to the next 15-min slot.
+  const nextSlot = useMemo(() => {
+    const d = new Date();
+    const m = d.getMinutes();
+    const next = Math.ceil(m / 15) * 15;
+    if (next >= 60) {
+      d.setHours(d.getHours() + 1);
+      d.setMinutes(0);
+    } else {
+      d.setMinutes(next);
+    }
+    d.setSeconds(0); d.setMilliseconds(0);
+    return d;
+  }, [open]);
+
+  const [clientId, setClientId] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
+  const [newClient, setNewClient] = useState<NewClientDraft>(EMPTY_NEW_CLIENT_DRAFT);
+  const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
+  const [staffId, setStaffId] = useState(activeStaff[0]?.id ?? '');
+  const [time, setTime] = useState(format(nextSlot, 'HH:mm'));
+
+  // Reset form when reopened. `prefillName` lands in the inner client
+  // search so the operator who typed "Maria" in the booking picker and
+  // jumped into walk-in doesn't have to retype.
+  useEffect(() => {
+    if (!open) return;
+    setClientId('');
+    setClientSearch(prefillName ?? '');
+    setIsCreatingClient(false);
+    setNewClient(EMPTY_NEW_CLIENT_DRAFT);
+    setServiceId(services[0]?.id ?? '');
+    setStaffId(activeStaff[0]?.id ?? '');
+    setTime(format(nextSlot, 'HH:mm'));
+  }, [open, services, activeStaff, nextSlot, prefillName]);
+
+  const createClientMut = useMutation({
+    mutationFn: (data: Parameters<typeof clientsApi.create>[0]) => clientsApi.create(data),
+    onSuccess: (c) => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      setClientId(c.id);
+      setNewClient(EMPTY_NEW_CLIENT_DRAFT);
+      setIsCreatingClient(false);
+      setClientSearch('');
+      toast.success(t('toast.clientCreated'));
+    },
+    onError: () => toast.error(t('toast.clientCreateError')),
+  });
+
+  const checkInMut = useMutation({
+    mutationFn: (payload: Omit<Appointment, 'id' | 'createdAt'>) => appointmentsApi.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      toast.success('Walk-in checked in');
+      onClose();
+    },
+    onError: (err: Error & { code?: string }) => {
+      if (err.code === 'BOOKING_CONFLICT') toast.error(t('toast.bookingConflict'));
+      else toast.error(t('toast.appointmentError'));
+    },
+  });
+
+  const submit = () => {
+    if (!clientId || !serviceId || !staffId) {
+      toast.error(t('toast.fillRequired'));
+      return;
+    }
+    const svc = services.find(s => s.id === serviceId);
+    if (!svc) return;
+    const m = time.match(/^(\d{2}):(\d{2})$/);
+    if (!m) return;
+    const today = new Date();
+    const st = new Date(today.getFullYear(), today.getMonth(), today.getDate(), Number(m[1]), Number(m[2]), 0, 0);
+    const et = new Date(st.getTime() + svc.duration * 60_000);
+    checkInMut.mutate({
+      clientId, staffId, serviceId,
+      startTime: st.toISOString(),
+      endTime: et.toISOString(),
+      status: 'confirmed', // walk-in: client already in the chair
+      notes: 'Walk-in',
+      locationId: officeId,
+      createdBy: currentUserId,
+    });
+  };
+
+  const ready = clientId && serviceId && staffId && time;
+  const busy = checkInMut.isPending || createClientMut.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader className="space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground inline-flex items-center gap-1.5">
+            <BoltIcon className="h-3 w-3" />
+            {t('calendar.walkIn')}
+          </p>
+          <DialogTitle className="text-2xl sm:text-3xl font-bold tracking-tight">
+            {t('calendar.walkInTitle')}
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            {t('calendar.walkInSubtitle')}
+          </p>
+        </DialogHeader>
+
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
+          className="space-y-6"
+        >
+          {/* Client */}
+          <div className="border-t border-border pt-5">
+            <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              {t('calendar.sectionWho')}
+            </p>
+            <ClientAutocomplete
+              t={t}
+              clients={clients}
+              selectedClientId={clientId}
+              onSelectClient={(id) => { setClientId(id); setClientSearch(''); }}
+              search={clientSearch}
+              onSearchChange={setClientSearch}
+              isCreatingClient={isCreatingClient}
+              onStartCreate={() => {
+                const q = clientSearch.trim();
+                const looksLikePhone = /[\d+()]/.test(q);
+                const looksLikeEmail = q.includes('@');
+                setNewClient({
+                  ...EMPTY_NEW_CLIENT_DRAFT,
+                  fullName: !looksLikePhone && !looksLikeEmail ? q : '',
+                  phone: looksLikePhone ? q : '',
+                  email: looksLikeEmail ? q : '',
+                });
+                setIsCreatingClient(true);
+              }}
+              onCancelCreate={() => setIsCreatingClient(false)}
+              newClient={newClient}
+              onNewClientChange={setNewClient}
+              onSubmitNewClient={() => {
+                const { firstName, lastName } = splitFullName(newClient.fullName);
+                createClientMut.mutate({
+                  firstName,
+                  lastName,
+                  phone:     newClient.phone.trim(),
+                  email:     newClient.email.trim(),
+                  notes:     newClient.notes.trim(),
+                  avatarUrl: newClient.avatarUrl?.trim() || undefined,
+                  officeIds: [officeId],
+                });
+              }}
+              isSubmittingClient={createClientMut.isPending}
+            />
+          </div>
+
+          {/* Service + Barber */}
+          <div className="border-t border-border pt-5 grid sm:grid-cols-2 gap-4">
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {t('calendar.service')}
+              </Label>
+              <Select value={serviceId} onValueChange={setServiceId}>
+                <SelectTrigger className="mt-1.5 h-10 tabular-nums"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {services.map(s => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name} — €{s.price} · {s.duration}m
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {t('calendar.barber')}
+              </Label>
+              <Select value={staffId} onValueChange={setStaffId}>
+                <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {activeStaff.map(s => {
+                    const c = getStaffColor(staffColorMap.get(s.id) ?? 0);
+                    return (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="inline-flex items-center gap-2">
+                          <span className={cn('h-1.5 w-1.5 rounded-full', c.dot)} />
+                          {s.firstName} {s.lastName}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Time */}
+          <div className="border-t border-border pt-5">
+            <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Start time
+            </Label>
+            <div className="mt-1.5 flex items-center gap-3">
+              <Input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                step={900}
+                className="h-10 w-32 tabular-nums"
+              />
+              <button
+                type="button"
+                onClick={() => setTime(format(new Date(), 'HH:mm'))}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Now
+              </button>
+              <span className="text-[11px] text-muted-foreground/70">
+                Defaults to the next 15-min slot from now.
+              </span>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-border pt-5 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={busy || !ready}
+              className="group ml-auto inline-flex items-center bg-primary text-primary-foreground py-0 pl-6 pr-0 text-sm font-semibold uppercase tracking-[0.18em] transition-colors duration-200 hover:bg-foreground hover:text-background disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="py-3 text-left tabular-nums">
+                {checkInMut.isPending ? t('calendar.checkingIn') : t('calendar.checkIn')}
+              </span>
+              <span className="border-l border-black/30 dark:border-white/20 p-3 inline-flex items-center transition-transform duration-200 group-hover:translate-x-[2px]">
+                <ArrowRightIcon className="h-4 w-4" />
+              </span>
+            </button>
+          </div>
+        </motion.div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Focus banner ────────────────────────────────────────
+// Sits above the grid/week/day view when a single barber is focused.
+// motion.div lays in via a tiny y-fade — `layoutId` is intentionally NOT used
+// because the column-header in grid view doesn't survive across view modes
+// (the WeekView and DayAgenda don't render column headers), so a shared-id
+// morph would only animate part of the time and feel inconsistent.
+function FocusBanner({
+  staff,
+  onClear,
+  onJumpToShift,
+  t,
+}: {
+  staff: { id: string; firstName: string; lastName: string; avatarUrl?: string };
+  onClear: () => void;
+  onJumpToShift: () => void;
+  t: (key: TranslationKey) => string;
+}) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.div
+      key="focus-banner"
+      initial={reduce ? false : { opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={reduce ? undefined : { opacity: 0, y: -4 }}
+      transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
+      className="flex items-center gap-2 rounded-xl border border-foreground/15 bg-foreground/[0.03] px-3 py-2"
+    >
+      <Avatar className="h-7 w-7">
+        {staff.avatarUrl && <AvatarImage src={staff.avatarUrl} alt={staff.firstName} />}
+        <AvatarFallback className="text-[10px] font-bold bg-muted">
+          {staff.firstName[0]}{staff.lastName[0]}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          {t('calendar.focus')}
+        </p>
+        <p className="text-sm font-semibold text-foreground truncate leading-tight">
+          {staff.firstName} {staff.lastName}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onJumpToShift}
+        className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+        {t('calendar.contextJumpShift')}
+      </button>
+      <button
+        type="button"
+        onClick={onClear}
+        className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+      >
+        {t('calendar.focusClear')}
+      </button>
+    </motion.div>
+  );
+}
+
+// ─── Compact date field — eyebrow-less popover trigger ───
+// Used inside the Period section where the section header carries the label.
+// Renders as a lightweight chip; click opens a MiniCalendar Popover.
+function CompactDateField({
+  value,
+  onChange,
+  locale,
+  minDate,
+  ariaLabel,
+  disabled,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  locale: DateFnsLocale;
+  minDate?: string;
+  ariaLabel: string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const date = useMemo(() => parseISO(value), [value]);
+  const display = format(date, 'd MMM yyyy', { locale });
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={ariaLabel}
+          disabled={disabled}
+          className={cn(
+            'group flex items-center justify-between gap-2 rounded-md border border-border/80 bg-card/50 px-3 h-9 text-sm font-medium tabular-nums text-foreground transition-colors hover:border-foreground/40 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-card/50 disabled:hover:border-border/80',
+            className,
+          )}
+        >
+          <span className="truncate">{display}</span>
+          <CalendarDaysIcon className="h-3.5 w-3.5 text-muted-foreground/60 group-hover:text-foreground transition-colors shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-3" align="start">
+        <MiniCalendar
+          selectedDate={date}
+          onSelectDate={(d) => {
+            const next = format(d, 'yyyy-MM-dd');
+            if (minDate && next < minDate) return;
+            onChange(next);
+            setOpen(false);
+          }}
+          appointments={[]}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── Time picker — alarm-clock style with grid + LayoutGroup pills ───
+// Trigger displays "09:30 AM" (12h) or "09:30" (24h). Click opens a Popover
+// with a big digital display, hour grid, minute grid, and AM/PM toggle.
+// Each grid uses LayoutGroup so the selection pill *springs* between cells —
+// the signature alarm-clock feel.
+function TimePickerField({
+  value,         // HH:mm in 24h internal format
+  onChange,
+  timeFormat,
+  disabled,
+  ariaLabel,
+  open,
+  onOpenChange,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  timeFormat: '12h' | '24h';
+  disabled?: boolean;
+  ariaLabel?: string;
+  open?: boolean;
+  onOpenChange?: (o: boolean) => void;
+  className?: string;
+}) {
+  const reduceMotion = useReducedMotion();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = open !== undefined;
+  const isOpen = isControlled ? open : internalOpen;
+  const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen;
+  // Visual focus indicator on the digit display — clicking HH/MM in the
+  // dark hero highlights that segment. Pure visual nudge; the grid below
+  // stays interactive for either segment regardless.
+  const [focusedField, setFocusedField] = useState<'hour' | 'minute' | null>(null);
+
+  // Parse the 24h internal value
+  const [hStr = '00', mStr = '00'] = value.split(':');
+  const hour24 = Math.max(0, Math.min(23, parseInt(hStr, 10) || 0));
+  const minute = Math.max(0, Math.min(59, parseInt(mStr, 10) || 0));
+  const period: 'AM' | 'PM' = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+
+  // Display label: locale-agnostic since times are universal
+  const displayLabel = timeFormat === '12h'
+    ? `${String(hour12).padStart(2, '0')}:${String(minute).padStart(2, '0')} ${period}`
+    : `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
+  const setHour = (h: number) => {
+    let new24: number;
+    if (timeFormat === '24h') {
+      new24 = h;
+    } else {
+      // h is in 12h display range (1-12). Convert to 24h based on current period.
+      if (period === 'PM') new24 = h === 12 ? 12 : h + 12;
+      else new24 = h === 12 ? 0 : h;
+    }
+    onChange(`${String(new24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
+  };
+  const setMinute = (m: number) => {
+    onChange(`${String(hour24).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  };
+  const setPeriod = (p: 'AM' | 'PM') => {
+    if (p === period) return;
+    let new24: number;
+    if (p === 'PM') new24 = hour24 < 12 ? hour24 + 12 : hour24;
+    else new24 = hour24 >= 12 ? hour24 - 12 : hour24;
+    onChange(`${String(new24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
+  };
+
+  const hourCells = timeFormat === '12h'
+    ? [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    : Array.from({ length: 24 }, (_, i) => i);
+  // Minute grid is driven by the user-set granularity (Settings → "Time
+  // picker interval"). 15 → [0,15,30,45], 5 → [0,5,...,55], etc. The cells
+  // grow taller and reduce in count as the interval coarsens.
+  const [granularity] = useTimeGranularity();
+  const minuteCells = useMemo(() => {
+    const out: number[] = [];
+    for (let m = 0; m < 60; m += granularity) out.push(m);
+    return out;
+  }, [granularity]);
+  // Layout choice — keep cells legible across all six interval options.
+  const minuteCols = granularity === 1  ? 'grid-cols-10'
+    : granularity === 5  ? 'grid-cols-4'
+    : granularity === 10 ? 'grid-cols-6'
+    : granularity === 15 ? 'grid-cols-4'
+    : granularity === 30 ? 'grid-cols-2'
+    :                      'grid-cols-1';
+  const minuteCellH = granularity === 1 ? 'h-7 text-[11px]' : 'h-9 text-[13px]';
+  const selectedHourValue = timeFormat === '12h' ? hour12 : hour24;
+  const hourCols = timeFormat === '12h' ? 'grid-cols-4' : 'grid-cols-6';
+
+  // Stable layoutId — prefix with a unique-ish marker so multiple TimePicker
+  // instances on the same screen don't share pill animation state.
+  const groupKey = useMemo(() => Math.random().toString(36).slice(2, 8), []);
+
+  // ── Quick-shortcut handlers ───────────────────────────
+  // Snap to current local time, rounded to the user's interval (or 5m floor
+  // when the interval is finer). Bump-by adds N minutes with overflow into
+  // the hour/day boundary handled correctly.
+  const snapNow = () => {
+    const now = new Date();
+    const step = Math.max(granularity, 5);
+    const mm = Math.round(now.getMinutes() / step) * step;
+    const carryHr = mm === 60 ? (now.getHours() + 1) % 24 : now.getHours();
+    const adjMm = mm === 60 ? 0 : mm;
+    onChange(`${String(carryHr).padStart(2, '0')}:${String(adjMm).padStart(2, '0')}`);
+  };
+  const bumpBy = (deltaMin: number) => {
+    const totalMin = hour24 * 60 + minute + deltaMin;
+    const newHr = ((Math.floor(totalMin / 60)) % 24 + 24) % 24;
+    const newMin = ((totalMin % 60) + 60) % 60;
+    onChange(`${String(newHr).padStart(2, '0')}:${String(newMin).padStart(2, '0')}`);
+  };
+  const snapTopOfHour = () => {
+    onChange(`${String(hour24).padStart(2, '0')}:00`);
+  };
+
+  const shortcuts = [
+    { key: 'now', label: 'Now', aria: 'Snap to current time', onClick: snapNow },
+    { key: 'p15', label: '+15', aria: 'Add 15 minutes', onClick: () => bumpBy(15) },
+    { key: 'p30', label: '+30', aria: 'Add 30 minutes', onClick: () => bumpBy(30) },
+    { key: 'p60', label: '+1h', aria: 'Add 1 hour', onClick: () => bumpBy(60) },
+    { key: 'top', label: ':00', aria: 'Snap to top of hour', onClick: snapTopOfHour },
+  ];
+
+  // Hero digit button — keeps AnimatePresence flip on value change but
+  // ditches the dark-bar surround in favor of an editorial light surface
+  // with a subtle accent state when focused. Same shape for hour & minute
+  // so the two slots read as a typographic pair, not two controls.
+  const heroDigit = (field: 'hour' | 'minute', val: number) => (
+    <button
+      type="button"
+      onClick={() => setFocusedField(field)}
+      className={cn(
+        // focus-visible:ring is layered on top of the conditional state ring
+        // so keyboard users always see a clear indicator regardless of which
+        // segment is "active" in the visual focus model. (P2 fix.)
+        'relative leading-none rounded-lg px-1.5 py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        focusedField === field
+          ? 'bg-foreground/[0.06] ring-1 ring-foreground/15'
+          : 'hover:bg-accent/50',
+      )}
+      aria-label={`Focus ${field}`}
+    >
+      <AnimatePresence mode="popLayout">
+        <motion.span
+          key={`${field}-${val}`}
+          initial={reduceMotion ? false : { opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+          transition={{ duration: 0.18, ease: MOTION_EASE }}
+          className="inline-block text-[44px] font-bold tabular-nums tracking-tight text-foreground leading-none"
+        >
+          {String(val).padStart(2, '0')}
+        </motion.span>
+      </AnimatePresence>
+    </button>
+  );
+
+  return (
+    <Popover open={isOpen} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={ariaLabel}
+          className={cn(
+            'group flex w-full items-center justify-between gap-2 rounded-md border border-input bg-input-background px-3 h-10 text-sm font-medium tabular-nums text-foreground transition-colors hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-input',
+            className,
+          )}
+        >
+          <span className="truncate">{displayLabel}</span>
+          <ClockIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[340px] p-0 overflow-hidden border-border/80 shadow-lg" align="start">
+        <motion.div
+          initial={reduceMotion ? false : { opacity: 0, y: -6, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 28 }}
+        >
+          {/* QUICK SHORTCUTS — most-used adjustments live as a thin pill bar
+              above the editorial hero, so the operator never has to scrub two
+              grids for "set this to about now". Order: Now, +15/+30/+1h
+              forward bumps, snap to top-of-hour. Each chip springs on hover. */}
+          <div className="flex items-center gap-1 px-3 pt-2.5 pb-2 border-b border-border">
+            {shortcuts.map((sc, i) => (
+              <motion.button
+                key={sc.key}
+                type="button"
+                onClick={sc.onClick}
+                aria-label={sc.aria}
+                initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: MOTION_EASE, delay: 0.02 + i * 0.025 }}
+                whileHover={reduceMotion ? undefined : { y: -1 }}
+                whileTap={reduceMotion ? undefined : { scale: 0.94 }}
+                // Visual chip stays 28px tall; min-h-[44px] expands the tap
+                // area on touch (WCAG 2.5.5). The bumped touch zone collapses
+                // back to 28px at sm+ where mouse precision rules.
+                className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground hover:bg-accent rounded-md px-2 h-7 min-h-[44px] sm:min-h-[28px] tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              >
+                {sc.label}
+              </motion.button>
+            ))}
+          </div>
+
+          {/* EDITORIAL HERO — light surface, display-size HH:MM in foreground,
+              eyebrow above, AM/PM as a segmented control with sliding
+              LayoutGroup pill. Replaces the prior dark-bar inversion that
+              didn't fit the Editorial Command Center family. */}
+          <div className="px-5 pt-3.5 pb-3.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground mb-2">
+              Time
+            </p>
+            <div className="flex items-end gap-3">
+              <div className="flex items-baseline gap-0.5 flex-1 min-w-0">
+                {heroDigit('hour', selectedHourValue)}
+                <span className="text-[40px] font-bold tabular-nums text-muted-foreground/35 leading-none pb-1">:</span>
+                {heroDigit('minute', minute)}
+              </div>
+
+              {/* AM/PM segmented control */}
+              {timeFormat === '12h' && (
+                <LayoutGroup id={`tp-period-${groupKey}`}>
+                  <div className="flex items-center rounded-lg border border-border p-0.5 bg-muted/40">
+                    {(['AM', 'PM'] as const).map(p => {
+                      const active = period === p;
+                      return (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setPeriod(p)}
+                          aria-pressed={active}
+                          className={cn(
+                            // Visual cell stays 32px; min-h-[44px] expands the
+                            // tap area on touch (WCAG 2.5.5). Resets to 32px
+                            // at sm+ where mouse precision rules.
+                            'relative h-8 min-h-[44px] sm:min-h-[32px] px-3 rounded-md text-[11px] font-bold tracking-[0.14em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                            active ? 'text-background' : 'text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          {active && (
+                            <motion.span
+                              layoutId={`tp-period-${groupKey}`}
+                              className="absolute inset-0 rounded-md bg-foreground shadow-sm"
+                              transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 36 }}
+                              style={{ zIndex: 0 }}
+                            />
+                          )}
+                          <span className="relative z-10">{p}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </LayoutGroup>
+              )}
+            </div>
+          </div>
+
+          <div className="border-t border-border" />
+
+          <div className="px-4 pt-3 pb-4">
+            {/* Hour grid — circular cells nod to clock-face affordance.
+                Selected pill rides a LayoutGroup spring; siblings stagger
+                in on open with a subtle y-translate so the grid "lands"
+                rather than appears. */}
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground mb-2">
+              Hour
+            </p>
+            <LayoutGroup id={`tp-hour-${groupKey}`}>
+              <div className={cn('grid gap-1 mb-4', hourCols)}>
+                {hourCells.map((h, i) => {
+                  const sel = h === selectedHourValue;
+                  return (
+                    <motion.button
+                      key={h}
+                      type="button"
+                      onClick={() => { setFocusedField('hour'); setHour(h); }}
+                      initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={reduceMotion ? { duration: 0 } : { duration: 0.16, ease: MOTION_EASE, delay: 0.04 + i * 0.012 }}
+                      whileHover={reduceMotion ? undefined : { scale: 1.05 }}
+                      whileTap={reduceMotion ? undefined : { scale: 0.92 }}
+                      className="relative h-9 text-[13px] font-semibold tabular-nums rounded-full hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    >
+                      {sel && (
+                        <motion.span
+                          layoutId={`tp-hour-${groupKey}`}
+                          className="absolute inset-0 rounded-full bg-foreground shadow-md ring-2 ring-foreground/10 ring-offset-1 ring-offset-background"
+                          transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 36 }}
+                          style={{ zIndex: 0 }}
+                        />
+                      )}
+                      <span className={cn('relative z-10 transition-colors', sel ? 'text-background' : 'text-foreground')}>
+                        {String(h).padStart(2, '0')}
+                      </span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </LayoutGroup>
+
+            {/* Minute grid */}
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground mb-2">
+              Minute
+            </p>
+            <LayoutGroup id={`tp-min-${groupKey}`}>
+              <div className={cn('grid gap-1', minuteCols)}>
+                {minuteCells.map((m, i) => {
+                  const sel = m === minute;
+                  return (
+                    <motion.button
+                      key={m}
+                      type="button"
+                      onClick={() => { setFocusedField('minute'); setMinute(m); }}
+                      initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={reduceMotion ? { duration: 0 } : { duration: 0.16, ease: MOTION_EASE, delay: 0.08 + i * 0.012 }}
+                      whileHover={reduceMotion ? undefined : { scale: 1.05 }}
+                      whileTap={reduceMotion ? undefined : { scale: 0.92 }}
+                      className={cn(
+                        'relative font-semibold tabular-nums rounded-full hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                        minuteCellH,
+                      )}
+                    >
+                      {sel && (
+                        <motion.span
+                          layoutId={`tp-min-${groupKey}`}
+                          className="absolute inset-0 rounded-full bg-foreground shadow-md ring-2 ring-foreground/10 ring-offset-1 ring-offset-background"
+                          transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 36 }}
+                          style={{ zIndex: 0 }}
+                        />
+                      )}
+                      <span className={cn('relative z-10 transition-colors', sel ? 'text-background' : 'text-foreground')}>
+                        {String(m).padStart(2, '0')}
+                      </span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </LayoutGroup>
+          </div>
+        </motion.div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── Schedule strip — visual preview of the working window ───
+// Horizontal 06:00→22:00 timeline with a band that animates between modes.
+// Day-off mode → no band, just a muted "DAY OFF" label.
+// Custom mode → band repositions live as From/To selects update.
+// Standard mode → band reflects the weekly Shift.
+function ScheduleStrip({
+  mode,
+  customStart,
+  customEnd,
+  weeklyShift,
+  reduceMotion,
+  dayOffLabel,
+}: {
+  mode: 'day-off' | 'standard' | 'custom';
+  customStart: string;
+  customEnd: string;
+  weeklyShift: Shift | null;
+  reduceMotion: boolean;
+  dayOffLabel: string;
+}) {
+  const STRIP_START = 360;  // 06:00 in minutes
+  const STRIP_END = 1320;   // 22:00
+  const SPAN = STRIP_END - STRIP_START;
+  const pct = (mins: number) => Math.max(0, Math.min(100, ((mins - STRIP_START) / SPAN) * 100));
+  const parseHHMM = (s: string) => {
+    const [h, m] = s.split(':').map(Number);
+    return h * 60 + m;
+  };
+
+  let bandStart: number | null = null;
+  let bandEnd: number | null = null;
+  if (mode === 'custom') {
+    bandStart = parseHHMM(customStart);
+    bandEnd = parseHHMM(customEnd);
+  } else if (mode === 'standard' && weeklyShift) {
+    bandStart = parseHHMM(weeklyShift.startTime);
+    bandEnd = parseHHMM(weeklyShift.endTime);
+  }
+
+  const showBand = bandStart !== null && bandEnd !== null && bandEnd > bandStart;
+  const leftPct = showBand && bandStart !== null ? pct(bandStart) : 0;
+  const widthPct = showBand && bandStart !== null && bandEnd !== null ? pct(bandEnd) - pct(bandStart) : 0;
+
+  const formatHHMM = (mins: number) =>
+    `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="relative h-12 rounded-lg bg-muted/30 ring-1 ring-border/50 overflow-hidden">
+        {/* Hour grid */}
+        {[6, 8, 10, 12, 14, 16, 18, 20, 22].map((h) => (
+          <div
+            key={h}
+            className="absolute top-0 bottom-0 w-px bg-border/40"
+            style={{ left: `${pct(h * 60)}%` }}
+          />
+        ))}
+
+        {/* Working band — animates left/width when mode/times change */}
+        <motion.div
+          className="absolute top-1.5 bottom-1.5 rounded-md bg-foreground/10 ring-1 ring-foreground/40 flex items-center justify-center overflow-hidden backdrop-blur-[1px]"
+          animate={{
+            left: `${leftPct}%`,
+            width: `${widthPct}%`,
+            opacity: showBand ? 1 : 0,
+          }}
+          transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 32 }}
+        >
+          {showBand && widthPct > 26 && bandStart !== null && bandEnd !== null && (
+            <span className="text-[10px] font-semibold tabular-nums text-foreground/85 px-2 whitespace-nowrap">
+              {formatHHMM(bandStart)} – {formatHHMM(bandEnd)}
+            </span>
+          )}
+        </motion.div>
+
+        {/* Day-off / no-band overlay */}
+        <AnimatePresence>
+          {!showBand && (
+            <motion.div
+              key="dayoff"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={reduceMotion ? { duration: 0 } : { duration: 0.2 }}
+              className="absolute inset-0 flex items-center justify-center pointer-events-none"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/80">
+                {dayOffLabel}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Hour labels */}
+      <div className="relative h-3.5">
+        {[6, 10, 14, 18, 22].map((h) => (
+          <span
+            key={h}
+            className="absolute top-0 text-[10px] font-medium tabular-nums text-muted-foreground/55"
+            style={{ left: `${pct(h * 60)}%`, transform: 'translateX(-50%)' }}
+          >
+            {String(h).padStart(2, '0')}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit-day shift override modal ──────────────────────
+// Single-day shift editor. Replaces the prior 4-row context menu.
+// Modes: Day off, Standard (use weekly default), Custom hours.
+// Save creates/updates a ShiftOverride; Standard removes it.
+function EditDayShiftModal({
+  open,
+  staffId,
+  staffName,
+  selectedDate,
+  weeklyShift,
+  existingOverride,
+  onClose,
+}: {
+  open: boolean;
+  staffId: string;
+  staffName: string;
+  selectedDate: Date;
+  weeklyShift: Shift | null;
+  existingOverride: ShiftOverride | null;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const [language] = useLanguage();
+  const queryClient = useQueryClient();
+  const reduceMotion = useReducedMotion();
+
+  // Locale lookup for date-fns. Without this the RU/LT UI would still read
+  // the eyebrow date as "WED, MAY 6" — a glaring i18n hole noted in user feedback.
+  const dateLocale: DateFnsLocale =
+    language === 'ru' ? ruLocale : language === 'lt' ? ltLocale : enLocale;
+
+  // Derive initial mode from the **current effective state** for this date:
+  //  - override exists → reflect its kind
+  //  - no override + weekly shift → 'standard' (this is what's actually scheduled)
+  //  - no override + no weekly shift → 'day-off' (no work today by default)
+  // Critical: the previous default of 'day-off' broke Save (dirty=false because
+  // mode==initialMode), so the user couldn't actually save a day off.
+  const initialMode: 'day-off' | 'standard' | 'custom' =
+    existingOverride?.kind === 'day-off' ? 'day-off'
+    : existingOverride?.kind === 'custom' ? 'custom'
+    : weeklyShift ? 'standard' : 'day-off';
+  const initialStart = existingOverride?.startTime ?? weeklyShift?.startTime ?? '10:00';
+  const initialEnd = existingOverride?.endTime ?? weeklyShift?.endTime ?? '20:00';
+
+  const [mode, setMode] = useState<'day-off' | 'standard' | 'custom'>(initialMode);
+  const [customStart, setCustomStart] = useState(initialStart);
+  const [customEnd, setCustomEnd] = useState(initialEnd);
+
+  // Date range — defaults to single day (from = to = clicked date). Lets the
+  // operator block multiple days at once (e.g. a week of vacation) without
+  // closing/reopening the modal per day.
+  const initialDateKey = format(selectedDate, 'yyyy-MM-dd');
+  const [dateFrom, setDateFrom] = useState(initialDateKey);
+  const [dateTo, setDateTo] = useState(initialDateKey);
+
+  // Reset state every time a fresh modal opens with different props
+  useEffect(() => {
+    if (open) {
+      setMode(initialMode);
+      setCustomStart(initialStart);
+      setCustomEnd(initialEnd);
+      setDateFrom(initialDateKey);
+      setDateTo(initialDateKey);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, staffId, selectedDate.toISOString()]);
+
+  // Build 15-min time options from 06:00 to 22:00 (buffers the 8-21 grid)
+  const timeOptions = useMemo(() => {
+    const out: string[] = [];
+    for (let h = 6; h <= 22; h++) {
+      for (let m = 0; m < 60; m += 15) {
+        out.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+      }
+    }
+    return out;
+  }, []);
+
+  const initials = staffName
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  const gradient = AVATAR_GRADIENTS[hashToIndex(staffId, AVATAR_GRADIENTS.length)];
+
+  // Build the inclusive list of dates [dateFrom..dateTo]. Empty when invalid.
+  const datesInRange = useMemo(() => {
+    const out: string[] = [];
+    if (!dateFrom || !dateTo || dateTo < dateFrom) return out;
+    const start = parseISO(dateFrom);
+    const end = parseISO(dateTo);
+    for (let d = start; d <= end; d = addDays(d, 1)) {
+      out.push(format(d, 'yyyy-MM-dd'));
+    }
+    return out;
+  }, [dateFrom, dateTo]);
+
+  // Multi-day range OR mode/time change counts as dirty. Single-day same-mode
+  // clicks where nothing else changed = not dirty (Save disabled, as expected).
+  const isMultiDay = datesInRange.length > 1;
+  const dirty =
+    mode !== initialMode ||
+    (mode === 'custom' && (customStart !== initialStart || customEnd !== initialEnd)) ||
+    isMultiDay;
+
+  // String-compare HH:mm — lexicographic order matches chronological for fixed-width
+  const customTimeValid = mode !== 'custom' || customEnd > customStart;
+  const dateRangeValid = datesInRange.length > 0;
+  const rangeValid = customTimeValid && dateRangeValid;
+
+  const standardLabel = weeklyShift
+    ? `${weeklyShift.startTime} – ${weeklyShift.endTime}`
+    : t('calendar.modeNoWeekly');
+
+  // Locale-aware "Wed, May 6" → "Ср, 6 мая" / "Tr, geg. 6". The Russian/Lithuanian
+  // eyebrows previously displayed English short-day + month, breaking i18n.
+  const dateLabel = format(selectedDate, 'EEE, d MMM', { locale: dateLocale }).toUpperCase();
+
+  // Caption beneath the staff name — describes the current effective schedule
+  // for this date so the operator sees state at a glance, not just radio choices.
+  const currentLabel = (() => {
+    if (existingOverride?.kind === 'day-off') return t('calendar.currentDayOff');
+    if (existingOverride?.kind === 'custom' && existingOverride.startTime && existingOverride.endTime) {
+      return `${existingOverride.startTime} – ${existingOverride.endTime}`;
+    }
+    return weeklyShift ? `${weeklyShift.startTime} – ${weeklyShift.endTime}` : t('calendar.currentDayOff');
+  })();
+
+  // Compact preview of what hitting Save will do — keeps the operator from
+  // second-guessing the radio choices. Updates live as `mode` changes.
+  const willApplyLabel =
+    mode === 'day-off' ? t('calendar.willApplyDayOff')
+    : mode === 'standard' ? t('calendar.willApplyStandard')
+    : t('calendar.willApplyCustom').replace('{start}', customStart).replace('{end}', customEnd);
+
+  const onSave = async () => {
+    if (datesInRange.length === 0) return;
+    try {
+      // Sequential awaits over the range so a partial failure leaves the
+      // store in a consistent state — mirrors the BlockDialog multi-day fan-out.
+      for (const dateKey of datesInRange) {
+        if (mode === 'standard') {
+          await shiftOverridesApi.remove({ staffId, date: dateKey });
+        } else if (mode === 'day-off') {
+          await shiftOverridesApi.upsert({ staffId, date: dateKey, kind: 'day-off' });
+        } else {
+          await shiftOverridesApi.upsert({
+            staffId,
+            date: dateKey,
+            kind: 'custom',
+            startTime: customStart,
+            endTime: customEnd,
+          });
+        }
+      }
+      const baseToast = mode === 'standard' ? t('calendar.scheduleReverted') : t('calendar.scheduleUpdated');
+      const dayLabel = datesInRange.length === 1
+        ? t('calendar.singleDay')
+        : t('calendar.dayCount').replace('{count}', String(datesInRange.length));
+      toast.success(`${baseToast} · ${dayLabel}`);
+      queryClient.invalidateQueries({ queryKey: ['shift-overrides'] });
+      onClose();
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Save failed');
+    }
+  };
+
+  // Three mode definitions — used by the segmented card group below.
+  const modeCards: { value: 'day-off' | 'standard' | 'custom'; icon: typeof NoSymbolIcon; titleKey: TranslationKey; subtitle: string }[] = [
+    { value: 'day-off', icon: NoSymbolIcon, titleKey: 'calendar.modeDayOff', subtitle: t('calendar.modeDayOffDesc') },
+    { value: 'standard', icon: ClockIcon, titleKey: 'calendar.modeStandard', subtitle: weeklyShift ? standardLabel : t('calendar.modeNoWeekly') },
+    { value: 'custom', icon: AdjustmentsHorizontalIcon, titleKey: 'calendar.modeCustom', subtitle: `${customStart} – ${customEnd}` },
+  ];
+
+  // Stagger entrance — header → cards → custom hours → strip → period → footer.
+  // Spring physics on the LayoutGroup pill give that satisfying "snap" when the
+  // user clicks between modes. Reduced motion bypasses the stagger entirely.
+  const containerVariants = {
+    hidden: {},
+    visible: {
+      transition: {
+        staggerChildren: reduceMotion ? 0 : 0.045,
+        delayChildren: reduceMotion ? 0 : 0.04,
+      },
+    },
+  };
+  const itemVariants = {
+    hidden: reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.4, ease: MOTION_EASE },
+    },
+  };
+
+  const dayCountLabel = datesInRange.length === 1
+    ? t('calendar.singleDay')
+    : t('calendar.dayCount').replace('{count}', String(datesInRange.length));
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-[480px] p-0 gap-0 overflow-hidden">
+        <motion.div variants={containerVariants} initial="hidden" animate="visible">
+          {/* Header — eyebrow + identity in a tight chip card.
+              Avatar, name, "Currently · X" caption stacked compactly. */}
+          <motion.div variants={itemVariants} className="px-7 pt-7 pb-4">
+            <DialogTitle className="sr-only">
+              {staffName} — {t('calendar.editDayEyebrow')}
+            </DialogTitle>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/85">
+              {t('calendar.editDayEyebrow')} <span className="mx-1 text-muted-foreground/40">·</span> <span className="tabular-nums">{dateLabel}</span>
+            </p>
+            <div className="mt-3.5 flex items-center gap-3 rounded-xl bg-muted/35 px-3 py-2.5 ring-1 ring-border/50">
+              <div className={cn(
+                'flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br text-[11px] font-semibold text-white shrink-0 ring-2 ring-background shadow-sm',
+                gradient,
+              )}>
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-semibold tracking-tight text-foreground truncate leading-none">{staffName}</p>
+                <p className="text-[10px] text-muted-foreground/90 truncate mt-1.5">
+                  <span className="uppercase tracking-[0.16em] font-medium">{t('calendar.currently')}</span>
+                  <span className="mx-1.5 text-muted-foreground/40">·</span>
+                  <span className="tabular-nums text-foreground/80 font-semibold">{currentLabel}</span>
+                </p>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Mode segmented card group — three cards with a spring-animated
+              "selected" pill via layoutId. Disabled state for Standard when
+              there's no weekly shift. ARIA: explicit radiogroup. */}
+          <motion.div variants={itemVariants} className="px-7 pb-4">
+            <div role="radiogroup" aria-label={t('calendar.editDayEyebrow')} className="relative grid grid-cols-3 gap-1.5 rounded-xl bg-muted/40 p-1.5 ring-1 ring-border/40">
+              <LayoutGroup id="edit-day-mode-pill">
+                {modeCards.map((card) => {
+                  const selected = mode === card.value;
+                  const disabled = card.value === 'standard' && !weeklyShift;
+                  const Icon = card.icon;
+                  return (
+                    <button
+                      key={card.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={disabled}
+                      onClick={() => !disabled && setMode(card.value)}
+                      className={cn(
+                        'group relative flex flex-col items-center justify-center gap-1.5 px-2 py-3 rounded-lg transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                        disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
+                      )}
+                    >
+                      {selected && (
+                        <motion.span
+                          layoutId="mode-pill"
+                          className="absolute inset-0 rounded-lg bg-card border border-border/80 shadow-[0_2px_6px_-2px_rgba(0,0,0,0.08)]"
+                          transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 460, damping: 36 }}
+                          style={{ zIndex: 0 }}
+                        />
+                      )}
+                      <span className="relative z-10 flex flex-col items-center gap-1">
+                        <Icon className={cn(
+                          'h-[18px] w-[18px] transition-colors',
+                          selected ? 'text-foreground' : 'text-muted-foreground/70 group-hover:text-foreground/80',
+                        )} />
+                        <span className={cn(
+                          'text-[12.5px] font-semibold leading-tight transition-colors',
+                          selected ? 'text-foreground' : 'text-muted-foreground/80 group-hover:text-foreground',
+                        )}>
+                          {t(card.titleKey)}
+                        </span>
+                        <span className={cn(
+                          'text-[9.5px] font-medium uppercase tracking-[0.1em] tabular-nums transition-colors leading-none',
+                          selected ? 'text-muted-foreground' : 'text-muted-foreground/55',
+                        )}>
+                          {card.subtitle}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </LayoutGroup>
+            </div>
+          </motion.div>
+
+          {/* Custom hours — From/To time selects, animated height-collapse */}
+          <AnimatePresence initial={false}>
+            {mode === 'custom' && (
+              <motion.div
+                key="custom-pickers"
+                initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
+                className="overflow-hidden"
+              >
+                <div className="px-7 pb-4 grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="custom-start" className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      {t('calendar.from')}
+                    </Label>
+                    <Select value={customStart} onValueChange={setCustomStart}>
+                      <SelectTrigger id="custom-start" className="tabular-nums bg-card/50 h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        {timeOptions.map((tm) => (
+                          <SelectItem key={tm} value={tm} className="tabular-nums">{tm}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="custom-end" className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      {t('calendar.to')}
+                    </Label>
+                    <Select value={customEnd} onValueChange={setCustomEnd}>
+                      <SelectTrigger id="custom-end" className="tabular-nums bg-card/50 h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        {timeOptions.map((tm) => (
+                          <SelectItem key={tm} value={tm} className="tabular-nums">{tm}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {!customTimeValid && (
+                    <p className="col-span-2 text-[11px] text-destructive">{t('calendar.invalidRange')}</p>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Schedule preview strip — visual band of the working window.
+              Springs between modes; collapses to a "DAY OFF" label when off. */}
+          <motion.div variants={itemVariants} className="px-7 pb-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {t('calendar.willApply')}
+              </p>
+            </div>
+            <ScheduleStrip
+              mode={mode}
+              customStart={customStart}
+              customEnd={customEnd}
+              weeklyShift={weeklyShift}
+              reduceMotion={!!reduceMotion}
+              dayOffLabel={t('calendar.modeDayOff')}
+            />
+          </motion.div>
+
+          {/* Period — date range picker. Compact triggers + day count badge. */}
+          <motion.div variants={itemVariants} className="border-t border-border/70 bg-muted/15 px-7 py-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {t('calendar.applyToRange')}
+              </p>
+              <p className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-foreground/75 tabular-nums">
+                {dayCountLabel}
+              </p>
+            </div>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+              <CompactDateField
+                value={dateFrom}
+                onChange={(v) => { setDateFrom(v); if (dateTo < v) setDateTo(v); }}
+                locale={dateLocale}
+                ariaLabel={t('calendar.from')}
+              />
+              <ArrowRightIcon className="h-3.5 w-3.5 text-muted-foreground/55" />
+              <CompactDateField
+                value={dateTo}
+                onChange={setDateTo}
+                locale={dateLocale}
+                minDate={dateFrom}
+                ariaLabel={t('calendar.to')}
+              />
+            </div>
+          </motion.div>
+
+          {/* Footer — Cancel ghost + Save with day count badge inline */}
+          <motion.div variants={itemVariants} className="border-t border-border/70 px-7 py-3.5 flex items-center justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={onClose} className="text-muted-foreground hover:text-foreground">
+              {t('common.cancel')}
+            </Button>
+            <Button
+              size="sm"
+              onClick={onSave}
+              disabled={!dirty || !rangeValid}
+              className="min-w-[120px] gap-1.5"
+            >
+              <span>{t('common.saveChanges')}</span>
+              {dirty && rangeValid && (
+                <span className="text-[10px] tabular-nums opacity-80 px-1.5 py-0.5 -mr-1 rounded bg-foreground/10">
+                  {datesInRange.length}d
+                </span>
+              )}
+            </Button>
+          </motion.div>
+        </motion.div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Skeleton for the calendar grid — drawn while the appointments query is in
+// its first-load state. Matches the real layout: time gutter on the left, staff
+// columns to the right, scattered fake tiles at varying heights so the eye
+// reads it as "the calendar is almost here" instead of a generic loading box.
+// Pulse runs on `bg-muted/60` (theme-aware via CSS variable). Tiles are
+// pre-seeded with a deterministic positions array — no per-render reshuffle.
+const SKELETON_TILES: Array<Array<{ topPct: number; heightMin: number }>> = [
+  [{ topPct: 12, heightMin: 60 }, { topPct: 35, heightMin: 90 }, { topPct: 70, heightMin: 45 }],
+  [{ topPct: 8, heightMin: 75 }, { topPct: 50, heightMin: 60 }, { topPct: 80, heightMin: 30 }],
+  [{ topPct: 20, heightMin: 45 }, { topPct: 42, heightMin: 75 }, { topPct: 78, heightMin: 60 }],
+  [{ topPct: 5, heightMin: 90 }, { topPct: 55, heightMin: 45 }],
+  [{ topPct: 18, heightMin: 60 }, { topPct: 60, heightMin: 90 }, { topPct: 88, heightMin: 30 }],
+  [{ topPct: 30, heightMin: 45 }, { topPct: 65, heightMin: 75 }],
+];
+
+function CalendarGridSkeleton({
+  visibleStaffCount,
+  hours,
+  gridH,
+  staffColWidth,
+}: {
+  visibleStaffCount: number;
+  hours: number[];
+  gridH: number;
+  staffColWidth: number;
+}) {
+  const staffCount = Math.max(1, visibleStaffCount);
+  return (
+    <div>
+      {/* Sticky header pulse — staff name + load-bead placeholders */}
+      <div className="sticky top-0 z-40 flex border-b border-border bg-card shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+        <div className="sticky left-0 z-50 shrink-0 border-r border-border bg-card" style={{ width: `${TIME_GUTTER_W}px` }} />
+        {Array.from({ length: staffCount }).map((_, i) => (
+          <div key={i} className={cn('flex flex-1 items-center gap-3 px-3.5 py-3', i < staffCount - 1 && 'border-r border-border')} style={{ minWidth: `${staffColWidth}px` }}>
+            <div className="h-9 w-9 rounded-full bg-muted/70 animate-pulse shrink-0" style={{ animationDelay: `${i * 70}ms` }} />
+            <div className="h-3 flex-1 rounded bg-muted/60 animate-pulse" style={{ animationDelay: `${i * 70 + 30}ms` }} />
+            <div className="h-5 w-10 rounded-md border border-border bg-muted/40 animate-pulse" style={{ animationDelay: `${i * 70 + 60}ms` }} />
+          </div>
+        ))}
+      </div>
+
+      {/* Body: time-gutter pulses + staff columns with fake tiles */}
+      <div className="relative flex" style={{ height: `${gridH}px` }}>
+        <div className="sticky left-0 z-20 shrink-0 border-r border-border bg-card" style={{ width: `${TIME_GUTTER_W}px` }}>
+          {hours.map((_, i) => (
+            <div
+              key={i}
+              className="absolute right-2 h-2 w-7 rounded bg-muted/50 animate-pulse"
+              style={{ top: `${i * SLOT_HEIGHT - 4}px`, animationDelay: `${i * 50}ms` }}
+            />
+          ))}
+        </div>
+        {Array.from({ length: staffCount }).map((_, ci) => {
+          const tiles = SKELETON_TILES[ci % SKELETON_TILES.length];
+          return (
+            <div key={ci} className={cn('relative flex-1', ci < staffCount - 1 && 'border-r border-border')} style={{ minWidth: `${staffColWidth}px` }}>
+              {/* Hour grid lines (subtle, match real calendar) */}
+              {hours.map((_, hi) => (
+                <div key={hi} className="absolute left-0 right-0 border-t border-border/40" style={{ top: `${hi * SLOT_HEIGHT}px` }} />
+              ))}
+              {/* Fake tiles */}
+              {tiles.map((tile, ti) => {
+                const top = (tile.topPct / 100) * gridH;
+                const h = (tile.heightMin / MINUTES_PER_SLOT) * SLOT_HEIGHT;
+                return (
+                  <div
+                    key={ti}
+                    className="absolute left-1 right-1 rounded-lg border-l-[3px] border-l-muted-foreground/30 border border-border bg-muted/40 animate-pulse overflow-hidden p-2.5"
+                    style={{ top: `${top}px`, height: `${h}px`, animationDelay: `${(ci * 90) + (ti * 60)}ms` }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
+                      <div className="h-3 flex-1 rounded bg-muted-foreground/15 max-w-[60%]" />
+                    </div>
+                    {h >= 50 && <div className="mt-1.5 h-2 w-1/2 rounded bg-muted-foreground/10" />}
+                    {h >= 70 && (
+                      <div className="mt-auto pt-2 flex items-center justify-between">
+                        <div className="h-2 w-10 rounded bg-muted-foreground/10" />
+                        <div className="h-2.5 w-8 rounded bg-muted-foreground/20" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Per-category accent palette — literal class strings so Tailwind JIT picks
+// them up. Used by both ServicePickerSheet (rows) and the selected-service
+// card (thumbnail tile) so a service has the SAME color signature in both
+// surfaces. Operator memorizes "purple = Highlights" once, sees it everywhere.
+const CATEGORY_PALETTE: Array<{ dot: string; grad: string; tile: string }> = [
+  { dot: 'bg-emerald-500', grad: 'from-emerald-400 to-emerald-600', tile: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
+  { dot: 'bg-blue-500',    grad: 'from-blue-400 to-blue-600',       tile: 'bg-blue-500/10 text-blue-700 dark:text-blue-400' },
+  { dot: 'bg-amber-500',   grad: 'from-amber-400 to-amber-600',     tile: 'bg-amber-500/10 text-amber-700 dark:text-amber-400' },
+  { dot: 'bg-rose-500',    grad: 'from-rose-400 to-rose-600',       tile: 'bg-rose-500/10 text-rose-700 dark:text-rose-400' },
+  { dot: 'bg-violet-500',  grad: 'from-violet-400 to-violet-600',   tile: 'bg-violet-500/10 text-violet-700 dark:text-violet-400' },
+  { dot: 'bg-teal-500',    grad: 'from-teal-400 to-teal-600',       tile: 'bg-teal-500/10 text-teal-700 dark:text-teal-400' },
+  { dot: 'bg-orange-500',  grad: 'from-orange-400 to-orange-600',   tile: 'bg-orange-500/10 text-orange-700 dark:text-orange-400' },
+  { dot: 'bg-fuchsia-500', grad: 'from-fuchsia-400 to-fuchsia-600', tile: 'bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-400' },
+];
+function paletteForCategory(id: string): typeof CATEGORY_PALETTE[number] {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return CATEGORY_PALETTE[Math.abs(h) % CATEGORY_PALETTE.length];
+}
+
+// Service picker sheet — replaces the chip-stack popover with a full-modal
+// browse + search experience. Reference: Image #171. Categorized list grouped
+// by `Category.id`; search filters across all groups; tapping a service adds
+// it and closes the sheet (one-at-a-time selection mirrors the reference).
+function ServicePickerSheet({
+  open,
+  onClose,
+  services,
+  categories,
+  staffName,
+  selectedIds,
+  onSelect,
+  t,
+}: {
+  open: boolean;
+  onClose: () => void;
+  services: Service[];
+  categories: Category[];
+  staffName: string;
+  selectedIds: string[];
+  onSelect: (serviceId: string) => void;
+  t: (key: TranslationKey) => string;
+}) {
+  const [search, setSearch] = useState('');
+  // Reset search every time the sheet opens — operators expect a clean state.
+  useEffect(() => { if (open) setSearch(''); }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return services;
+    return services.filter(s => s.name.toLowerCase().includes(q));
+  }, [services, search]);
+
+  const grouped = useMemo(() => {
+    const byCat = new Map<string, Service[]>();
+    filtered.forEach(s => {
+      const arr = byCat.get(s.categoryId) ?? [];
+      arr.push(s);
+      byCat.set(s.categoryId, arr);
+    });
+    return categories
+      .map(c => ({ category: c, items: byCat.get(c.id) ?? [] }))
+      .filter(g => g.items.length > 0);
+  }, [filtered, categories]);
+
+  const totalCount = filtered.length;
+  const totalMin = filtered.reduce((sum, s) => sum + s.duration, 0);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="!w-[calc(100vw-2rem)] !max-w-[640px] p-0 gap-0 max-h-[92vh] flex flex-col [&>button]:hidden">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{t('calendar.servicePickerTitle')}</DialogTitle>
+        </DialogHeader>
+
+        {/* ── HERO ── editorial title block. Eyebrow shows context (booking +
+            staff) so the operator never loses scope. Hero typography pulls
+            weight via tracking-tight + font-bold; back/close are neutral
+            ghost buttons that don't compete. */}
+        <div className="px-7 pt-6 pb-5 border-b border-border">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {staffName && (
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground mb-1.5">
+                  Booking <span className="text-muted-foreground/40 mx-1">·</span> {staffName}
+                </p>
+              )}
+              <h2 className="text-2xl sm:text-[28px] font-bold leading-none tracking-tight text-foreground">
+                {t('calendar.servicePickerTitle')}
+              </h2>
+            </div>
+            <div className="flex items-center gap-1 shrink-0 -mt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Back"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              >
+                <ArrowLeftIcon className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── SEARCH ── glass-icon prefix + bare input. Border-bottom only,
+            no boxed bg-muted — keeps the editorial restraint of input
+            fields elsewhere in the modal. */}
+        <div className="px-7 py-3 border-b border-border">
+          <div className="relative flex items-center">
+            <MagnifyingGlassIcon className="absolute left-0 h-4 w-4 text-muted-foreground/70 pointer-events-none" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('calendar.servicePickerSearch')}
+              autoFocus
+              className="w-full pl-7 pr-2 h-9 bg-transparent text-sm placeholder:text-muted-foreground/70 focus:outline-none border-0"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <XMarkIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ── CATEGORIZED LIST ── hairline-divided rows, no per-item card.
+            Density bump: 48px row height vs old 60+px. Sticky category
+            eyebrows on scroll so operators never lose context in a long list. */}
+        <div className="flex-1 overflow-y-auto">
+          {grouped.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 px-7 text-center">
+              <MagnifyingGlassIcon className="h-8 w-8 text-muted-foreground/30 mb-3" />
+              <p className="text-sm font-semibold text-foreground/80">No matches</p>
+              {search && (
+                <p className="mt-1 text-xs text-muted-foreground/70">
+                  Nothing for "<span className="font-medium text-foreground/70">{search}</span>"
+                </p>
+              )}
+            </div>
+          )}
+          {(() => {
+            // Track row index across all categories for stagger delay calc.
+            // Animation cascades from top-left, ~25ms per row, capped at ~400ms
+            // so even a long list finishes its entrance reasonably quick.
+            let rowIdx = 0;
+            return grouped.map(({ category, items }) => {
+              const palette = paletteForCategory(category.id);
+              const catDot = palette.dot;
+              const catGrad = palette.grad;
+              return (
+                <div key={category.id}>
+                  {/* Sticky category eyebrow — accent dot + uppercase tracking
+                      + count. The colored dot gives each category a distinct
+                      signature operators learn to recognize over time. */}
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, ease: MOTION_EASE }}
+                    className="sticky top-0 z-10 flex items-center gap-2 px-7 pt-6 pb-2.5 bg-card/95 backdrop-blur-sm"
+                  >
+                    <span className={cn('h-2 w-2 rounded-full shrink-0', catDot)} aria-hidden />
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      {category.name}
+                    </p>
+                    <span className="ml-auto inline-flex items-center justify-center h-5 min-w-[1.25rem] rounded-full bg-muted px-1.5 text-[10px] font-bold tabular-nums text-muted-foreground">
+                      {items.length}
+                    </span>
+                  </motion.div>
+                  {/* Hairline-divided rows with stagger entrance */}
+                  <div className="border-y border-border divide-y divide-border">
+                    {items.map(svc => {
+                      const selected = selectedIds.includes(svc.id);
+                      const i = rowIdx++;
+                      const delay = Math.min(i * 0.025, 0.4);
+                      // Service initial for the thumbnail-tile fallback. Display
+                      // up to 2 chars (Hi-Color → "HC", Beard Trim → "BT").
+                      const initials = svc.name
+                        .split(/\s+/)
+                        .slice(0, 2)
+                        .map(w => w[0])
+                        .join('')
+                        .toUpperCase();
+                      return (
+                        <motion.button
+                          key={svc.id}
+                          type="button"
+                          onClick={() => { if (!selected) { onSelect(svc.id); onClose(); } }}
+                          disabled={selected}
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay, duration: 0.28, ease: MOTION_EASE }}
+                          whileHover={selected ? undefined : { scale: 1.005 }}
+                          whileTap={selected ? undefined : { scale: 0.997 }}
+                          className={cn(
+                            'group w-full flex items-center gap-4 px-7 py-4 text-left transition-colors',
+                            selected
+                              ? 'cursor-not-allowed bg-emerald-50/40 dark:bg-emerald-950/20'
+                              : 'hover:bg-accent/40 hover:shadow-[0_2px_8px_-4px_rgba(0,0,0,0.08)] focus-visible:outline-none focus-visible:bg-accent/40',
+                          )}
+                        >
+                          {/* Service thumbnail — image if available, else
+                              category-gradient tile with initials. Square 40px
+                              with rounded corners. Visual anchor on the left. */}
+                          {svc.imageUrl ? (
+                            <div className="h-10 w-10 shrink-0 rounded-md overflow-hidden bg-muted">
+                              <img src={svc.imageUrl} alt="" className="h-full w-full object-cover" />
+                            </div>
+                          ) : (
+                            <div className={cn(
+                              'h-10 w-10 shrink-0 rounded-md bg-gradient-to-br flex items-center justify-center text-[13px] font-bold text-white shadow-[0_0_0_1px_rgba(0,0,0,0.04)]',
+                              catGrad,
+                            )}>
+                              {initials}
+                            </div>
+                          )}
+                          {/* Name + description — bigger hierarchy than v1 */}
+                          <div className="min-w-0 flex-1">
+                            <p className={cn(
+                              'text-[15px] font-semibold tracking-tight truncate transition-transform duration-200',
+                              selected ? 'text-muted-foreground' : 'text-foreground group-hover:translate-x-0.5',
+                            )}>
+                              {svc.name}
+                            </p>
+                            {svc.description && svc.description.trim() && (
+                              <p className={cn(
+                                'mt-0.5 text-[12.5px] truncate',
+                                selected ? 'text-muted-foreground/60' : 'text-muted-foreground/85',
+                              )}>
+                                {svc.description}
+                              </p>
+                            )}
+                          </div>
+                          {/* Price + duration — stacked vertically, tabular */}
+                          <div className="shrink-0 text-right tabular-nums">
+                            <p className={cn(
+                              'text-[15px] font-bold leading-none',
+                              selected ? 'text-muted-foreground' : 'text-foreground',
+                            )}>
+                              €{svc.price}
+                            </p>
+                            <p className="mt-1 text-[11px] text-muted-foreground/70 leading-none">
+                              {svc.duration} min
+                            </p>
+                          </div>
+                          {/* Right indicator — radio default, "Added" pill on
+                              selected, dark circle with arrow on hover. */}
+                          {selected ? (
+                            <motion.span
+                              initial={{ scale: 0.6, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+                              className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400"
+                            >
+                              <CheckIcon className="h-3 w-3" strokeWidth={3} />
+                              Added
+                            </motion.span>
+                          ) : (
+                            <>
+                              <span className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full border-[1.5px] border-muted-foreground/25 group-hover:hidden transition-all" aria-hidden />
+                              <span className="hidden shrink-0 group-hover:inline-flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background shadow-sm">
+                                <ArrowRightIcon className="h-3 w-3" strokeWidth={2.5} />
+                              </span>
+                            </>
+                          )}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            });
+          })()}
+          {/* Footer breathing room so the last row doesn't kiss the dialog edge */}
+          <div className="h-5" />
+        </div>
+
+        {/* ── FOOTER ── ledger summary: services count + total time. Operators
+            planning a sequence appointment see the sum of available service
+            durations on the current filter. Cancel is a quiet text-link. */}
+        {grouped.length > 0 && (
+          <div className="flex items-center justify-between gap-3 px-7 py-3.5 border-t border-border bg-card/50">
+            <p className="text-[12px] tabular-nums text-muted-foreground">
+              <span className="font-bold text-foreground">{totalCount}</span>
+              <span className="mx-1">{totalCount === 1 ? 'service' : 'services'}</span>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="ml-1 font-bold text-foreground">{totalMin}m</span>
+              <span className="ml-1">total</span>
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Stepper — minus/value/plus inline control. Used by the recurrence section to
+// match the reference design (Image #173-174). Min/max clamps prevent the
+// operator from accidentally setting absurd values (e.g. 0 weeks = infinite
+// loop in expansion). Tabular-nums on the value cell so the digits don't jitter.
+function Stepper({
+  value,
+  onChange,
+  min = 1,
+  max = 99,
+  ariaLabel,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  min?: number;
+  max?: number;
+  ariaLabel?: string;
+}) {
+  // Track previous value to compute slide direction (-1 down, +1 up). The
+  // motion.span keyed by value triggers a re-mount, springs in from the dir
+  // axis. Subtle but adds the "value changed, here's the new one" signal.
+  const prevRef = useRef(value);
+  const dir = value > prevRef.current ? 1 : value < prevRef.current ? -1 : 0;
+  useEffect(() => { prevRef.current = value; }, [value]);
+
+  const dec = () => onChange(Math.max(min, value - 1));
+  const inc = () => onChange(Math.min(max, value + 1));
+  return (
+    <div
+      className="inline-flex h-12 items-stretch rounded-xl border border-border bg-card overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+      role="group"
+      aria-label={ariaLabel}
+    >
+      <motion.button
+        type="button"
+        onClick={dec}
+        disabled={value <= min}
+        whileHover={value > min ? { scale: 1.08 } : undefined}
+        whileTap={value > min ? { scale: 0.92 } : undefined}
+        transition={{ type: 'spring', stiffness: 480, damping: 22 }}
+        className="w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:bg-accent/60"
+        aria-label="Decrease"
+      >
+        <MinusIcon className="h-4 w-4" strokeWidth={2.5} />
+      </motion.button>
+      <span className="relative px-3 inline-flex items-center justify-center min-w-[3.75rem] border-x border-border tabular-nums text-[20px] font-bold text-foreground overflow-hidden">
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.span
+            key={value}
+            initial={dir !== 0 ? { y: dir > 0 ? 18 : -18, opacity: 0 } : false}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: dir > 0 ? -18 : 18, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 520, damping: 28, mass: 0.5 }}
+            className="absolute"
+          >
+            {value}
+          </motion.span>
+        </AnimatePresence>
+        {/* Invisible reservation so the cell width doesn't collapse during the
+            absolute-positioned animation */}
+        <span aria-hidden className="invisible">{value}</span>
+      </span>
+      <motion.button
+        type="button"
+        onClick={inc}
+        disabled={value >= max}
+        whileHover={value < max ? { scale: 1.08 } : undefined}
+        whileTap={value < max ? { scale: 0.92 } : undefined}
+        transition={{ type: 'spring', stiffness: 480, damping: 22 }}
+        className="w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:bg-accent/60"
+        aria-label="Increase"
+      >
+        <PlusIcon className="h-4 w-4" strokeWidth={2.5} />
+      </motion.button>
+    </div>
+  );
+}
+
+// Summary panel skeleton — pulses the hero revenue, the 7-day sparkline shape,
+// the stat-pair, and a few staff-roll rows. Layout matches the real panel so
+// content slot stays the same width once data arrives (no jump).
+function SummarySkeleton() {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="h-2 w-14 rounded bg-muted/60 animate-pulse" />
+        <div className="h-2 w-10 rounded bg-muted/40 animate-pulse" />
+      </div>
+      <div>
+        <div className="h-7 w-28 rounded bg-muted/60 animate-pulse" />
+        <div className="mt-2 h-2 w-32 rounded bg-muted/40 animate-pulse" />
+      </div>
+      <div>
+        <div className="h-2 w-16 rounded bg-muted/40 animate-pulse mb-1.5" />
+        {/* Faux sparkline — wave-shaped pulse with a dot anchor */}
+        <svg viewBox="0 0 200 36" className="w-full h-9" preserveAspectRatio="none" aria-hidden>
+          <path d="M0 28 L33 22 L66 25 L100 14 L133 18 L166 10 L200 12" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground/40 animate-pulse" />
+          <circle cx="200" cy="12" r="2.5" fill="currentColor" className="text-muted-foreground/60 animate-pulse" />
+        </svg>
+      </div>
+      <div className="grid grid-cols-2 divide-x divide-border border-y border-border -mx-4">
+        <div className="px-4 py-2.5">
+          <div className="h-5 w-8 rounded bg-muted/60 animate-pulse" />
+          <div className="mt-1.5 h-2 w-12 rounded bg-muted/40 animate-pulse" />
+        </div>
+        <div className="px-4 py-2.5">
+          <div className="h-5 w-8 rounded bg-muted/60 animate-pulse" />
+          <div className="mt-1.5 h-2 w-12 rounded bg-muted/40 animate-pulse" />
+        </div>
+      </div>
+      <div>
+        <div className="h-2 w-12 rounded bg-muted/40 animate-pulse mb-2" />
+        <div className="space-y-1.5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded-full bg-muted/60 animate-pulse" style={{ animationDelay: `${i * 70}ms` }} />
+              <div className="h-2 flex-1 rounded bg-muted/40 animate-pulse" style={{ animationDelay: `${i * 70 + 30}ms` }} />
+              <div className="h-2 w-4 rounded bg-muted/40 animate-pulse" style={{ animationDelay: `${i * 70 + 60}ms` }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Calendar ──────────────────────────────────────
 export function CalendarPage() {
   const queryClient = useQueryClient();
@@ -439,6 +3746,15 @@ export function CalendarPage() {
   const userScrolledRef = useRef(false);
   const t = useT();
   const [timeFormat] = useTimeFormat();
+  const [breakCutMode] = useBreakCutMode();
+  const [gridDensity, setGridDensity] = useCalendarGridDensity();
+  const staffColWidth = gridDensity === 'compact' ? STAFF_COL_MIN_W_COMPACT : STAFF_COL_MIN_W_STANDARD;
+  // Locale-aware date formatting for the booking modal's date picker
+  // trigger. Without this, the trigger renders the month name in English
+  // even when the operator runs the UI in Russian or Lithuanian.
+  const [language] = useLanguage();
+  const dateLocale: DateFnsLocale =
+    language === 'ru' ? ruLocale : language === 'lt' ? ltLocale : enLocale;
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   // Initial view-mode: grid on desktop, day on mobile (grid becomes unreadable
@@ -454,46 +3770,305 @@ export function CalendarPage() {
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)');
     const onChange = (e: MediaQueryListEvent) => {
+      let switchedFromWeek = false;
       setViewMode(prev => {
-        if (prev === 'week') return prev; // respect explicit choice
+        // Week view holds its own ground at any size — except when the
+        // viewport drops below 768 where it's mathematically too dense to
+        // read. We auto-switch and surface a toast so the operator knows
+        // why the layout flipped.
+        if (prev === 'week' && e.matches) {
+          switchedFromWeek = true;
+          return 'day';
+        }
+        if (prev === 'week') return prev;
         return e.matches ? 'day' : 'grid';
       });
+      if (switchedFromWeek) {
+        // Defer the toast until after the state update commits so it
+        // doesn't fire mid-render. The user sees the layout change first,
+        // then reads the explanation.
+        queueMicrotask(() => toast.info(t('toast.viewSwitchedDayMobile')));
+      }
     };
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [miniOpen, setMiniOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [detailApt, setDetailApt] = useState<AppointmentWithDetails | null>(null);
+  // Rebook mode — when set, the calendar grid acts as a slot picker for
+  // moving this appointment. Slot clicks call `update` instead of opening
+  // the create modal. Cleared by selecting a slot or clicking Cancel.
+  const [rebookingApt, setRebookingApt] = useState<AppointmentWithDetails | null>(null);
+  // Hover preview during rebook — as the cursor moves over slots, render a
+  // faded ghost of the appointment at the cursor's position so the operator
+  // sees exactly where the move will land before they click.
+  const [rebookHover, setRebookHover] = useState<{ hour: number; minute: number; staffId: string } | null>(null);
+  // Drag-to-reschedule confirm — instead of committing instantly on drop,
+  // surface the change ("16:15 → 15:05  ·  Jeiko → Dilan") in a confirm
+  // dialog so a fat-finger drop can be undone before it costs the operator.
+  const [dragConfirm, setDragConfirm] = useState<{
+    aptId: string;
+    oldStartTime: string;     // ISO
+    newStartTime: string;     // ISO
+    newEndTime: string;       // ISO
+    oldStaffId: string;
+    newStaffId: string;
+    oldStaffName: string;
+    newStaffName: string;
+  } | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<{ hour: number; minute: number; staffId?: string } | null>(null);
   // Editable date + time for the New Appointment modal. Initialized from the
-  // clicked slot; user can override via `<input type="date">` + `<input type="time">`.
+  // clicked slot; the operator overrides via a MiniCalendar Popover (date)
+  // and the alarm-clock TimePickerField (time, with spring-pill cells).
   const [createDate, setCreateDate] = useState<string>(''); // yyyy-MM-dd
   const [createTime, setCreateTime] = useState<string>(''); // HH:mm
-  const [formData, setFormData] = useState({ clientId: '', staffId: '', serviceId: '', notes: '' });
+  const [createDatePickerOpen, setCreateDatePickerOpen] = useState(false);
+  const [formData, setFormData] = useState<{ clientId: string; staffId: string; serviceIds: string[]; notes: string }>({ clientId: '', staffId: '', serviceIds: [], notes: '' });
+  const [addServiceOpen, setAddServiceOpen] = useState(false);
+  // Recurrence — Switch + 2 steppers (every N weeks, ends after M times). Fan
+  // out N independent appointments at submit. No series link is stored.
+  const [recurrenceEnabled, setRecurrenceEnabled] = useState<boolean>(false);
+  const [recurrenceWeeks, setRecurrenceWeeks] = useState<number>(1); // step in weeks
+  const [recurrenceCount, setRecurrenceCount] = useState<number>(4); // total occurrences (incl. base)
   // Client autocomplete — type name/phone/email to find an existing record; if
   // nothing matches, switch to the inline "new client" form (name + phone).
   // This is client review item #5: "if I type the phone or email it should
   // check the system to know if the customer information is stored".
   const [clientSearch, setClientSearch] = useState('');
   const [isCreatingClient, setIsCreatingClient] = useState(false);
-  const [newClient, setNewClient] = useState({ firstName: '', lastName: '', phone: '', email: '', avatarUrl: '' });
-  const [conflictState, setConflictState] = useState<{ conflicts: ReturnType<typeof findConflicts>; pending: Omit<Appointment, 'id' | 'createdAt'> } | null>(null);
+  const [newClient, setNewClient] = useState<NewClientDraft>(EMPTY_NEW_CLIENT_DRAFT);
+  // Click on the selected-client tile inside the booking modal opens this
+  // profile sheet (contact info, notes, history). Pencil-edit on the sheet
+  // sets editClientId, which opens CreateClientModal in edit mode stacked
+  // on top — so the sheet stays mounted underneath until the edit closes.
+  const [profileSheetClientId, setProfileSheetClientId] = useState<string | null>(null);
+  const [editClientId, setEditClientId] = useState<string | null>(null);
+  const [editClientDraft, setEditClientDraft] = useState<NewClientDraft>(EMPTY_NEW_CLIENT_DRAFT);
+  const [conflictState, setConflictState] = useState<{
+    conflicts: ReturnType<typeof findConflicts>;
+    breakConflicts: BreakConflict[];
+    pending: Array<Omit<Appointment, 'id' | 'createdAt'>>;
+  } | null>(null);
+  // Track the dragged appointment so the source tile can ghost (opacity-45)
+  // while the user holds it. Cleared on dragend (drop or escape).
+  const [draggingAptId, setDraggingAptId] = useState<string | null>(null);
+  const [draggingBreakId, setDraggingBreakId] = useState<string | null>(null);
+  // When a weekly break is dropped, defer commit to a "Все / Только этот"
+  // confirmation modal. one-off breaks commit directly without prompt.
+  const [breakDragConfirm, setBreakDragConfirm] = useState<{
+    brkId: string;
+    newStartTime: string;  // HH:mm
+    newEndTime: string;    // HH:mm
+    targetDate: string;    // YYYY-MM-DD — drop date for "Only this"
+  } | null>(null);
+  // ─── New flows: walk-in, block, focus, filter, tile menu ─────
+  const [walkInOpen, setWalkInOpen] = useState(false);
+  // Carries the typed query from the booking picker through to the
+  // walk-in dialog when the operator launches it via the
+  // "Save as walk-in (query)" shortcut.
+  const [walkInPrefill, setWalkInPrefill] = useState<string | undefined>(undefined);
+  const [blockState, setBlockState] = useState<
+    | { mode: 'create'; staffId?: string; dayOfWeek?: DayOfWeek }
+    | { mode: 'edit-break'; brk: Break }
+    | { mode: 'edit-absence'; absence: Absence; staffId: string }
+    | null
+  >(null);
+  // null => "all visible". A non-null Set is the explicit allow-list.
+  const [staffFilter, setStaffFilter] = useState<Set<string> | null>(null);
+  const [staffFilterOpen, setStaffFilterOpen] = useState(false);
+  // Single-staff focus mode — column-header click sets this. Renders one column at full width.
+  const [focusedStaffId, setFocusedStaffId] = useState<string | null>(null);
+  // Week-view per-staff selection. Persisted across refreshes (Zustand). The
+  // useEffect below auto-defaults to alphabetically-first active staff when
+  // null or when the selected id has been deactivated.
+  const [weekViewStaffId, setWeekViewStaffId] = useWeekViewStaffId();
+  // Tile context menu — controlled separately from the deep-edit modal so a quick
+  // status change doesn't have to open the heavy dialog.
+  const [contextApt, setContextApt] = useState<AppointmentWithDetails | null>(null);
+  // Off-shift "edit day" menu — owner/manager click on a gray off-shift band
+  // opens this with the staff name, "edit shift hours" + "add/edit day off"
+  // shortcuts. Mirrors the competitor's edit-day flow.
+  // Single-day shift override editor — owner/manager click on any off-shift
+  // band opens this modal. Three modes: Day off, Standard (use weekly default),
+  // Custom hours. Save persists a ShiftOverride record (or removes one when
+  // reverting to Standard). Renamed from `offShiftMenu` 2026-05-06 when the
+  // 4-row context menu was replaced with this focused editor.
+  const [editDayModal, setEditDayModal] = useState<{ staffId: string; staffName: string } | null>(null);
   const officeId = useOfficeStore(s => s.currentOfficeId);
   const offices = useOfficeStore(s => s.offices);
   const userRole = useAuthStore(s => s.user?.role);
+  const currentUserId = useAuthStore(s => s.user?.id);
+  const currentUser = useAuthStore(s => s.user);
   const canOverride = userRole === 'owner' || userRole === 'manager';
+  const isOwner = userRole === 'owner';
+  const navigate = useNavigate();
+  const reduceMotion = useReducedMotion();
+  // When set, the next fullUpdateMutation success skips its built-in "updated" toast
+  // so the drag-confirm flow can show its own toast with an Undo action instead.
+  const suppressNextUpdateToast = useRef(false);
 
   // ─── Queries ────────────
-  const { data: appointments = [] } = useQuery({ queryKey: ['appointments', officeId], queryFn: () => appointmentsApi.getAllWithDetails(officeId) });
+  const { data: appointments = [], isLoading: appointmentsLoading } = useQuery({ queryKey: ['appointments', officeId], queryFn: () => appointmentsApi.getAllWithDetails(officeId) });
   const { data: clients = [] } = useQuery({ queryKey: ['clients', officeId], queryFn: () => clientsApi.getAll(officeId) });
   const { data: allStaff = [] } = useQuery({ queryKey: ['staff', officeId], queryFn: () => staffApi.getAll(officeId) });
+  // Accounts list is used to resolve `Appointment.createdBy` (Account.id) to a
+  // display name for the audit row in the hover-card + detail modal. Tenant-
+  // wide so we ship one query for the whole page.
+  const { data: allAccounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => accountsApi.getAll() });
+  const accountById = useMemo(() => {
+    const m = new Map<string, { firstName: string; lastName: string }>();
+    for (const a of allAccounts) m.set(a.id, { firstName: a.firstName, lastName: a.lastName });
+    return m;
+  }, [allAccounts]);
+  const formatCreator = (createdBy: string | undefined): string | null => {
+    if (!createdBy) return null;
+    const a = accountById.get(createdBy);
+    if (a) return `${a.firstName} ${a.lastName}`.trim();
+    // Fallback: when the stored ID is the current session user (e.g. login
+    // fallback path used `user-1` instead of an account ID), pull the name
+    // straight from auth-store so the byline still resolves.
+    if (currentUser && createdBy === currentUser.id) {
+      return `${currentUser.firstName} ${currentUser.lastName}`.trim();
+    }
+    return null;
+  };
+
+  // Click on the creator name in any audit row → open a popover with
+  // avatar + role chip + email + phone + "Open full profile" CTA.
+  // Pattern: imya = identification, popover = preview, kalachik to /accounts
+  // = navigation. Click `<button>` instead of plain `<span>` so the affordance
+  // reads as interactive.
+  const renderCreatorChip = (createdBy: string | undefined, opts?: { uppercase?: boolean }) => {
+    const name = formatCreator(createdBy);
+    if (!name || !createdBy) return null;
+    const account = accountById.get(createdBy);
+    const fullAccount = allAccounts.find(a => a.id === createdBy);
+    const role = fullAccount?.role;
+    const email = fullAccount?.email;
+    const grad = AVATAR_GRADIENTS[hashToIndex(createdBy, AVATAR_GRADIENTS.length)];
+    const initials = account
+      ? `${account.firstName[0] ?? ''}${account.lastName[0] ?? ''}`.toUpperCase()
+      : '';
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            onClick={(ev) => ev.stopPropagation()}
+            className={cn(
+              'inline-flex items-center rounded-sm px-0.5 -mx-0.5 transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+              'cursor-pointer underline-offset-2 hover:underline',
+              opts?.uppercase ? 'font-bold normal-case tracking-normal text-foreground/80' : 'font-semibold text-muted-foreground',
+            )}
+            aria-label={`${name} — ${t('audit.openProfile')}`}
+          >
+            {name}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-72 p-0 overflow-hidden border-border/80 shadow-lg">
+          <div className="px-4 py-3.5 flex items-center gap-3 border-b border-border">
+            <div className={cn(
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-[12px] font-bold text-white shadow-sm',
+              grad,
+            )}>
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[14px] font-bold text-foreground truncate leading-tight">
+                {name}
+              </p>
+              {role && (
+                <span className={cn(
+                  'mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+                  ROLE_CHIP[role],
+                )}>
+                  <span className={cn('h-1 w-1 rounded-full', ROLE_DOT[role])} />
+                  {ROLE_LABEL[role]}
+                </span>
+              )}
+            </div>
+          </div>
+          {email && (
+            <div className="px-4 py-2.5 border-b border-border">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/70 mb-0.5">
+                Email
+              </p>
+              <p className="text-[12px] text-foreground/85 truncate tabular-nums">
+                {email}
+              </p>
+            </div>
+          )}
+          <div className="px-4 py-2.5 flex justify-end">
+            <button
+              type="button"
+              onClick={(ev) => {
+                ev.stopPropagation();
+                navigate(`/accounts?focus=${createdBy}`);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md border border-foreground bg-foreground text-background px-3 h-8 text-[12px] font-semibold transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            >
+              {t('audit.openProfile')}
+              <ChevronRightIcon className="h-3.5 w-3.5" strokeWidth={2.4} />
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  };
   const { data: services = [] } = useQuery({ queryKey: ['services', officeId], queryFn: () => servicesApi.getAll(officeId) });
+  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: () => categoriesApi.getAll() });
   const { data: allShifts = [] } = useQuery({ queryKey: ['shifts'], queryFn: () => shiftsApi.getAll() });
   const { data: allBreaks = [] } = useQuery({ queryKey: ['breaks'], queryFn: () => breaksApi.getAll() });
+  const { data: allAbsences = [] } = useQuery({ queryKey: ['absences'], queryFn: () => absencesApi.getAll() });
+  const { data: allOverrides = [] } = useQuery({ queryKey: ['shift-overrides'], queryFn: () => shiftOverridesApi.getAll() });
   const { data: allAppointments = [] } = useQuery({ queryKey: ['appointments', 'all-offices'], queryFn: () => appointmentsApi.getAllAcrossOffices() });
 
   const activeStaff = useMemo(() => allStaff.filter(s => s.isActive), [allStaff]);
+
+  // Visible staff = active ∩ (filter ?? all). When focusedStaffId is set the
+  // single staff overrides everything else — that's the whole point of focus mode.
+  const visibleStaff = useMemo(() => {
+    if (focusedStaffId) {
+      const m = activeStaff.find(s => s.id === focusedStaffId);
+      return m ? [m] : activeStaff;
+    }
+    if (!staffFilter) return activeStaff;
+    return activeStaff.filter(s => staffFilter.has(s.id));
+  }, [activeStaff, staffFilter, focusedStaffId]);
+
+  // Auto-default the Week-view staff picker. Triggers when visibleStaff loads
+  // for the first time (persisted id is null) or when the persisted id refers
+  // to a staff who's been deactivated or filtered out. Picks alphabetically-first
+  // from visibleStaff so week view stays in sync with the grid's staff filter.
+  useEffect(() => {
+    if (visibleStaff.length === 0) return;
+    if (weekViewStaffId && visibleStaff.some(s => s.id === weekViewStaffId)) return;
+    const first = [...visibleStaff].sort((a, b) =>
+      `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`),
+    )[0];
+    if (first) setWeekViewStaffId(first.id);
+  }, [visibleStaff, weekViewStaffId, setWeekViewStaffId]);
+
+  // Per-staff appointment count for the visible week. Powers the muted
+  // "{n} this week" suffix in the Week-view staff picker so the operator
+  // sees who's busiest at a glance before switching.
+  const weekStaffApptCount = useMemo(() => {
+    const wkStartsOn: 0 | 1 = language === 'en' ? 0 : 1;
+    const weekStart = startOfWeek(selectedDate, { weekStartsOn: wkStartsOn });
+    const weekStartMs = weekStart.getTime();
+    const weekEndMs = weekStartMs + 7 * 86_400_000;
+    const visibleIds = new Set(visibleStaff.map(s => s.id));
+    const m = new Map<string, number>();
+    for (const a of appointments) {
+      if (!visibleIds.has(a.staffId)) continue;
+      const t = parseISO(a.startTime).getTime();
+      if (t < weekStartMs || t >= weekEndMs) continue;
+      m.set(a.staffId, (m.get(a.staffId) ?? 0) + 1);
+    }
+    return m;
+  }, [appointments, selectedDate, language, visibleStaff]);
 
   // Editorial hero context: the office label + human-relative day
   // ("Today" / "Tomorrow" / "3 days ago") — matches Bookings/Overview.
@@ -502,12 +4077,12 @@ export function CalendarPage() {
     const nowStart = startOfDay(new Date());
     const selStart = startOfDay(selectedDate);
     const deltaDays = Math.round((selStart.getTime() - nowStart.getTime()) / 86_400_000);
-    if (deltaDays === 0) return 'Today';
-    if (deltaDays === 1) return 'Tomorrow';
-    if (deltaDays === -1) return 'Yesterday';
-    if (deltaDays > 0) return `In ${deltaDays} days`;
-    return `${Math.abs(deltaDays)} days ago`;
-  }, [selectedDate]);
+    if (deltaDays === 0) return t('calendar.dayLabelToday');
+    if (deltaDays === 1) return t('calendar.dayLabelTomorrow');
+    if (deltaDays === -1) return t('calendar.dayLabelYesterday');
+    if (deltaDays > 0) return t('calendar.dayLabelInDays').replace('{n}', String(deltaDays));
+    return t('calendar.dayLabelDaysAgo').replace('{n}', String(Math.abs(deltaDays)));
+  }, [selectedDate, t]);
 
   // ─── Status map (translated) ─────
   const statusMap = useMemo(() => ({
@@ -520,23 +4095,72 @@ export function CalendarPage() {
   // ─── Shifts & breaks for current day ─────
   const currentDow = useMemo(() => getDayOfWeek(selectedDate), [selectedDate]);
 
+  // Shift resolver — date-specific override takes precedence over the
+  // weekly recurring Shift. Downstream consumers (isUnavailable, renderOffDuty,
+  // slot click) just see Shift|null and don't care which source it came from.
   const shiftsByStaff = useMemo(() => {
+    const dateKey = format(selectedDate, 'yyyy-MM-dd');
     const m = new Map<string, Shift | null>();
     activeStaff.forEach(s => {
+      const ov = allOverrides.find(o => o.staffId === s.id && o.date === dateKey);
+      if (ov) {
+        if (ov.kind === 'day-off') {
+          m.set(s.id, null);
+          return;
+        }
+        if (ov.kind === 'custom' && ov.startTime && ov.endTime) {
+          m.set(s.id, {
+            id: `override-${ov.id}`,
+            staffId: s.id,
+            dayOfWeek: currentDow,
+            startTime: ov.startTime,
+            endTime: ov.endTime,
+          });
+          return;
+        }
+      }
       const shift = allShifts.find(sh => sh.staffId === s.id && sh.dayOfWeek === currentDow) || null;
       m.set(s.id, shift);
     });
     return m;
-  }, [allShifts, activeStaff, currentDow]);
+  }, [allShifts, allOverrides, activeStaff, currentDow, selectedDate]);
+
+  // Quick lookup of the override for the currently selected date — used by
+  // EditDayShiftModal to pre-select the right radio mode and time pickers.
+  const overrideByStaff = useMemo(() => {
+    const dateKey = format(selectedDate, 'yyyy-MM-dd');
+    const m = new Map<string, ShiftOverride | null>();
+    activeStaff.forEach(s => {
+      m.set(s.id, allOverrides.find(o => o.staffId === s.id && o.date === dateKey) ?? null);
+    });
+    return m;
+  }, [allOverrides, activeStaff, selectedDate]);
 
   const breaksByStaff = useMemo(() => {
     const m = new Map<string, Break[]>();
+    const todayYMD = format(selectedDate, 'yyyy-MM-dd');
     activeStaff.forEach(s => {
-      const staffBreaks = allBreaks.filter(b => b.staffId === s.id && b.dayOfWeek === currentDow);
+      const staffBreaks = allBreaks.filter(b => {
+        if (b.staffId !== s.id) return false;
+        // Honor full recurrence semantics — same logic as findBreakConflicts.
+        if (b.recurrence === 'one-off') return b.startDate === todayYMD;
+        if (b.startDate && todayYMD < b.startDate) return false;
+        if (b.endDate && todayYMD > b.endDate) return false;
+        if (b.exceptionDates?.includes(todayYMD)) return false;
+        return b.dayOfWeek === currentDow;
+      });
       m.set(s.id, staffBreaks);
     });
     return m;
-  }, [allBreaks, activeStaff, currentDow]);
+  }, [allBreaks, activeStaff, currentDow, selectedDate]);
+
+  const absenceByStaff = useMemo(() => {
+    const m = new Map<string, Absence | null>();
+    activeStaff.forEach(s => {
+      m.set(s.id, allAbsences.find(a => a.staffId === s.id && a.dayOfWeek === currentDow) ?? null);
+    });
+    return m;
+  }, [allAbsences, activeStaff, currentDow]);
 
   const isUnavailable = useCallback((hour: number, minute: number, staffId: string): boolean => {
     const slotMin = hour * 60 + minute;
@@ -553,8 +4177,12 @@ export function CalendarPage() {
     });
   }, [shiftsByStaff, breaksByStaff]);
 
+  // Multi-service bookings fan out into N sibling appointments sharing a groupId.
+  // Sequential awaits keep error handling clean — first failure stops the chain.
   const createMutation = useMutation({
-    mutationFn: (data: Omit<Appointment, 'id' | 'createdAt'> & { override?: boolean }) => appointmentsApi.create(data),
+    mutationFn: async (data: Array<Omit<Appointment, 'id' | 'createdAt'> & { override?: boolean }>) => {
+      for (const p of data) await appointmentsApi.create(p);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['appointments'] });
       toast.success(t('toast.appointmentCreated'));
@@ -577,12 +4205,27 @@ export function CalendarPage() {
     onSuccess: (c) => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       setFormData(f => ({ ...f, clientId: c.id }));
-      setNewClient({ firstName: '', lastName: '', phone: '', email: '', avatarUrl: '' });
+      setNewClient(EMPTY_NEW_CLIENT_DRAFT);
       setIsCreatingClient(false);
       setClientSearch('');
       toast.success(t('toast.clientCreated'));
     },
     onError: () => toast.error(t('toast.clientCreateError')),
+  });
+
+  // Edit an existing client from the profile sheet's pencil-icon flow.
+  // Reuses CreateClientModal's UI in edit mode; on success the profile
+  // sheet (still mounted underneath) re-renders with fresh data.
+  const editClientMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Client> }) =>
+      clientsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      setEditClientId(null);
+      setEditClientDraft(EMPTY_NEW_CLIENT_DRAFT);
+      toast.success(t('toast.clientUpdated'));
+    },
+    onError: () => toast.error(t('toast.clientUpdateError')),
   });
 
   const updateStatusMutation = useMutation({
@@ -607,6 +4250,45 @@ export function CalendarPage() {
   // Optimistic full-edit — appointment block moves to its new time/staff on the
   // calendar grid immediately. Server call still runs; on error we roll back
   // from the snapshot. Matches the delete flow so edits don't feel slower.
+  // Drag-to-reschedule for break tiles — the mutation below covers both
+  // confirm-modal branches: "Все" (update existing weekly's startTime/endTime)
+  // and "Только этот" (add date to exceptionDates + create one-off override).
+  // Also called directly for one-off breaks where no modal is needed.
+  const breakUpsertMut = useMutation({
+    mutationFn: async (next: Break) => breaksApi.upsert(next),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['breaks'] });
+      toast.success(t('toast.scheduleUpdated'));
+    },
+    onError: () => toast.error(t('toast.appointmentError')),
+  });
+  const breakSplitMut = useMutation({
+    mutationFn: async (args: { brk: Break; targetDate: string; newStart: string; newEnd: string }) => {
+      const { brk, targetDate, newStart, newEnd } = args;
+      // 1. Mark target date as exception on the weekly original.
+      const exceptionDates = Array.from(new Set([...(brk.exceptionDates ?? []), targetDate]));
+      await breaksApi.upsert({ ...brk, exceptionDates });
+      // 2. Create a one-off Break for this date with the new time range.
+      await breaksApi.upsert({
+        staffId: brk.staffId,
+        dayOfWeek: brk.dayOfWeek,
+        startTime: newStart,
+        endTime: newEnd,
+        type: brk.type,
+        customLabel: brk.customLabel,
+        recurrence: 'one-off',
+        startDate: targetDate,
+        createdBy: currentUserId,
+        createdAt: new Date().toISOString(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['breaks'] });
+      toast.success(t('toast.scheduleUpdated'));
+    },
+    onError: () => toast.error(t('toast.appointmentError')),
+  });
+
   const fullUpdateMutation = useMutation({
     mutationFn: ({ id, changes }: {
       id: string;
@@ -644,7 +4326,13 @@ export function CalendarPage() {
       toast.error(t('toast.appointmentUpdateError'));
     },
     onSuccess: () => {
-      toast.success(t('toast.appointmentUpdated'));
+      // Drag-confirm Save handles its own toast (with Undo action). Skip ours so
+      // the user doesn't see two stacked notifications.
+      if (suppressNextUpdateToast.current) {
+        suppressNextUpdateToast.current = false;
+      } else {
+        toast.success(t('toast.appointmentUpdated'));
+      }
       setDetailApt(null);
     },
     onSettled: () => {
@@ -670,14 +4358,57 @@ export function CalendarPage() {
 
   const closeCreate = useCallback(() => {
     setIsCreateOpen(false);
-    setFormData({ clientId: '', staffId: '', serviceId: '', notes: '' });
+    setFormData({ clientId: '', staffId: '', serviceIds: [], notes: '' });
     setSelectedSlot(null);
     setClientSearch('');
     setIsCreatingClient(false);
-    setNewClient({ firstName: '', lastName: '', phone: '', email: '', avatarUrl: '' });
+    setNewClient(EMPTY_NEW_CLIENT_DRAFT);
+    setRecurrenceEnabled(false);
+    setRecurrenceWeeks(1);
+    setRecurrenceCount(4);
   }, []);
 
   const openSlot = (hour: number, minute: number, staffId: string) => {
+    // Rebook intercept — if the user previously hit "Rebook" on an existing
+    // appointment, the calendar grid is now a slot picker. Clicking creates
+    // a CLONE of the original at the new slot (same client, same service,
+    // possibly different staff/time) instead of moving the original. The
+    // original stays intact — that's the correct semantic for "repeat
+    // booking" (e.g. "schedule the same haircut for next week").
+    if (rebookingApt) {
+      const dur = differenceInMinutes(
+        parseISO(rebookingApt.endTime),
+        parseISO(rebookingApt.startTime),
+      );
+      const start = setMinutes(setHours(startOfDay(selectedDate), hour), minute);
+      const end = new Date(start.getTime() + dur * 60_000);
+      const aptToClone = rebookingApt; // capture before clearing state
+      // Clear UI state immediately so the ghost/banner disappear during the
+      // async create. Toast resolves on success/failure.
+      setRebookingApt(null);
+      setRebookHover(null);
+      appointmentsApi
+        .create({
+          clientId: aptToClone.clientId,
+          staffId,
+          serviceId: aptToClone.serviceId,
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          status: 'scheduled',
+          notes: aptToClone.notes ?? '',
+          locationId: officeId,
+          override: canOverride,
+        })
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ['appointments', officeId] });
+          queryClient.invalidateQueries({ queryKey: ['appointments', 'all-offices'] });
+          toast.success(t('calendar.rebookSuccess'));
+        })
+        .catch((err) => {
+          toast.error((err as Error).message ?? 'Rebook failed');
+        });
+      return;
+    }
     setSelectedSlot({ hour, minute, staffId });
     setFormData(f => ({ ...f, staffId }));
     // Seed the editable date + time from the clicked slot.
@@ -687,12 +4418,14 @@ export function CalendarPage() {
   };
 
   const handleSubmit = () => {
-    if (!formData.clientId || !formData.staffId || !formData.serviceId) {
+    if (!formData.clientId || !formData.staffId || formData.serviceIds.length === 0) {
       toast.error(t('toast.fillRequired'));
       return;
     }
-    const svc = services.find(s => s.id === formData.serviceId);
-    if (!svc) return;
+    const picked = formData.serviceIds
+      .map(id => services.find(s => s.id === id))
+      .filter((s): s is Service => !!s);
+    if (picked.length === 0) return;
     // Parse the editable date + time inputs (YYYY-MM-DD and HH:mm).
     const dateParts = createDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     const timeParts = createTime.match(/^(\d{2}):(\d{2})$/);
@@ -700,7 +4433,7 @@ export function CalendarPage() {
       toast.error(t('toast.fillRequired'));
       return;
     }
-    const st = new Date(
+    const baseStart = new Date(
       Number(dateParts[1]),
       Number(dateParts[2]) - 1,
       Number(dateParts[3]),
@@ -708,27 +4441,60 @@ export function CalendarPage() {
       Number(timeParts[2]),
       0, 0,
     );
-    const et = new Date(st.getTime() + svc.duration * 60000);
-    const payload: Omit<Appointment, 'id' | 'createdAt'> = {
-      clientId: formData.clientId, staffId: formData.staffId, serviceId: formData.serviceId,
-      startTime: st.toISOString(), endTime: et.toISOString(), status: 'scheduled', notes: formData.notes,
-      locationId: officeId,
+    // Recurrence expansion — fan out occurrences spaced `recurrenceWeeks` weeks
+    // apart, total `recurrenceCount` (including the base). Each occurrence is an
+    // independent Appointment row (no series link).
+    const expandOccurrences = (): Date[] => {
+      if (!recurrenceEnabled) return [baseStart];
+      const n = Math.max(1, Math.min(52, recurrenceCount));
+      const stepWeeks = Math.max(1, Math.min(12, recurrenceWeeks));
+      return Array.from({ length: n }, (_, i) => addWeeks(baseStart, i * stepWeeks));
     };
-    const conflicts = findConflicts(
-      { staffId: payload.staffId, start: st, end: et },
-      allAppointments,
-      offices,
-    );
-    if (conflicts.length > 0) {
-      setConflictState({ conflicts, pending: payload });
+    const occurrences = expandOccurrences();
+    // For each occurrence, fan out the multi-service array. Each occurrence gets its
+    // own groupId (siblings within an occurrence share it; cross-occurrence siblings
+    // do NOT — that's the "no series link" semantic).
+    const payloads: Array<Omit<Appointment, 'id' | 'createdAt'>> = [];
+    for (const occStart of occurrences) {
+      const occGroupId = picked.length > 1 ? crypto.randomUUID() : undefined;
+      let cursorMs = occStart.getTime();
+      for (const svc of picked) {
+        const start = new Date(cursorMs);
+        const end = new Date(cursorMs + svc.duration * 60000);
+        payloads.push({
+          clientId: formData.clientId,
+          staffId: formData.staffId,
+          serviceId: svc.id,
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          status: 'scheduled',
+          notes: formData.notes,
+          locationId: officeId,
+          groupId: occGroupId,
+          createdBy: currentUserId,
+        });
+        cursorMs = end.getTime();
+      }
+    }
+    // Aggregate conflicts across every payload — block on any.
+    const allConflicts: ReturnType<typeof findConflicts> = [];
+    const allBreakConflicts: BreakConflict[] = [];
+    for (const p of payloads) {
+      const pStart = new Date(p.startTime);
+      const pEnd = new Date(p.endTime);
+      allConflicts.push(...findConflicts({ staffId: p.staffId, start: pStart, end: pEnd }, allAppointments, offices));
+      allBreakConflicts.push(...findBreakConflicts({ staffId: p.staffId, start: pStart, end: pEnd }, allBreaks));
+    }
+    if (allConflicts.length > 0 || allBreakConflicts.length > 0) {
+      setConflictState({ conflicts: allConflicts, breakConflicts: allBreakConflicts, pending: payloads });
       return;
     }
-    createMutation.mutate(payload);
+    createMutation.mutate(payloads);
   };
 
   const confirmOverride = () => {
     if (!conflictState) return;
-    createMutation.mutate({ ...conflictState.pending, override: true });
+    createMutation.mutate(conflictState.pending.map(p => ({ ...p, override: true })));
   };
 
   // ─── Derived ────────────
@@ -737,12 +4503,43 @@ export function CalendarPage() {
     return appointments.filter(a => format(parseISO(a.startTime), 'yyyy-MM-dd') === key);
   }, [appointments, selectedDate]);
 
+  // Multi-service bookings share a `groupId`. The grid renders one stacked tile per
+  // group anchored at the earliest sibling, height extended to the latest sibling's
+  // end. Standalone (no groupId) appointments pass through unchanged.
+  const { groupedDayApts, groupMetaById } = useMemo(() => {
+    const byGroup = new Map<string, AppointmentWithDetails[]>();
+    const standalones: AppointmentWithDetails[] = [];
+    for (const a of dayApts) {
+      if (!a.groupId) { standalones.push(a); continue; }
+      const arr = byGroup.get(a.groupId) ?? [];
+      arr.push(a);
+      byGroup.set(a.groupId, arr);
+    }
+    const meta = new Map<string, { siblings: AppointmentWithDetails[]; totalPrice: number; totalDuration: number }>();
+    const groupPrimaries: AppointmentWithDetails[] = [];
+    byGroup.forEach((siblings) => {
+      const sorted = [...siblings].sort((a, b) => a.startTime.localeCompare(b.startTime));
+      const primary = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const totalPrice = sorted.reduce((sum, s) => sum + (s.service?.price ?? 0), 0);
+      const totalDuration = sorted.reduce((sum, s) => {
+        const d = (new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000;
+        return sum + d;
+      }, 0);
+      // Synthesize a primary with extended endTime so lane assignment treats the
+      // group as one tile.
+      groupPrimaries.push({ ...primary, endTime: last.endTime });
+      meta.set(primary.id, { siblings: sorted, totalPrice, totalDuration });
+    });
+    return { groupedDayApts: [...standalones, ...groupPrimaries], groupMetaById: meta };
+  }, [dayApts]);
+
   const aptsByStaff = useMemo(() => {
     const m = new Map<string, AppointmentWithDetails[]>();
     activeStaff.forEach(s => m.set(s.id, []));
-    dayApts.forEach(a => { const l = m.get(a.staffId) || []; l.push(a); m.set(a.staffId, l); });
+    groupedDayApts.forEach(a => { const l = m.get(a.staffId) || []; l.push(a); m.set(a.staffId, l); });
     return m;
-  }, [dayApts, activeStaff]);
+  }, [groupedDayApts, activeStaff]);
 
   // Per-staff lane assignment (fixes overlap)
   const lanesByStaff = useMemo(() => {
@@ -794,19 +4591,63 @@ export function CalendarPage() {
   // When the viewer is owner/manager, overlays render `pointer-events-none`
   // so the clickable slot cells beneath still receive clicks — the overlay
   // stays visible (owner still needs the visual context) but doesn't block.
+  // Off-shift overlays are now interactive for owner/manager. Each gray band
+  // (pre-shift, post-shift, or full-day) is a button that opens an "Edit day"
+  // menu pre-targeted at this staff member — matches the competitor's flow
+  // where clicking outside-shift hours surfaces a per-day shortcut sheet.
+  // Receptionists keep static, non-interactive overlays.
   const renderOffDuty = (staffId: string) => {
     const shift = shiftsByStaff.get(staffId);
     const totalMinutes = totalSlots * 60;
-    const passThrough = canOverride ? 'pointer-events-none' : '';
+    const member = activeStaff.find(s => s.id === staffId);
+    if (!member) return null;
 
-    if (!shift) {
-      return (
-        <div className={cn('absolute inset-0 z-[5] flex items-center justify-center bg-muted/60 dark:bg-muted/40', passThrough)}>
-          <span className="rounded-md bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-            {t('calendar.dayOff')}
-          </span>
+    // Solid muted bg + diagonal hatch overlay (added inline below per band)
+    // — flagged "this column is closed" in one glance instead of reading a
+    // single centered line of grey text. Same hatch grammar as break tiles.
+    const baseClass = 'absolute left-0 right-0 z-[10] flex items-center justify-center bg-muted dark:bg-muted/95';
+    const interactiveClass = 'transition-colors hover:bg-muted/85 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60';
+    const hatchStyle: React.CSSProperties = {
+      backgroundImage: 'repeating-linear-gradient(45deg, rgba(102,112,133,0.07) 0 8px, transparent 8px 16px)',
+    };
+
+    const openMenu = () => setEditDayModal({
+      staffId,
+      staffName: `${member.firstName} ${member.lastName}`,
+    });
+
+    const renderBand = (key: string, style: React.CSSProperties, content?: React.ReactNode, withHatch = false) => {
+      const mergedStyle = withHatch ? { ...style, ...hatchStyle } : style;
+      return canOverride ? (
+        <button
+          key={key}
+          type="button"
+          onClick={openMenu}
+          className={cn(baseClass, interactiveClass)}
+          style={mergedStyle}
+          title={`Edit ${member.firstName}'s day`}
+        >
+          {content}
+        </button>
+      ) : (
+        <div key={key} className={cn(baseClass, 'pointer-events-none')} style={mergedStyle}>
+          {content}
         </div>
       );
+    };
+
+    if (!shift) {
+      // Full-day off — diagonal-hatched column with a centered editorial
+      // label. Hatch makes "this column is closed" readable at a glance even
+      // when the operator is scanning a 7-staff row.
+      const absence = absenceByStaff.get(staffId) ?? null;
+      const reasonKey = absence ? (`break.${absence.reason}` as TranslationKey) : 'calendar.dayOff';
+      const label = (
+        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+          {t(reasonKey)}
+        </span>
+      );
+      return renderBand('full', { top: 0, bottom: 0 }, label, /* withHatch */ true);
     }
 
     const shiftStartMin = parseTimeToMinutes(shift.startTime) - DAY_START_HOUR * 60;
@@ -815,44 +4656,616 @@ export function CalendarPage() {
 
     if (shiftStartMin > 0) {
       const h = (shiftStartMin / 60) * SLOT_HEIGHT;
-      overlays.push(
-        <div key="pre" className={cn('absolute left-0 right-0 top-0 z-[5] bg-muted/60 dark:bg-muted/40', passThrough)} style={{ height: `${h}px` }} />,
-      );
+      overlays.push(renderBand('pre', { top: 0, height: `${h}px` }));
     }
-
     if (shiftEndMin < totalMinutes) {
       const top = (shiftEndMin / 60) * SLOT_HEIGHT;
       const h = ((totalMinutes - shiftEndMin) / 60) * SLOT_HEIGHT;
-      overlays.push(
-        <div key="post" className={cn('absolute left-0 right-0 z-[5] bg-muted/60 dark:bg-muted/40', passThrough)} style={{ top: `${top}px`, height: `${h}px` }} />,
-      );
+      overlays.push(renderBand('post', { top: `${top}px`, height: `${h}px` }));
     }
-
     return <>{overlays}</>;
   };
 
   const renderBreaks = (staffId: string) => {
     const breaks = breaksByStaff.get(staffId) || [];
-    const passThrough = canOverride ? 'pointer-events-none' : '';
-    return breaks.map(brk => {
-      const startMin = parseTimeToMinutes(brk.startTime) - DAY_START_HOUR * 60;
-      const endMin = parseTimeToMinutes(brk.endTime) - DAY_START_HOUR * 60;
-      const top = (startMin / 60) * SLOT_HEIGHT;
-      const h = ((endMin - startMin) / 60) * SLOT_HEIGHT;
+    const colApts = aptsByStaff.get(staffId) || [];
+    const staff = allStaff.find(s => s.id === staffId);
+
+    // Per-break-type semantic palette — literal classes so the JIT picks
+    // them up. Stripe = saturated bar on the left edge ("identity spine"),
+    // chip = soft-tint pill carrying the icon + label, ring = subtle outline
+    // around the avatar to echo the type color without screaming.
+    //
+    // `bgTint` + `borderL` + `hatchRgb` carry the *tile-surface* identity
+    // for the day-grid break overlay. All four channels (bg + stripe rail +
+    // diagonal hatch + label color) reinforce the type so the eye reads
+    // "this is dinner" before reading the text.
+    const BREAK_HOVER_PALETTE: Record<Break['type'], {
+      stripe: string;       // hover-card left-rail (saturated)
+      chip: string;         // hover-card chip
+      iconText: string;     // tile + hover icon color
+      ring: string;         // hover-card avatar ring
+      bgTint: string;       // tile soft-tint bg utility
+      borderL: string;      // tile 5px left rail
+      hatchRgb: string;     // raw rgb triplet for the diagonal hatch
+    }> = {
+      // Dark-mode tints dropped from /10 to /[0.06] — at /10 the hatch overlay
+      // pushed effective alpha to ~0.22 and the lunch tile shouted louder
+      // than the actual booking. /[0.06] keeps the type identity readable
+      // without competing with the booking tiles for visual weight.
+      lunch:  { stripe: 'bg-amber-500',   chip: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',     iconText: 'text-amber-700 dark:text-amber-300/80',   ring: 'ring-amber-500/30',  bgTint: 'bg-amber-50 dark:bg-amber-500/[0.06]',     borderL: 'border-l-amber-600 dark:border-l-amber-500',     hatchRgb: '217, 119, 6'  },
+      dinner: { stripe: 'bg-indigo-500',  chip: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300',  iconText: 'text-indigo-700 dark:text-indigo-300/80', ring: 'ring-indigo-500/30', bgTint: 'bg-indigo-50 dark:bg-indigo-500/[0.06]',   borderL: 'border-l-indigo-600 dark:border-l-indigo-500',   hatchRgb: '79, 70, 229'  },
+      rest:   { stripe: 'bg-emerald-500', chip: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', iconText: 'text-emerald-700 dark:text-emerald-300/80', ring: 'ring-emerald-500/30', bgTint: 'bg-emerald-50 dark:bg-emerald-500/[0.06]', borderL: 'border-l-emerald-600 dark:border-l-emerald-500', hatchRgb: '5, 150, 105'  },
+      custom: { stripe: 'bg-fuchsia-500', chip: 'bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300', iconText: 'text-fuchsia-700 dark:text-fuchsia-300/80', ring: 'ring-fuchsia-500/30', bgTint: 'bg-fuchsia-50 dark:bg-fuchsia-500/[0.06]', borderL: 'border-l-fuchsia-600 dark:border-l-fuchsia-500', hatchRgb: '192, 38, 211' },
+    };
+
+    // Hover-card content for a break tile — Editorial Studio Ledger.
+    // Mirrors the appointment HoverCard at ~4689 (left accent stripe, hero
+    // time block, ledger meta rows) but with break-specific signals: type
+    // pill semantic-colored, avatar gradient ring matching the stripe, no
+    // status pill (a break has no "scheduled/confirmed" — it just IS).
+    // Motion: subtle stagger so the eye lands on the time hero last.
+    const breakInfoCard = (brk: Break) => {
+      const Icon = BLOCK_ICON[brk.type];
       const labelKey = `break.${brk.type}` as TranslationKey;
+      const typeLabel = brk.type === 'custom' && brk.customLabel
+        ? brk.customLabel
+        : t(labelKey);
+      const dayLabel = t(`days.${brk.dayOfWeek}` as TranslationKey);
+      const recurrenceText = brk.recurrence === 'one-off'
+        ? t('break.metaRecurrenceOnce')
+        : (brk.startDate && brk.endDate
+            ? t('break.metaRecurrenceRanged').replace('{day}', dayLabel)
+            : t('break.metaRecurrenceWeekly').replace('{day}', dayLabel));
+      const fmtDate = (s: string | undefined) =>
+        s ? format(parseISO(s), 'd MMM yyyy', { locale: dateLocale }) : null;
+      const startDate = fmtDate(brk.startDate);
+      const endDate = fmtDate(brk.endDate);
+      const timeRange = `${brk.startTime} – ${brk.endTime}`;
+      // Duration in minutes for the right-aligned chip in the time hero.
+      const durMin = parseTimeToMinutes(brk.endTime) - parseTimeToMinutes(brk.startTime);
+      const durLabel = durMin >= 60
+        ? (durMin % 60 === 0 ? `${durMin / 60}h` : `${Math.floor(durMin / 60)}h ${durMin % 60}m`)
+        : `${durMin} min`;
+      const staffName = staff ? `${staff.firstName} ${staff.lastName}`.trim() : '';
+      const staffInitials = staff
+        ? `${staff.firstName[0] ?? ''}${staff.lastName[0] ?? ''}`.toUpperCase()
+        : '';
+      const staffGrad = staff
+        ? AVATAR_GRADIENTS[hashToIndex(staff.id, AVATAR_GRADIENTS.length)]
+        : 'from-muted to-muted';
+      const palette = BREAK_HOVER_PALETTE[brk.type];
+
+      // Stagger timeline — 4 chunks land in 200ms so the eye flows
+      // header → identity → time hero → meta. Reduced-motion collapses
+      // everything to a single 0ms fade.
+      const stagger = (i: number) => reduceMotion
+        ? { duration: 0 }
+        : { duration: 0.22, ease: MOTION_EASE, delay: 0.04 * i };
+      const fade = reduceMotion ? false : { opacity: 0, y: 4 };
 
       return (
-        <div
-          key={brk.id}
-          className={cn('absolute left-1 right-1 z-[8] flex items-center justify-center rounded-md border border-dashed border-border break-stripes', passThrough)}
-          style={{ top: `${top}px`, height: `${h}px` }}
+        <motion.div
+          initial={fade}
+          animate={{ opacity: 1, y: 0 }}
+          transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: MOTION_EASE }}
+          className="relative w-80 p-0 overflow-hidden rounded-lg"
         >
-          <span className="rounded bg-muted/80 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-            {t(labelKey)}
-          </span>
-        </div>
+          {/* Left accent stripe — semantic-colored "spine" */}
+          <div className={cn('absolute left-0 top-0 bottom-0 w-1', palette.stripe)} aria-hidden />
+
+          {/* Editorial eyebrow header — typographic, not a boxy strip */}
+          <motion.div
+            initial={fade}
+            animate={{ opacity: 1, y: 0 }}
+            transition={stagger(0)}
+            className="pl-5 pr-4 pt-3 pb-2.5"
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/80">
+              {t('break.hoverTitle')}
+            </p>
+          </motion.div>
+
+          <div className="border-t border-border" />
+
+          {/* Identity — gradient avatar + name + semantic-tint type chip */}
+          <motion.div
+            initial={fade}
+            animate={{ opacity: 1, y: 0 }}
+            transition={stagger(1)}
+            className="pl-5 pr-4 py-3.5 flex items-center gap-3"
+          >
+            <div className={cn(
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-[11px] font-bold text-white shadow-sm ring-2',
+              staffGrad,
+              palette.ring,
+            )}>
+              {staffInitials}
+            </div>
+            <div className="min-w-0 flex-1">
+              {staffName && (
+                <p className="text-[15px] font-bold text-foreground truncate leading-tight tracking-tight">
+                  {staffName}
+                </p>
+              )}
+              <span className={cn(
+                'mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+                palette.chip,
+              )}>
+                <Icon className="h-3 w-3" />
+                {typeLabel}
+              </span>
+            </div>
+          </motion.div>
+
+          {/* TIME HERO — display-size range + duration chip on the right */}
+          <motion.div
+            initial={fade}
+            animate={{ opacity: 1, y: 0 }}
+            transition={stagger(2)}
+            className="border-t border-border pl-5 pr-4 py-3 flex items-baseline justify-between gap-3"
+          >
+            <p className="text-[20px] font-bold tabular-nums tracking-tight leading-none text-foreground">
+              {timeRange}
+            </p>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground tabular-nums shrink-0">
+              {durLabel}
+            </span>
+          </motion.div>
+
+          {/* Ledger meta rows — bold uppercase eyebrow label + value */}
+          <motion.div
+            initial={fade}
+            animate={{ opacity: 1, y: 0 }}
+            transition={stagger(3)}
+            className="border-t border-border pl-5 pr-4 py-3 text-[12px] space-y-2"
+          >
+            <div className="flex items-baseline gap-3">
+              <span className="w-20 shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                {t('break.metaRepeats')}
+              </span>
+              <span className="text-foreground font-medium">{recurrenceText}</span>
+            </div>
+            {startDate && endDate && startDate !== endDate && (
+              <div className="flex items-baseline gap-3">
+                <span className="w-20 shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                  {t('break.metaStartDate')}
+                </span>
+                <span className="tabular-nums text-foreground font-medium">{startDate} → {endDate}</span>
+              </div>
+            )}
+            {startDate && (!endDate || startDate === endDate) && (
+              <div className="flex items-baseline gap-3">
+                <span className="w-20 shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                  {t('break.metaStartDate')}
+                </span>
+                <span className="tabular-nums text-foreground font-medium">{startDate}</span>
+              </div>
+            )}
+          </motion.div>
+
+          {/* AUDIT — muted strip with creator + creation timestamp. Mirrors
+              the appointment hover-card's audit row so the operator's eye
+              learns one signal across both surfaces. */}
+          {(() => {
+            const creatorName = formatCreator(brk.createdBy);
+            const creatorChip = renderCreatorChip(brk.createdBy);
+            const stampedAt = brk.createdAt
+              ? format(parseISO(brk.createdAt), 'MMM d · HH:mm')
+              : null;
+            if (!creatorName && !stampedAt) return null;
+            return (
+              <motion.div
+                initial={fade}
+                animate={{ opacity: 1, y: 0 }}
+                transition={stagger(4)}
+                className="border-t border-border bg-muted/25 pl-5 pr-4 py-2 flex items-baseline justify-between gap-3"
+              >
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/65 shrink-0">
+                  {t('calendar.created')}
+                </span>
+                <span className="text-[10px] tabular-nums text-muted-foreground/85 truncate text-right">
+                  {creatorChip ?? (creatorName && <span className="font-semibold text-muted-foreground">{creatorName}</span>)}
+                  {creatorName && stampedAt && <span className="mx-1.5 text-muted-foreground/40">·</span>}
+                  {stampedAt}
+                </span>
+              </motion.div>
+            );
+          })()}
+        </motion.div>
       );
+    };
+
+    return breaks.flatMap(brk => {
+      const breakStartMin = parseTimeToMinutes(brk.startTime) - DAY_START_HOUR * 60;
+      const breakEndMin = parseTimeToMinutes(brk.endTime) - DAY_START_HOUR * 60;
+      const labelKey = `break.${brk.type}` as TranslationKey;
+      const Icon = BLOCK_ICON[brk.type];
+      const displayLabel = brk.type === 'custom' && brk.customLabel
+        ? brk.customLabel
+        : t(labelKey);
+
+      // Booking-card-style inner content. Density ladder mirrors the
+      // appointment tile (renderBlock): staff name is the prominent "who",
+      // type label + icon below as the "what", time range pinned to the
+      // bottom on tall tiles. Semantic left accent stripe carries the type
+      // identity (lunch=amber / dinner=indigo / rest=emerald / custom=fuchsia)
+      // so an operator scans break TYPES at a glance, not just "is there a
+      // break here".
+      const palette = BREAK_HOVER_PALETTE[brk.type];
+      const staffFirstName = staff?.firstName ?? '';
+      const timeStr = `${brk.startTime}–${brk.endTime}`;
+      // Duration label for the chip in the time row — formats minutes as
+      // "30m" / "1h" / "1h 30m" so the operator sees the block's *cost* in
+      // shift hours at a glance, not just its endpoints.
+      const durMin = parseTimeToMinutes(brk.endTime) - parseTimeToMinutes(brk.startTime);
+      const durLabel = durMin >= 60
+        ? (durMin % 60 === 0 ? `${durMin / 60}h` : `${Math.floor(durMin / 60)}h ${durMin % 60}m`)
+        : `${durMin}m`;
+      const buildInner = (segH: number) => {
+        const tinyB = segH < 28;
+        const compactB = !tinyB && segH < 48;
+        const showTimeRow = segH >= 64;
+        const showDurChip = segH >= 80;
+        return (
+          <>
+            {/* Left semantic stripe — same hue as the hover-card */}
+            <span
+              aria-hidden
+              className={cn('pointer-events-none absolute left-0 top-0 bottom-0 w-[3px] rounded-l-md', palette.stripe)}
+            />
+            {tinyB ? (
+              <div className="flex h-full items-center justify-center w-full pl-2 pr-1.5">
+                <Icon className={cn('h-3 w-3 shrink-0', palette.iconText)} />
+              </div>
+            ) : compactB ? (
+              // Italic on the staff name at compact density doubles as the
+              // "I'm a block, not a booking" signal — booking tiles never
+              // italicize the client name. Combined with the dashed border +
+              // semantic stripe, the operator can't confuse the two even at
+              // narrow heights. (Audit P1 #5.)
+              <div className="flex h-full w-full items-center gap-1.5 pl-2.5 pr-1.5">
+                <Icon className={cn('h-3 w-3 shrink-0', palette.iconText)} />
+                <span className="text-[11px] font-bold italic text-foreground truncate">
+                  {staffFirstName}
+                </span>
+                <span className={cn('ml-auto text-[10px] font-semibold uppercase tracking-[0.14em] truncate', palette.iconText)}>
+                  {displayLabel}
+                </span>
+              </div>
+            ) : (
+              // Full variant — vertically-centered identity + time pair so
+              // the content reads as a balanced editorial card on tall tiles
+              // (no more huge gap between identity and bottom-pinned time).
+              // Identity row mirrors the booking-card grammar: icon + bold
+              // italic name (left) + uppercase type tag (right). Time row
+              // sits directly below with a duration chip on the right edge,
+              // giving operators "block cost in shift hours" at a glance.
+              <div className="flex h-full w-full flex-col justify-center gap-1 px-2.5 py-1.5 overflow-hidden">
+                {/* Identity row */}
+                <div className="flex items-center gap-1.5 min-w-0 w-full">
+                  <Icon className={cn('h-3.5 w-3.5 shrink-0', palette.iconText)} />
+                  <span className="text-[12px] font-bold italic text-foreground truncate min-w-0">
+                    {staffFirstName}
+                  </span>
+                  <span className={cn(
+                    'ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em]',
+                    palette.iconText,
+                  )}>
+                    {displayLabel}
+                  </span>
+                </div>
+
+                {/* Time + duration row — only renders on tall tiles. Time
+                    bold-left, duration chip far-right; matches the identity
+                    row's left/right symmetry above so the two read as a pair. */}
+                {showTimeRow && (
+                  <div className="flex items-center gap-2 min-w-0 w-full">
+                    <span className="text-[11px] font-semibold tabular-nums text-foreground/80 truncate">
+                      {timeStr}
+                    </span>
+                    {showDurChip && (
+                      <span className={cn(
+                        'ml-auto shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums tracking-[0.08em]',
+                        palette.chip,
+                      )}>
+                        {durLabel}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        );
+      };
+
+      // Horizontal mode (settings preference): render the break as a single
+      // continuous overlay; the appointment z-indexes above it. No segmentation.
+      // Operator sees the break "framing" the appointment.
+      if (breakCutMode === 'horizontal') {
+        const top = (breakStartMin / 60) * SLOT_HEIGHT;
+        const h = ((breakEndMin - breakStartMin) / 60) * SLOT_HEIGHT;
+        const inner = buildInner(h);
+        // Per-type tile chrome — soft-tint bg + 5px stripe + diagonal hatch
+        // in the same hue. The hatch is inline (Tailwind JIT can't ingest
+        // the comma-rich repeating-linear-gradient cleanly).
+        const tileClass = cn(
+          'absolute left-1 right-1 z-[5] overflow-hidden rounded-md border-l-[5px]',
+          palette.bgTint,
+          palette.borderL,
+          'transition-all duration-150',
+        );
+        const tileStyle = {
+          top: `${top}px`,
+          height: `${h}px`,
+          backgroundImage: `repeating-linear-gradient(45deg, rgba(${palette.hatchRgb}, var(--break-hatch-alpha, 0.12)) 0 8px, transparent 8px 16px)`,
+        };
+        return [(
+          <HoverCard key={brk.id} openDelay={320} closeDelay={120}>
+            <HoverCardTrigger asChild>
+              {canOverride ? (
+                <button
+                  type="button"
+                  draggable
+                  onDragStart={(ev) => {
+                    ev.stopPropagation();
+                    ev.dataTransfer.setData('text/plain', `brk:${brk.id}`);
+                    ev.dataTransfer.effectAllowed = 'move';
+                    setDraggingBreakId(brk.id);
+                  }}
+                  onDragEnd={() => setDraggingBreakId(null)}
+                  onClick={(ev) => { ev.stopPropagation(); setBlockState({ mode: 'edit-break', brk }); }}
+                  className={cn(
+                    tileClass,
+                    'hover:brightness-95 cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+                    draggingBreakId === brk.id && 'opacity-45 scale-[0.985]',
+                  )}
+                  style={tileStyle}
+                  aria-label={t('tile.editBlockAria').replace('{kind}', t(labelKey)).replace('{staff}', staffFirstName)}
+                >
+                  {inner}
+                </button>
+              ) : (
+                <div
+                  className={tileClass}
+                  style={tileStyle}
+                >
+                  {inner}
+                </div>
+              )}
+            </HoverCardTrigger>
+            <HoverCardContent align="start" side="right" sideOffset={8} className="w-auto p-0 overflow-hidden border-border/80 shadow-lg">
+              {breakInfoCard(brk)}
+            </HoverCardContent>
+          </HoverCard>
+        )];
+      }
+
+      // ── Vertical (default): cut break around overlapping appointments ──
+      // When an appointment lands inside a break, the operator should see TWO
+      // independent shapes — the appointment as a real card, the break as
+      // remaining dead-time chunks above/below. Without this cut, the break
+      // overlay extends around the appointment as a "frame", making it look
+      // like the appointment lives INSIDE the break.
+      const apptRanges = colApts
+        .map(apt => {
+          const s = parseISO(apt.startTime);
+          const e = parseISO(apt.endTime);
+          return {
+            aStart: (s.getHours() - DAY_START_HOUR) * 60 + s.getMinutes(),
+            aEnd:   (e.getHours()   - DAY_START_HOUR) * 60 + e.getMinutes(),
+          };
+        })
+        .filter(({ aStart, aEnd }) => aStart < breakEndMin && breakStartMin < aEnd)
+        .sort((a, b) => a.aStart - b.aStart);
+
+      const segments: { start: number; end: number }[] = [];
+      let cursor = breakStartMin;
+      for (const { aStart, aEnd } of apptRanges) {
+        if (cursor < aStart && aStart < breakEndMin) {
+          segments.push({ start: cursor, end: Math.min(aStart, breakEndMin) });
+        }
+        cursor = Math.max(cursor, aEnd);
+      }
+      if (cursor < breakEndMin) {
+        segments.push({ start: cursor, end: breakEndMin });
+      }
+
+      // Drop slivers (< 5 min) — they render as visual noise, not signal.
+      const visible = segments.filter(s => s.end - s.start >= 5);
+      if (visible.length === 0) return [];
+
+      // Label rides on the largest segment so we don't duplicate the icon
+      // across two stripes wrapping an appointment.
+      const largestIdx = visible.reduce(
+        (maxIdx, s, i, arr) => (s.end - s.start) > (arr[maxIdx].end - arr[maxIdx].start) ? i : maxIdx,
+        0,
+      );
+
+      return visible.map((seg, i) => {
+        const top = (seg.start / 60) * SLOT_HEIGHT;
+        const h = ((seg.end - seg.start) / 60) * SLOT_HEIGHT;
+        // Only render the booking-style content on the largest segment AND
+        // only when its height fits at least the tiny row (≥ 22px). Other
+        // segments (the slivers above/below an appointment) render as plain
+        // dashed bars with just the semantic stripe — the dashed outline +
+        // accent color still telegraph "there's a break here" without
+        // duplicating the staff name across two stripes.
+        const isLabelSeg = i === largestIdx && h >= 22;
+        const inner = isLabelSeg ? buildInner(h) : (
+          <span
+            aria-hidden
+            className={cn('pointer-events-none absolute left-0 top-0 bottom-0 w-[3px] rounded-l-md', palette.stripe)}
+          />
+        );
+
+        const segClass = cn(
+          'absolute left-1 right-1 z-[5] overflow-hidden rounded-md border-l-[5px]',
+          palette.bgTint,
+          palette.borderL,
+          'transition-all duration-150',
+        );
+        const segStyle = {
+          top: `${top}px`,
+          height: `${h}px`,
+          backgroundImage: `repeating-linear-gradient(45deg, rgba(${palette.hatchRgb}, var(--break-hatch-alpha, 0.12)) 0 8px, transparent 8px 16px)`,
+        };
+        return (
+          <HoverCard key={`${brk.id}-seg-${i}`} openDelay={320} closeDelay={120}>
+            <HoverCardTrigger asChild>
+              {canOverride ? (
+                <button
+                  type="button"
+                  draggable
+                  onDragStart={(ev) => {
+                    ev.stopPropagation();
+                    ev.dataTransfer.setData('text/plain', `brk:${brk.id}`);
+                    ev.dataTransfer.effectAllowed = 'move';
+                    setDraggingBreakId(brk.id);
+                  }}
+                  onDragEnd={() => setDraggingBreakId(null)}
+                  onClick={(ev) => { ev.stopPropagation(); setBlockState({ mode: 'edit-break', brk }); }}
+                  className={cn(
+                    segClass,
+                    'hover:brightness-95 cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+                    draggingBreakId === brk.id && 'opacity-45 scale-[0.985]',
+                  )}
+                  style={segStyle}
+                  aria-label={t('tile.editBlockAria').replace('{kind}', t(labelKey)).replace('{staff}', staffFirstName)}
+                >
+                  {inner}
+                </button>
+              ) : (
+                <div
+                  className={segClass}
+                  style={segStyle}
+                >
+                  {inner}
+                </div>
+              )}
+            </HoverCardTrigger>
+            <HoverCardContent align="start" side="right" sideOffset={8} className="w-auto p-0 overflow-hidden border-border/80 shadow-lg">
+              {breakInfoCard(brk)}
+            </HoverCardContent>
+          </HoverCard>
+        );
+      });
     });
+  };
+
+  // Shared rich hover-card. Both Day grid (via inline mount) and Week (via
+  // renderTileHoverCard render-prop) call this so a hover anywhere shows the
+  // same editorial preview: hero time + status/payment pills + client identity
+  // + service line + (optional) notes + audit footer with creator + timestamp.
+  const appointmentHoverCardContent = (apt: AppointmentWithDetails) => {
+    const s = parseISO(apt.startTime);
+    const e = parseISO(apt.endTime);
+    const dur = differenceInMinutes(e, s);
+    const timeStr = `${formatTime(s, timeFormat)}–${formatTime(e, timeFormat)}`;
+    const ps: 'paid' | 'voided' | 'unpaid' =
+      apt.status === 'completed' ? 'paid'
+        : apt.status === 'cancelled' ? 'voided'
+        : 'unpaid';
+    const psLabel =
+      ps === 'paid' ? t('calendar.paid')
+        : ps === 'voided' ? t('calendar.voided')
+        : t('calendar.notPaid');
+    const accentBar =
+      apt.status === 'confirmed' ? 'bg-emerald-500'
+        : apt.status === 'completed' ? 'bg-foreground'
+        : apt.status === 'cancelled' ? 'bg-rose-500'
+        : apt.status === 'no-show' ? 'bg-amber-500'
+        : 'bg-blue-500';
+    const clientGrad = AVATAR_GRADIENTS[hashToIndex(apt.clientId, AVATAR_GRADIENTS.length)];
+    const clientInit = `${apt.client.firstName[0] ?? ''}${apt.client.lastName[0] ?? ''}`.toUpperCase();
+    const creatorName = formatCreator(apt.createdBy);
+    const creatorChip = renderCreatorChip(apt.createdBy);
+    return (
+      <HoverCardContent
+        align="start"
+        side="right"
+        sideOffset={8}
+        className="w-80 p-0 overflow-hidden border-border/80 shadow-lg"
+      >
+        <div className="relative">
+          <div className={cn('absolute left-0 top-0 bottom-0 w-1', accentBar)} />
+          <div className="pl-5 pr-4 pt-4 pb-3.5">
+            <p className="text-[20px] font-bold tabular-nums tracking-tight leading-none text-foreground">
+              {timeStr}
+            </p>
+            <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              {format(s, 'EEE, MMM d')}
+              <span className="mx-1.5 text-muted-foreground/40">·</span>
+              <span className="tabular-nums">{dur} min</span>
+            </p>
+            <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+              <span className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]',
+                STATUS_PILL[apt.status],
+              )}>
+                <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[apt.status])} />
+                {t(`status.${apt.status}` as TranslationKey)}
+              </span>
+              <span className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]',
+                ps === 'paid' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                  : ps === 'voided' ? 'bg-muted text-muted-foreground'
+                  : 'bg-rose-500/10 text-rose-700 dark:text-rose-400',
+              )}>
+                {psLabel}
+                <span className="tabular-nums opacity-90">€{apt.service.price}</span>
+              </span>
+            </div>
+          </div>
+          <div className="border-t border-border pl-5 pr-4 py-3 flex items-center gap-3">
+            <div className={cn(
+              'flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br text-[11px] font-semibold text-white shrink-0 ring-2 ring-background shadow-sm',
+              clientGrad,
+            )}>
+              {clientInit}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-foreground truncate leading-tight">
+                {apt.client.firstName} {apt.client.lastName}
+              </p>
+              {apt.client.phone && (
+                <p className="text-[11px] text-muted-foreground tabular-nums truncate mt-0.5">
+                  {apt.client.phone}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="border-t border-border pl-5 pr-4 py-3 flex items-center gap-2.5">
+            <ScissorsIcon className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+            <p className="text-[12.5px] font-semibold text-foreground truncate flex-1">
+              {apt.service.name}
+            </p>
+            <p className="text-[13px] font-bold tabular-nums text-foreground shrink-0">
+              €{apt.service.price}
+            </p>
+          </div>
+          {apt.notes && apt.notes.trim().length > 0 && (
+            <div className="border-t border-border pl-5 pr-4 py-3 flex items-start gap-2.5">
+              <ChatBubbleLeftIcon className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0 mt-0.5" />
+              <p className="text-[11.5px] text-muted-foreground/90 italic leading-relaxed line-clamp-3">
+                “{apt.notes}”
+              </p>
+            </div>
+          )}
+          <div className="border-t border-border bg-muted/25 pl-5 pr-4 py-2 flex items-baseline justify-between gap-3">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/65 shrink-0">
+              {t('calendar.created')}
+            </span>
+            <span className="text-[10px] tabular-nums text-muted-foreground/85 truncate text-right">
+              {creatorChip ?? (creatorName && <span className="font-semibold text-muted-foreground">{creatorName}</span>)}
+              {creatorName && <span className="mx-1.5 text-muted-foreground/40">·</span>}
+              {apt.createdAt && format(parseISO(apt.createdAt), 'MMM d · HH:mm')}
+            </span>
+          </div>
+        </div>
+      </HoverCardContent>
+    );
   };
 
   const renderBlock = (apt: AppointmentWithDetails, laneInfo?: { lane: number; laneCount: number }) => {
@@ -879,71 +5292,511 @@ export function CalendarPage() {
       width: `calc(${lanePct}% - 8px)`,
     };
 
+    // ─── Tile state flags ────────────────────────────────
+    const isCancelled = apt.status === 'cancelled';
+    const isSelected = detailApt?.id === apt.id;
+    const isDragging = draggingAptId === apt.id;
+
+    // Phase B3 — break-override detection. Compare the appointment's
+    // local-time HH:mm range against the staff's breaks for the same
+    // day-of-week. Hard-mode validator usually catches overlap before the
+    // appointment is created; this fires only for owner-overrides + edge
+    // cases like an existing appointment now overlapping a newly-added break.
+    const aptStartHM = `${String(s.getHours()).padStart(2, '0')}:${String(s.getMinutes()).padStart(2, '0')}`;
+    const aptEndHM = `${String(e.getHours()).padStart(2, '0')}:${String(e.getMinutes()).padStart(2, '0')}`;
+    const staffBreaks = breaksByStaff.get(apt.staffId) ?? [];
+    const overridesBreak = staffBreaks.some(
+      b => aptStartHM < b.endTime && b.startTime < aptEndHM,
+    );
+
+    // Tile-level issue chip — replaces the silent amber triangle. Three
+    // distinct kinds the receptionist actually cares about, ranked by
+    // urgency. Only ONE chip renders (the highest-priority issue) so the
+    // tile chrome stays calm.
+    //
+    //   1. breakOverlap → amber       — booking sits inside a break (existing)
+    //   2. late         → rose        — start time has passed AND the apt is
+    //                                   still in scheduled/confirmed (the
+    //                                   client should be in the chair already)
+    //   3. unconfirmed  → blue        — status === 'scheduled' (no confirm)
+    //                                   and start is within next 24 hours
+    //
+    // `late` is gated to "today" so historical bookings from prior days don't
+    // light up the whole calendar in red. `unconfirmed` is gated to the
+    // 24-hour window because a year-out booking still being "scheduled" is
+    // not actionable today.
+    const now = new Date();
+    const ymdNow = format(now, 'yyyy-MM-dd');
+    const ymdApt = format(s, 'yyyy-MM-dd');
+    const minutesUntilStart = (s.getTime() - now.getTime()) / 60_000;
+    const isToday = ymdApt === ymdNow;
+    const isLate = isToday && minutesUntilStart < -5
+      && (apt.status === 'scheduled' || apt.status === 'confirmed');
+    const isUnconfirmed = apt.status === 'scheduled'
+      && minutesUntilStart > 0 && minutesUntilStart < 24 * 60;
+
+    type IssueKind = 'breakOverlap' | 'late' | 'unconfirmed';
+    const issueKind: IssueKind | null =
+      overridesBreak ? 'breakOverlap'
+      : isLate ? 'late'
+      : isUnconfirmed ? 'unconfirmed'
+      : null;
+    const issueMeta: Record<IssueKind, { Icon: typeof ExclamationTriangleIcon; bg: string; text: string; ring: string; tKey: TranslationKey }> = {
+      breakOverlap: {
+        Icon: ExclamationTriangleIcon,
+        bg: 'bg-amber-50 dark:bg-amber-500/15',
+        text: 'text-amber-700 dark:text-amber-400',
+        ring: 'ring-amber-500/30',
+        tKey: 'tile.overridesBreak',
+      },
+      late: {
+        Icon: ClockIcon,
+        bg: 'bg-rose-50 dark:bg-rose-500/15',
+        text: 'text-rose-700 dark:text-rose-400',
+        ring: 'ring-rose-500/30',
+        tKey: 'tile.lateStart',
+      },
+      unconfirmed: {
+        Icon: ExclamationCircleIcon,
+        bg: 'bg-blue-50 dark:bg-blue-500/15',
+        text: 'text-blue-700 dark:text-blue-400',
+        ring: 'ring-blue-500/30',
+        tKey: 'tile.unconfirmed',
+      },
+    };
+
+    // Phase C4 — gradient avatar for the Full variant. Vocabulary alignment
+    // with the HoverCard preview (which already uses this).
+    const clientGrad = AVATAR_GRADIENTS[hashToIndex(apt.clientId, AVATAR_GRADIENTS.length)];
+    const clientInit = `${apt.client.firstName[0] ?? ''}`.toUpperCase();
+
+    // Phase C1 — cancelled treatment combines line-through + bumped opacity
+    const nameStrike = isCancelled ? 'line-through decoration-rose-500/60 decoration-2' : '';
+
+    // Multi-service group: when this is a group primary, render the stacked
+    // service list and aggregate price/duration. groupMetaById is keyed by
+    // primary id; standalones are absent → groupMeta is undefined.
+    const groupMeta = groupMetaById.get(apt.id);
+    const isGroup = !!groupMeta && groupMeta.siblings.length > 1;
+    const displayServiceName = isGroup
+      ? `${apt.service?.name ?? ''} + ${groupMeta!.siblings.length - 1}`
+      : apt.service?.name ?? '';
+    const displayPrice = isGroup ? groupMeta!.totalPrice : (apt.service?.price ?? 0);
+
+    const tileContent = tiny ? (
+      // Phase C3 — tiny variant preserves service name as a 2nd line when
+      // there's at least 36px of vertical space. Below that, single-row.
+      h >= 36 ? (
+        <div className="flex flex-col h-full px-2 py-1 gap-0">
+          <div className="flex items-center gap-1.5">
+            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[apt.status])} />
+            <p className={cn('text-xs font-bold truncate flex-1', c.text, nameStrike)}>
+              {apt.client.firstName} {apt.client.lastName[0]}.
+            </p>
+            <p className={cn('text-[10px] tabular-nums shrink-0 font-medium', c.sub)}>{timeStr}</p>
+          </div>
+          <p className={cn('text-[10px] truncate leading-tight', c.sub)}>{displayServiceName}</p>
+        </div>
+      ) : (
+        <div className="flex items-center h-full px-2 gap-1.5">
+          <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[apt.status])} />
+          <p className={cn('text-xs font-bold truncate', c.text, nameStrike)}>
+            {apt.client.firstName} {apt.client.lastName[0]}.
+          </p>
+          <p className={cn('text-[11px] tabular-nums shrink-0 ml-auto font-medium', c.sub)}>{timeStr}</p>
+        </div>
+      )
+    ) : compact ? (
+      // Phase C3 — compact moves time to row 2 with the service so name has
+      // the full row 1 to truncate cleanly on narrow lanes.
+      <div className="flex flex-col justify-center h-full px-2.5 py-1.5 gap-0.5">
+        <div className="flex items-center gap-1.5">
+          <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[apt.status])} />
+          <p className={cn('text-[13px] font-bold truncate flex-1 leading-tight', c.text, nameStrike)}>
+            {apt.client.firstName} {apt.client.lastName}
+          </p>
+        </div>
+        <div className={cn('flex items-center justify-between gap-2', c.sub)}>
+          <p className="text-xs truncate flex-1 min-w-0">{displayServiceName}</p>
+          <p className="text-[11px] tabular-nums shrink-0 font-medium">{timeStr}</p>
+        </div>
+      </div>
+    ) : (
+      // Phase C4 — Full variant adds gradient avatar before the name and
+      // splits the footer hierarchy: price BOLD, time muted secondary.
+      // `min-h-0` lets text rows respect their `leading-*` instead of being
+      // squeezed when total content exceeds tile height. Otherwise truncate's
+      // overflow-hidden clips the bottom half of glyphs (visual half-cut).
+      <div className="flex flex-col h-full px-2.5 py-2 gap-1 min-h-0">
+        <div className="flex items-center gap-2">
+          <div className={cn(
+            'flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-[8px] font-bold text-white shadow-[0_0_0_1.5px_var(--background)]',
+            clientGrad,
+          )}>
+            {clientInit}
+          </div>
+          <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[apt.status])} />
+          <p className={cn('text-sm font-bold truncate leading-tight flex-1', c.text, nameStrike)}>
+            {apt.client.firstName} {apt.client.lastName}
+          </p>
+        </div>
+        {/* Service line: stacked list when this is a multi-service group with
+            enough vertical space, otherwise single-line "name + N more". */}
+        {isGroup && h >= 88 ? (
+          <div className={cn('space-y-0.5', c.sub)}>
+            {groupMeta!.siblings.slice(0, h >= 120 ? 4 : 2).map((sib, idx) => (
+              <p key={sib.id} className="text-xs font-medium truncate flex items-center gap-1.5">
+                <span className="h-1 w-1 rounded-full bg-current opacity-50 shrink-0" />
+                <span className="truncate">{sib.service?.name ?? ''}</span>
+              </p>
+            ))}
+            {groupMeta!.siblings.length > (h >= 120 ? 4 : 2) && (
+              <p className="text-[11px] truncate opacity-70">+{groupMeta!.siblings.length - (h >= 120 ? 4 : 2)} more</p>
+            )}
+          </div>
+        ) : (
+          <p className={cn('text-xs font-medium truncate leading-tight shrink-0', c.sub)}>{displayServiceName}</p>
+        )}
+        {h >= 96 && apt.client.phone && !isGroup && (
+          <p className={cn('flex items-center gap-1 text-[11px] tabular-nums truncate', c.sub)}>
+            <PhoneIcon className="h-3 w-3 shrink-0" />
+            {apt.client.phone}
+          </p>
+        )}
+        {/* Status pill — appears on h ≥ 120 tiles (≥ 60 min). Editorial
+            chip style, semantic background tint via STATUS_PILL token. Reads
+            at a glance: "scheduled / confirmed / completed / cancelled". */}
+        {h >= 120 && (
+          <span className={cn(
+            'mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+            STATUS_PILL[apt.status],
+          )}>
+            <span className={cn('h-1 w-1 rounded-full', STATUS_DOT[apt.status])} />
+            {t(`status.${apt.status}` as TranslationKey)}
+          </span>
+        )}
+        {/* Notes preview — shown on h ≥ 150 tiles when notes exist. Italic
+            muted single-line truncation; the full note is in the detail modal. */}
+        {h >= 150 && apt.notes && apt.notes.trim() && (
+          <p className={cn('mt-0.5 text-[11px] italic truncate', c.sub)}>
+            "{apt.notes.trim()}"
+          </p>
+        )}
+        {/* Footer pinned to the bottom of tall tiles so price/time act as a
+            ledger line, with content stacking from top. mt-auto kicks in when
+            there's room above (h ≥ 120); otherwise it just sits below content. */}
+        <div className={cn(
+          'flex items-center justify-between gap-2',
+          h >= 120 ? 'mt-auto pt-1' : 'mt-0.5',
+        )}>
+          <span className={cn('text-[11px] tabular-nums font-medium text-muted-foreground/80', c.sub)}>{timeStr}</span>
+          <span className="text-[13px] font-medium tabular-nums leading-none text-foreground">€{displayPrice}</span>
+        </div>
+      </div>
+    );
+
+    // Outer wrapper carries position + DnD; inner button carries the click.
+    // The "⋯" menu trigger sits as a sibling so we don't nest <button>s.
     // Drag-to-reschedule is gated by `canOverride` — only owner/manager can
     // move bookings freely. Receptionists/barbers still see and click, but
     // the block shows a normal pointer and doesn't drag.
+    //
+    // Status visibility is bookended: staff color on the LEFT (`border-l-[3px]`)
+    // for "who's working it" identity; STATUS_STRIPE on the RIGHT (2px absolute
+    // span) for "what state is it in." A glance reads both edges.
     return (
-      <button
+      <div
         key={apt.id}
         draggable={canOverride}
         onDragStart={canOverride ? (ev) => {
           ev.dataTransfer.setData('text/plain', apt.id);
           ev.dataTransfer.effectAllowed = 'move';
+          setDraggingAptId(apt.id);
         } : undefined}
-        onClick={ev => { ev.stopPropagation(); setDetailApt(apt); }}
+        onDragEnd={canOverride ? () => setDraggingAptId(null) : undefined}
+        onContextMenu={(ev) => {
+          // Right-click opens the context popover instead of the modal.
+          ev.preventDefault();
+          ev.stopPropagation();
+          setContextApt(apt);
+        }}
+        onTouchStart={(ev) => {
+          // iPad long-press parity for the right-click context menu (audit P2).
+          // Desktop has right-click; touch needs a deliberate hold (550ms) to
+          // avoid hijacking simple taps. Cleared on touchend/touchmove.
+          const target = ev.currentTarget;
+          const timer = window.setTimeout(() => {
+            setContextApt(apt);
+          }, 550);
+          const cancel = () => {
+            window.clearTimeout(timer);
+            target.removeEventListener('touchend', cancel);
+            target.removeEventListener('touchmove', cancel);
+            target.removeEventListener('touchcancel', cancel);
+          };
+          target.addEventListener('touchend', cancel);
+          target.addEventListener('touchmove', cancel);
+          target.addEventListener('touchcancel', cancel);
+        }}
         className={cn(
-          'absolute rounded-lg border-l-[3px] text-left',
-          'transition-all duration-150 hover:shadow-md hover:-translate-y-px overflow-hidden z-10',
+          // 5px stripe + real elevation utility so light theme tiles read as
+          // *lifted papers* on the canvas, not painted regions.
+          'group/tile absolute rounded-lg border-l-[5px] overflow-hidden calendar-tile-elev',
+          // Phase B3 — when this app overrides a break, sit on top (z-20)
+          // so the dashed break overlay no longer half-covers it.
+          overridesBreak ? 'z-20' : 'z-10',
+          'transition-all duration-150',
           canOverride ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
           c.bg, c.border,
-          apt.status === 'cancelled' && 'opacity-40',
+          // Phase C1 — cancelled bumped from opacity-40 to opacity-50 so the
+          // strikethrough line stays legible.
+          isCancelled && 'opacity-50',
+          apt.status === 'no_show' && 'hover:bg-amber-500/5',
+          // Phase C2 — selected/drag states
+          isSelected && 'ring-2 ring-foreground/35 ring-offset-2 ring-offset-background',
+          isDragging && 'opacity-45 scale-[0.985]',
         )}
         style={style}
-        title={canOverride ? 'Drag to reschedule · click to edit' : 'Click to view'}
+        title={canOverride ? 'Drag to reschedule · Shift+↑/↓ to nudge 15 min · click to edit · right-click for menu' : 'Click to view'}
       >
-        {tiny ? (
-          <div className="flex items-center h-full px-2 gap-1.5">
-            <p className={cn('text-xs font-bold truncate', c.text)}>
-              {apt.client.firstName} {apt.client.lastName[0]}.
-            </p>
-            <p className={cn('text-[11px] tabular-nums shrink-0 ml-auto', c.sub)}>{timeStr}</p>
-          </div>
-        ) : compact ? (
-          <div className="flex flex-col justify-center h-full px-2.5 py-1.5 gap-0.5">
-            <div className="flex items-center justify-between gap-2">
-              <p className={cn('text-[13px] font-bold truncate', c.text)}>
-                {apt.client.firstName} {apt.client.lastName}
-              </p>
-              <p className={cn('text-[11px] tabular-nums shrink-0', c.sub)}>{timeStr}</p>
-            </div>
-            <p className={cn('text-xs truncate', c.sub)}>{apt.service.name}</p>
-          </div>
-        ) : (
-          <div className="flex flex-col h-full px-2.5 py-2 gap-1">
-            <p className={cn('text-sm font-bold truncate leading-tight', c.text)}>
+        {/* Phase C1 — status right-edge bookend (2px stripe). Sits below
+            the ⋯ button (no z-index) and never blocks pointer events. */}
+        <span
+          aria-hidden
+          className={cn('pointer-events-none absolute right-0 top-0 bottom-0 w-[2px]', STATUS_STRIPE[apt.status])}
+        />
+
+        {/* Issue chip — one badge per tile, picks the highest-priority
+            issue (break > late > unconfirmed). Wrapped in a Radix Tooltip so
+            hover surfaces a real localized explanation, not a 1.5-second
+            native browser title delay. Hidden on tiny tiles where there's
+            no room. */}
+        {issueKind && !tiny && (() => {
+          const m = issueMeta[issueKind];
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className={cn(
+                    'absolute top-1 right-2 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full ring-1',
+                    m.bg, m.text, m.ring,
+                  )}
+                  aria-label={t(m.tKey)}
+                  // Stop the tooltip-trigger click from bubbling to the tile
+                  // (which would open the detail modal). The chip is purely
+                  // informational; clicking it should do nothing.
+                  onClick={(ev) => { ev.stopPropagation(); ev.preventDefault(); }}
+                >
+                  <m.Icon className="h-2.5 w-2.5" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={6} className="max-w-[220px] text-center">
+                {t(m.tKey)}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })()}
+        <HoverCard openDelay={320} closeDelay={120}>
+          <HoverCardTrigger asChild>
+            <button
+              type="button"
+              onClick={ev => { ev.stopPropagation(); setDetailApt(apt); }}
+              onKeyDown={canOverride ? (ev) => {
+                // Keyboard-reschedule parity for the drag-to-reschedule path.
+                // Shift+ArrowUp/Down nudges by 15-min slot; Shift+PageUp/Down
+                // jumps a full hour. Owners using keyboard are no longer
+                // locked out (audit P0).
+                if (!ev.shiftKey) return;
+                const stepMin =
+                  ev.key === 'ArrowUp' ? -15
+                  : ev.key === 'ArrowDown' ? 15
+                  : ev.key === 'PageUp' ? -60
+                  : ev.key === 'PageDown' ? 60
+                  : null;
+                if (stepMin === null) return;
+                ev.preventDefault();
+                ev.stopPropagation();
+                const oldStart = parseISO(apt.startTime);
+                const oldEnd   = parseISO(apt.endTime);
+                const newStart = new Date(oldStart.getTime() + stepMin * 60_000);
+                const newEnd   = new Date(oldEnd.getTime()   + stepMin * 60_000);
+                fullUpdateMutation.mutate({
+                  id: apt.id,
+                  changes: {
+                    startTime: newStart.toISOString(),
+                    endTime:   newEnd.toISOString(),
+                  },
+                });
+              } : undefined}
+              className="block h-full w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 rounded-md"
+              aria-keyshortcuts={canOverride ? 'Shift+ArrowUp Shift+ArrowDown Shift+PageUp Shift+PageDown' : undefined}
+            >
+              {tileContent}
+            </button>
+          </HoverCardTrigger>
+          {/* Rich hover preview — same shape as Week's hover-card (single
+              source of truth via appointmentHoverCardContent helper). Opens
+              after 320ms idle: status banner, identity, date/time, duration,
+              service, payment + creation timestamp. */}
+          {appointmentHoverCardContent(apt)}
+        </HoverCard>
+
+        {/* ⋯ context-menu — visible on hover (or always if tile is large enough).
+            Tap-friendly hit target on iPad, opens a Popover with the same actions
+            the right-click menu surfaces. The Popover anchors to this trigger. */}
+        <Popover
+          open={contextApt?.id === apt.id}
+          onOpenChange={(o) => { if (!o) setContextApt(null); else setContextApt(apt); }}
+        >
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label="Booking actions"
+              className={cn(
+                // Phase C4 — nudged from top-0.5/right-0.5 (collided with rounded-lg corner)
+                // and bumped to h-6/w-6 for a comfortable touch hit-target on iPad.
+                // right-2 leaves a 6px gap from the new STATUS_STRIPE right bookend.
+                'absolute top-1 right-2 z-20 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/70 transition-opacity',
+                'opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100',
+                'hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+                tiny && 'hidden',
+                // Hide ⋯ when the override badge is showing in the same corner —
+                // user can right-click instead.
+                overridesBreak && 'hidden',
+                contextApt?.id === apt.id && 'opacity-100',
+              )}
+            >
+              <EllipsisHorizontalIcon className="h-4 w-4" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-[220px] p-1.5">
+            <p className="px-2 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground truncate">
               {apt.client.firstName} {apt.client.lastName}
             </p>
-            <p className={cn('text-xs font-medium truncate', c.sub)}>{apt.service.name}</p>
-            {h >= 96 && apt.client.phone && (
-              <p className={cn('flex items-center gap-1 text-[11px] tabular-nums truncate', c.sub)}>
-                <PhoneIcon className="h-3 w-3 shrink-0" />
-                {apt.client.phone}
-              </p>
+            <button
+              type="button"
+              onClick={() => { setContextApt(null); setDetailApt(apt); }}
+              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+            >
+              <PencilSquareIcon className="h-4 w-4 text-muted-foreground" />
+              {t('calendar.contextEdit')}
+            </button>
+            {apt.status === 'scheduled' && (
+              <button
+                type="button"
+                onClick={() => { setContextApt(null); updateStatusMutation.mutate({ id: apt.id, status: 'confirmed' }); }}
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+              >
+                <CheckCircleIcon className="h-4 w-4 text-emerald-500" />
+                {t('common.confirm')}
+              </button>
             )}
-            <div className={cn('flex items-center justify-between gap-2 mt-auto', c.sub)}>
-              <span className="text-xs tabular-nums">{timeStr}</span>
-              <span className="text-xs font-semibold tabular-nums">€{apt.service.price}</span>
-            </div>
-          </div>
-        )}
-      </button>
+            {(apt.status === 'scheduled' || apt.status === 'confirmed') && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => { setContextApt(null); updateStatusMutation.mutate({ id: apt.id, status: 'completed' }); }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+                >
+                  <CheckBadgeIcon className="h-4 w-4 text-muted-foreground" />
+                  {t('status.completed')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setContextApt(null); updateStatusMutation.mutate({ id: apt.id, status: 'cancelled' }); }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+                >
+                  <XCircleIcon className="h-4 w-4 text-rose-500" />
+                  {t('calendar.contextCancel')}
+                </button>
+              </>
+            )}
+            {apt.status === 'cancelled' && (
+              <button
+                type="button"
+                onClick={() => { setContextApt(null); updateStatusMutation.mutate({ id: apt.id, status: 'scheduled' }); }}
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+              >
+                <CheckCircleIcon className="h-4 w-4 text-blue-500" />
+                {t('status.scheduled')}
+              </button>
+            )}
+            {canOverride && (
+              <button
+                type="button"
+                onClick={() => { setContextApt(null); navigate(`/staff?focus=${apt.staffId}`); }}
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+              >
+                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-muted-foreground" />
+                {t('calendar.contextJumpShift')}
+              </button>
+            )}
+            <div className="my-1 border-t border-border" />
+            <button
+              type="button"
+              onClick={() => { setContextApt(null); handleDelete(apt.id, `${apt.client.firstName} ${apt.client.lastName}`); }}
+              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+            >
+              <TrashIcon className="h-4 w-4" />
+              {t('calendar.contextDelete')}
+            </button>
+          </PopoverContent>
+        </Popover>
+      </div>
     );
   };
 
   const staffCount = activeStaff.length;
+  const visibleStaffCount = visibleStaff.length;
+  const filterActive = staffFilter !== null || focusedStaffId !== null;
 
   return (
     <div className="space-y-5">
+      {/* Rebook mode banner — anchored to the top of the page. While set,
+          calendar slot clicks move the appointment instead of opening the
+          create modal. Cancel returns to normal mode. Springs in/out with
+          a y-translate so the entrance reads as "command bar overlay." */}
+      <AnimatePresence>
+        {rebookingApt && (
+          <motion.div
+            key="rebook-banner"
+            initial={reduceMotion ? false : { y: -32, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={reduceMotion ? { opacity: 0 } : { y: -32, opacity: 0 }}
+            transition={{ duration: 0.28, ease: MOTION_EASE }}
+            className="-mx-6 -mt-6 mb-1 sm:-mx-8 sm:-mt-8 sticky top-0 z-50 bg-foreground text-background shadow-[0_4px_16px_-4px_rgba(0,0,0,0.25)]"
+          >
+            <div className="px-7 py-3.5 flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-background/15 shrink-0">
+                <CalendarDaysIcon className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold tracking-tight truncate">
+                  {t('calendar.rebookBannerTitle').replace(
+                    '{name}',
+                    `${rebookingApt.client.firstName} ${rebookingApt.client.lastName}`,
+                  )}
+                </p>
+                <p className="text-[11px] opacity-80 truncate">
+                  {t('calendar.rebookBannerHint')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setRebookingApt(null);
+                  setRebookHover(null);
+                  toast.info(t('calendar.rebookCancelled'));
+                }}
+                className="inline-flex items-center justify-center h-8 px-3 rounded-md text-[12px] font-semibold text-background hover:bg-background/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-background/40"
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ─── Editorial hero ──────────────────────────────
           Studio Score direction: the date IS the title, like a
           conductor's score sheet. Same family as Overview /
@@ -974,7 +5827,7 @@ export function CalendarPage() {
                 aria-label="Open date picker"
                 title="Click to pick another date"
               >
-                {format(selectedDate, 'EEEE, MMMM d')}
+                {format(selectedDate, 'EEEE, MMMM d', { locale: dateLocale })}
                 {/* Always visible so operators know the title is clickable —
                     not a decorative glyph. Brightens + nudges right on hover
                     to telegraph the affordance. */}
@@ -992,11 +5845,56 @@ export function CalendarPage() {
             </PopoverContent>
           </Popover>
         </div>
+        {/* Three-action "+" Popover. Booking is the primary path so it stays
+            visible at sm+; Walk-in + Block ride along inside the dropdown so
+            the operator bar isn't cluttered at iPad widths. */}
         <div className="flex items-center gap-2 shrink-0">
-          <Button size="sm" onClick={() => { closeCreate(); setIsCreateOpen(true); }}>
+          <Button size="sm" onClick={() => { closeCreate(); setIsCreateOpen(true); }} className="hidden sm:inline-flex">
             <PlusIcon className="mr-1 h-4 w-4" />
             {t('calendar.newAppointment')}
           </Button>
+          {canOverride && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline" aria-label="More actions">
+                  <PlusIcon className="h-4 w-4 sm:hidden" />
+                  <EllipsisHorizontalIcon className="hidden sm:block h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[260px] p-1.5">
+                <button
+                  type="button"
+                  onClick={() => { closeCreate(); setIsCreateOpen(true); }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors sm:hidden"
+                >
+                  <CalendarDaysIcon className="h-4 w-4 text-muted-foreground" />
+                  <span className="flex-1">{t('calendar.newAppointment')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWalkInOpen(true)}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+                >
+                  <BoltIcon className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="font-medium">{t('calendar.walkIn')}</p>
+                    <p className="text-[11px] text-muted-foreground">{t('calendar.walkInSubtitle')}</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBlockState({ mode: 'create' })}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+                >
+                  <NoSymbolIcon className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="font-medium">{t('calendar.block')}</p>
+                    <p className="text-[11px] text-muted-foreground">{t('calendar.blockTitle')}</p>
+                  </div>
+                </button>
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
       </div>
 
@@ -1013,13 +5911,14 @@ export function CalendarPage() {
               Hairline-divided typography. No gradients,
               no tinted panels. Consistent с другими страницами
               в editorial-семье (Clients, Staff, Services, etc). */}
+          {appointmentsLoading ? <SummarySkeleton /> : (
           <div className="rounded-xl border border-border bg-card p-4 space-y-4">
             <div className="flex items-baseline justify-between gap-2">
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.18em]">
                 {t('calendar.summary')}
               </p>
               <span className="text-[10px] text-muted-foreground/70 tabular-nums">
-                {isToday(selectedDate) ? t('common.today') : format(selectedDate, 'MMM d')}
+                {isToday(selectedDate) ? t('common.today') : format(selectedDate, 'MMM d', { locale: dateLocale })}
               </span>
             </div>
 
@@ -1035,6 +5934,49 @@ export function CalendarPage() {
                 {dayApts.filter(a => a.status === 'completed').length} completed · {dayApts.length} booked
               </p>
             </div>
+
+            {/* 7-day revenue sparkline. Hand-rolled SVG (no recharts) so the
+                calendar chunk stays lean. Hairline polyline + faint area fill +
+                accent dot on today's value. Reads as a glance — no axes, no
+                tooltip — matches the editorial "score sheet" vocabulary. */}
+            {(() => {
+              const days = Array.from({ length: 7 }, (_, i) => addDays(startOfDay(selectedDate), i - 6));
+              const series = days.map(d => {
+                const key = format(d, 'yyyy-MM-dd');
+                return appointments
+                  .filter(a => a.status === 'completed' && format(parseISO(a.startTime), 'yyyy-MM-dd') === key)
+                  .reduce((s, a) => s + (a.service?.price ?? 0), 0);
+              });
+              const max = Math.max(1, ...series);
+              const W = 200;
+              const H = 36;
+              const padY = 3;
+              const stepX = W / (series.length - 1);
+              const pts = series.map((v, i) => ({
+                x: i * stepX,
+                y: H - padY - (v / max) * (H - padY * 2),
+              }));
+              const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+              const areaPath = `${path} L ${W} ${H} L 0 ${H} Z`;
+              const last = pts[pts.length - 1];
+              return (
+                <div className="-mt-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground mb-1.5">7-day trend</p>
+                  <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-9 overflow-visible" preserveAspectRatio="none" aria-hidden>
+                    <defs>
+                      <linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="currentColor" stopOpacity="0.18" />
+                        <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                    <path d={areaPath} fill="url(#sparkfill)" className="text-foreground" />
+                    <path d={path} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" strokeLinecap="round" className="text-foreground/85" />
+                    <circle cx={last.x} cy={last.y} r="2.5" fill="currentColor" className="text-foreground" />
+                    <circle cx={last.x} cy={last.y} r="5" fill="currentColor" className="text-foreground/15" />
+                  </svg>
+                </div>
+              );
+            })()}
 
             {/* Hairline-divided stat pair */}
             <div className="grid grid-cols-2 divide-x divide-border border-y border-border -mx-4">
@@ -1061,7 +6003,7 @@ export function CalendarPage() {
                     <div key={m.id} className="flex items-center gap-2">
                       <Avatar className="h-6 w-6">
                         {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.firstName} />}
-                        <AvatarFallback className={cn('text-[9px] font-bold', c.light, c.label)}>{m.firstName[0]}{m.lastName[0]}</AvatarFallback>
+                        <AvatarFallback className={cn('text-[10px] font-bold', c.light, c.label)}>{m.firstName[0]}{m.lastName[0]}</AvatarFallback>
                       </Avatar>
                       <span className="flex-1 text-[13px] text-foreground truncate">{m.firstName}</span>
                       <span className={cn(
@@ -1076,6 +6018,7 @@ export function CalendarPage() {
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* ── Main Area ── */}
@@ -1084,17 +6027,16 @@ export function CalendarPage() {
               Double chevrons jump a full month; single chevrons step one day.
               Operator can reach any date in two clicks max. */}
           <div className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2">
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Previous month" aria-label="Previous month" onClick={() => setSelectedDate(d => subMonths(d, 1))}>
-              <ChevronDoubleLeftIcon className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Previous day" aria-label="Previous day" onClick={() => setSelectedDate(d => subDays(d, 1))}>
+            {/* Touch targets — visual buttons stay 28px so the operator bar
+                doesn't bloat, but min-w/min-h-[44px] expands the tap area for
+                iPad mis-tap protection (WCAG 2.5.5). Month-jump chevrons were
+                removed (audit P2 #10) — duplicates the MiniCalendar popover's
+                own month nav, which the date-title chip opens in one tap. */}
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0" title="Previous day" aria-label="Previous day" onClick={() => setSelectedDate(d => subDays(d, 1))}>
               <ChevronLeftIcon className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Next day" aria-label="Next day" onClick={() => setSelectedDate(d => addDays(d, 1))}>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0" title="Next day" aria-label="Next day" onClick={() => setSelectedDate(d => addDays(d, 1))}>
               <ChevronRightIcon className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Next month" aria-label="Next month" onClick={() => setSelectedDate(d => addMonths(d, 1))}>
-              <ChevronDoubleRightIcon className="h-4 w-4" />
             </Button>
 
             {!isToday(selectedDate) && (
@@ -1107,8 +6049,14 @@ export function CalendarPage() {
             <div className="flex-1" />
 
             <div className="hidden sm:flex items-center gap-px">
+              {/* Fixed-week strip — Mon-Sun for RU/LT (ISO), Sun-Sat for EN.
+                  Anchor to startOfWeek instead of "centered ±3 from selected"
+                  so the strip stays put when the user picks any day in the
+                  current week — operator can scan "where am I in the week"
+                  without the strip shifting under them. */}
               {Array.from({ length: 7 }, (_, i) => {
-                const d = addDays(startOfDay(selectedDate), i - 3);
+                const weekStartsOn: 0 | 1 = language === 'en' ? 0 : 1;
+                const d = addDays(startOfWeek(selectedDate, { weekStartsOn }), i);
                 const sel = format(d, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
                 const td = isToday(d);
                 return (
@@ -1116,9 +6064,10 @@ export function CalendarPage() {
                     className={cn(
                       'flex flex-col items-center rounded-lg w-10 py-1 transition-colors',
                       sel ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent',
+                      td && !sel && 'ring-1 ring-blue-500/40',
                     )}>
-                    <span className="text-[9px] font-medium uppercase tracking-wider">{format(d, 'EEE')}</span>
-                    <span className={cn('text-sm font-semibold', td && !sel && 'text-blue-600 dark:text-blue-400')}>{format(d, 'd')}</span>
+                    <span className="text-[10px] font-medium uppercase tracking-wider">{format(d, 'EEE', { locale: dateLocale })}</span>
+                    <span className={cn('text-sm font-semibold', td && !sel && 'text-blue-600 dark:text-blue-400')}>{format(d, 'd', { locale: dateLocale })}</span>
                   </button>
                 );
               })}
@@ -1126,73 +6075,344 @@ export function CalendarPage() {
 
             <div className="flex-1" />
 
-            {/* View toggle — labels always visible (no md:inline gating) so
-                receptionist can see Day/Week/Grid even on tablet/iPad widths.
-                Icons bumped to h-4 for legibility. */}
-            <div className="flex items-center rounded-md border border-border p-0.5">
+            {/* Staff filter — owner/manager flow. Receptionist gets the same
+                filter (it's a view, not a permission) but ownerOnly Block types
+                are still gated inside the Block dialog.
+                Hidden in day-view since a single agenda doesn't need the filter. */}
+            {viewMode === 'grid' && staffCount > 1 && (
+              <Popover open={staffFilterOpen} onOpenChange={setStaffFilterOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                      filterActive
+                        ? 'border-foreground bg-foreground text-background'
+                        : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent',
+                    )}
+                    aria-label={t('calendar.filterStaff')}
+                    title={t('calendar.filterStaff')}
+                  >
+                    <AdjustmentsHorizontalIcon className="h-4 w-4" />
+                    <span className="tabular-nums">
+                      {focusedStaffId
+                        ? activeStaff.find(s => s.id === focusedStaffId)?.firstName
+                        : staffFilter
+                          ? `${visibleStaffCount}/${staffCount}`
+                          : t('calendar.filterAll')}
+                    </span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[240px] p-1.5">
+                  <p className="px-2 pt-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    {t('calendar.filterStaff')}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => { setStaffFilter(null); setFocusedStaffId(null); }}
+                    className={cn(
+                      'flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+                      !filterActive ? 'bg-accent text-foreground font-semibold' : 'text-foreground hover:bg-accent/60',
+                    )}
+                  >
+                    <span>{t('calendar.filterAll')}</span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums">{staffCount}</span>
+                  </button>
+                  <div className="my-1 border-t border-border" />
+                  {activeStaff.map(m => {
+                    const colorIdx = staffColorMap.get(m.id) ?? 0;
+                    const c = getStaffColor(colorIdx);
+                    const checked = focusedStaffId
+                      ? focusedStaffId === m.id
+                      : staffFilter
+                        ? staffFilter.has(m.id)
+                        : true;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setFocusedStaffId(null);
+                          setStaffFilter(prev => {
+                            const next = new Set(prev ?? activeStaff.map(s => s.id));
+                            if (next.has(m.id)) next.delete(m.id); else next.add(m.id);
+                            // If the new set is the full active set, clear the filter to "all".
+                            if (next.size === activeStaff.length) return null;
+                            // Empty set is meaningless — fall back to all.
+                            if (next.size === 0) return null;
+                            return next;
+                          });
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
+                      >
+                        <span
+                          className={cn(
+                            'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors',
+                            checked ? 'border-foreground bg-foreground' : 'border-border',
+                          )}
+                          aria-hidden
+                        >
+                          {checked && <CheckBadgeIcon className="h-3 w-3 text-background" />}
+                        </span>
+                        <span className={cn('h-1.5 w-1.5 rounded-full', c.dot)} />
+                        <span className="flex-1 truncate text-sm text-foreground">{m.firstName} {m.lastName}</span>
+                      </button>
+                    );
+                  })}
+                </PopoverContent>
+              </Popover>
+            )}
+
+
+            {/* Column-density toggle — only meaningful on the grid view, only
+                shown when there's enough staff to actually benefit (>4). Owner
+                with 8+ barbers wants all columns visible at once on iPad
+                without horizontal scroll; compact mode shrinks staff columns
+                from 200px → 110px so ~9 fit on iPad-portrait. */}
+            {viewMode === 'grid' && visibleStaffCount > 4 && (
               <button
-                onClick={() => setViewMode('day')}
-                title={t('calendar.viewDay')}
-                aria-label={t('calendar.viewDay')}
+                type="button"
+                onClick={() => setGridDensity(gridDensity === 'compact' ? 'standard' : 'compact')}
+                aria-label={gridDensity === 'compact' ? t('calendar.gridDensityStandard') : t('calendar.gridDensityCompact')}
+                title={gridDensity === 'compact' ? t('calendar.gridDensityStandard') : t('calendar.gridDensityCompact')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                  viewMode === 'day' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                  'inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                  gridDensity === 'compact'
+                    ? 'border-foreground bg-foreground text-background'
+                    : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent',
                 )}
-                aria-pressed={viewMode === 'day'}
               >
-                <ListBulletIcon className="h-4 w-4" />
-                <span>{t('calendar.viewDay')}</span>
+                {gridDensity === 'compact'
+                  ? <ArrowsPointingOutIcon className="h-4 w-4" />
+                  : <ArrowsPointingInIcon className="h-4 w-4" />}
               </button>
-              <button
-                onClick={() => setViewMode('week')}
-                title={t('calendar.viewWeek')}
-                aria-label={t('calendar.viewWeek')}
-                className={cn(
-                  'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                  viewMode === 'week' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-                )}
-                aria-pressed={viewMode === 'week'}
-              >
-                <TableCellsIcon className="h-4 w-4" />
-                <span>{t('calendar.viewWeek')}</span>
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                title={t('calendar.viewGrid')}
-                aria-label={t('calendar.viewGrid')}
-                className={cn(
-                  'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                  viewMode === 'grid' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-                )}
-                aria-pressed={viewMode === 'grid'}
-              >
-                <Squares2X2Icon className="h-4 w-4" />
-                <span>{t('calendar.viewGrid')}</span>
-              </button>
-            </div>
+            )}
+
+            {/* View toggle — LayoutGroup + motion.span layoutId for the active
+                pill, matching the role-tab underline pattern from /accounts. */}
+            <LayoutGroup id="cal-view-toggle">
+              <div className="flex items-center rounded-md border border-border p-0.5">
+                {([
+                  { mode: 'day',  Icon: ListBulletIcon,  label: t('calendar.viewDay')  },
+                  { mode: 'week', Icon: TableCellsIcon,  label: t('calendar.viewWeek') },
+                  { mode: 'grid', Icon: Squares2X2Icon,  label: t('calendar.viewGrid') },
+                ] as const).map(({ mode, Icon, label }) => {
+                  const isActive = viewMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      title={label}
+                      aria-label={label}
+                      aria-pressed={isActive}
+                      className={cn(
+                        'relative flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                        isActive ? 'text-background' : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {isActive && (
+                        <motion.span
+                          layoutId="cal-view-toggle-pill"
+                          className="absolute inset-0 rounded bg-foreground"
+                          transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
+                        />
+                      )}
+                      <Icon className="relative z-10 h-4 w-4" />
+                      <span className="relative z-10">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </LayoutGroup>
           </div>
+
+          {/* When focused, narrow the appointment list to that single barber
+              so DayAgenda + WeekView render only their bookings. The grid view
+              already handles focus via `visibleStaff` so nothing changes there. */}
+          {focusedStaffId && (
+            <FocusBanner
+              staff={activeStaff.find(s => s.id === focusedStaffId)!}
+              onClear={() => setFocusedStaffId(null)}
+              onJumpToShift={() => navigate(`/staff?focus=${focusedStaffId}`)}
+              t={t}
+            />
+          )}
+
+          {/* Week staff bar — replaces the old toolbar dropdown. Shows all
+              visible barbers as clickable cards; active card = current week view.
+              Intentionally absent in day/grid views (those have their own controls). */}
+          {viewMode === 'week' && visibleStaff.length > 0 && (() => {
+            const sortedForBar = [...visibleStaff].sort((a, b) =>
+              `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`),
+            );
+            return (
+              <div className="relative pb-1 border-b border-border">
+                <div className="flex gap-2 overflow-x-auto scrollbar-none">
+                  {sortedForBar.map(m => {
+                    const colorIdx = staffColorMap.get(m.id) ?? 0;
+                    const c = getStaffColor(colorIdx);
+                    return (
+                      <StaffCard
+                        key={m.id}
+                        variant="week"
+                        staff={m}
+                        count={weekStaffApptCount.get(m.id) ?? 0}
+                        color={{ dot: c.dot, light: c.light, label: c.label }}
+                        active={weekViewStaffId === m.id}
+                        onClick={sortedForBar.length > 1 ? () => setWeekViewStaffId(m.id) : undefined}
+                        className="min-w-[130px] max-w-[200px] flex-1"
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Content */}
           {viewMode === 'day' ? (
             <DayAgenda
               appointments={dayApts}
+              activeStaff={activeStaff}
+              breaksByStaff={breaksByStaff}
+              forcedStaffId={focusedStaffId}
               staffColorMap={staffColorMap}
               staffColors={STAFF_COLORS}
               statusMap={statusMap}
               onSelect={setDetailApt}
               onCreate={() => { closeCreate(); setIsCreateOpen(true); }}
+              onQuickAction={(aptId, action) => {
+                const status = action === 'complete' ? 'completed' : action === 'no_show' ? 'no_show' : 'cancelled';
+                updateStatusMutation.mutate({ id: aptId, status });
+              }}
+              renderTileHoverCard={(apt) => appointmentHoverCardContent(apt)}
             />
           ) : viewMode === 'week' ? (
             <WeekView
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
-              appointments={appointments}
+              onJumpToDay={(d) => { setSelectedDate(d); setViewMode('grid'); }}
+              appointments={weekViewStaffId ? appointments.filter(a => a.staffId === weekViewStaffId) : []}
+              breaks={weekViewStaffId ? allBreaks.filter(b => b.staffId === weekViewStaffId) : []}
               staffColorMap={staffColorMap}
               staffColors={STAFF_COLORS}
               onSelectApt={setDetailApt}
               dayStartHour={DAY_START_HOUR}
               dayEndHour={DAY_END_HOUR}
               slotHeight={SLOT_HEIGHT}
+              canOverride={canOverride}
+              selectedStaff={(() => {
+                const s = activeStaff.find(s => s.id === weekViewStaffId);
+                return s ? { id: s.id, firstName: s.firstName, lastName: s.lastName } : null;
+              })()}
+              shifts={allShifts}
+              overrides={allOverrides}
+              onEditBreak={(brk) => setBlockState({ mode: 'edit-break', brk })}
+              onCreateAt={(date, hour, minute) => {
+                // Reuse the create-modal seeding pattern from openSlot.
+                // Pre-seed staff to the Week-view-selected barber since the
+                // entire week is filtered to them; columns are by-day so the
+                // user can still override inside the modal.
+                setSelectedSlot({ hour, minute, staffId: weekViewStaffId ?? '' });
+                setFormData(f => ({ ...f, staffId: weekViewStaffId ?? '' }));
+                setCreateDate(date);
+                const hh = String(hour).padStart(2, '0');
+                const mm = String(minute).padStart(2, '0');
+                setCreateTime(`${hh}:${mm}`);
+                setIsCreateOpen(true);
+              }}
+              onRequestDragConfirm={({ aptId, newStartIso, newEndIso }) => {
+                const apt = appointments.find(a => a.id === aptId);
+                if (!apt) return;
+                setDragConfirm({
+                  aptId,
+                  oldStart: apt.startTime,
+                  newStart: newStartIso,
+                  oldEnd: apt.endTime,
+                  newEnd: newEndIso,
+                  oldStaffId: apt.staffId,
+                  newStaffId: apt.staffId,
+                });
+              }}
+              onRequestBreakDragConfirm={({ brkId, targetDateYmd }) => {
+                const brk = allBreaks.find(b => b.id === brkId);
+                if (!brk) return;
+                setBreakDragConfirm({ brk, targetDate: targetDateYmd });
+              }}
+              renderTileHoverCard={(apt) => appointmentHoverCardContent(apt)}
+              renderTileMenu={(apt, close) => (
+                <PopoverContent align="end" className="w-[220px] p-1.5">
+                  <p className="px-2 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground truncate">
+                    {apt.client.firstName} {apt.client.lastName}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => { close(); setDetailApt(apt); }}
+                    className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+                  >
+                    <PencilSquareIcon className="h-4 w-4 text-muted-foreground" />
+                    {t('calendar.contextEdit')}
+                  </button>
+                  {apt.status === 'scheduled' && (
+                    <button
+                      type="button"
+                      onClick={() => { close(); updateStatusMutation.mutate({ id: apt.id, status: 'confirmed' }); }}
+                      className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+                    >
+                      <CheckCircleIcon className="h-4 w-4 text-emerald-500" />
+                      {t('common.confirm')}
+                    </button>
+                  )}
+                  {(apt.status === 'scheduled' || apt.status === 'confirmed') && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => { close(); updateStatusMutation.mutate({ id: apt.id, status: 'completed' }); }}
+                        className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+                      >
+                        <CheckBadgeIcon className="h-4 w-4 text-muted-foreground" />
+                        {t('status.completed')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { close(); updateStatusMutation.mutate({ id: apt.id, status: 'cancelled' }); }}
+                        className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+                      >
+                        <XCircleIcon className="h-4 w-4 text-rose-500" />
+                        {t('calendar.contextCancel')}
+                      </button>
+                    </>
+                  )}
+                  {apt.status === 'cancelled' && (
+                    <button
+                      type="button"
+                      onClick={() => { close(); updateStatusMutation.mutate({ id: apt.id, status: 'scheduled' }); }}
+                      className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+                    >
+                      <CheckCircleIcon className="h-4 w-4 text-blue-500" />
+                      {t('status.scheduled')}
+                    </button>
+                  )}
+                  {canOverride && (
+                    <button
+                      type="button"
+                      onClick={() => { close(); navigate(`/staff?focus=${apt.staffId}`); }}
+                      className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
+                    >
+                      <ArrowTopRightOnSquareIcon className="h-4 w-4 text-muted-foreground" />
+                      {t('calendar.contextJumpShift')}
+                    </button>
+                  )}
+                  <div className="my-1 border-t border-border" />
+                  <button
+                    type="button"
+                    onClick={() => { close(); handleDelete(apt.id, `${apt.client.firstName} ${apt.client.lastName}`); }}
+                    className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                    {t('calendar.contextDelete')}
+                  </button>
+                </PopoverContent>
+              )}
             />
           ) : staffCount === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card py-20 text-center">
@@ -1200,42 +6420,78 @@ export function CalendarPage() {
               <p className="mt-1 text-xs text-muted-foreground/60">{t('calendar.noActiveStaffHint')}</p>
             </div>
           ) : (
-            <div className="rounded-xl border border-border bg-card overflow-hidden">
+            // bg-canvas (paper-tinted in light, near-card in dark) so white
+            // tiles can earn elevation through shadow rather than through
+            // luminance contrast against an identical bg.
+            <div className="rounded-xl border border-border bg-canvas overflow-hidden">
               <div
                 ref={scrollRef}
                 onScroll={handleScroll}
                 className="overflow-auto"
                 style={{ maxHeight: 'calc(100vh - 300px)' }}
               >
+                {appointmentsLoading && (
+                  <CalendarGridSkeleton
+                    visibleStaffCount={visibleStaffCount}
+                    hours={hours}
+                    gridH={gridH}
+                    staffColWidth={staffColWidth}
+                  />
+                )}
+                {!appointmentsLoading && (
+                <>
                 {/* Sticky staff header — Studio Score: hairline column
                     divider + uppercase tabular eyebrow + thin staff-tinted
                     accent rule under each header (color без ring-halo). */}
-                <div className="sticky top-0 z-20 flex border-b border-border bg-card/95 backdrop-blur-sm">
-                  <div className="shrink-0 border-r border-border bg-card/95 backdrop-blur-sm" style={{ width: `${TIME_GUTTER_W}px` }} />
-                  {activeStaff.map((m, i) => {
-                    const c = getStaffColor(i);
+                <div className="sticky top-0 z-40 flex border-b border-border bg-canvas shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+                  {/* Time-gutter spacer — sticky left-0 so it stays pinned during
+                      horizontal scroll on mobile. Without this, scrolling right
+                      drags the staff name labels under the body's pinned time
+                      column, creating a visual jank. z-30 sits above body's gutter. */}
+                  <div className="sticky left-0 z-50 shrink-0 border-r border-border bg-canvas" style={{ width: `${TIME_GUTTER_W}px` }} />
+                  {visibleStaff.map((m, i) => {
+                    const colorIdx = staffColorMap.get(m.id) ?? 0;
+                    const c = getStaffColor(colorIdx);
                     const cnt = aptsByStaff.get(m.id)?.length ?? 0;
                     const shift = shiftsByStaff.get(m.id);
+                    const isFocused = focusedStaffId === m.id;
+                    // Load bead: encodes today's booking density at a glance so
+                    // the operator can scan 8 columns in <200 ms and spot the one
+                    // that's overbooked. Empty = muted, 1-3 = emerald (light),
+                    // 4-7 = amber (steady), 8+ = rose (slammed).
+                    const loadDot
+                      = cnt === 0  ? 'bg-muted-foreground/30'
+                      : cnt <= 3   ? 'bg-emerald-500'
+                      : cnt <= 7   ? 'bg-amber-500'
+                                   : 'bg-rose-500';
+                    const shiftLabel = shift ? `${shift.startTime}–${shift.endTime}` : t('calendar.dayOff');
                     return (
-                      <div key={m.id}
+                      <StaffCard
+                        key={m.id}
+                        variant="grid"
+                        staff={m}
+                        count={cnt}
+                        color={{ dot: c.dot, light: c.light, label: c.label }}
+                        focused={isFocused}
+                        loadDot={loadDot}
+                        title={
+                          isFocused
+                            ? t('calendar.focusClear')
+                            : `${m.firstName} ${m.lastName} · ${shiftLabel} · ${cnt} ${cnt === 1 ? t('calendar.booking') : t('calendar.bookings')}`
+                        }
+                        onClick={() => {
+                          if (focusedStaffId === m.id) {
+                            setFocusedStaffId(null);
+                          } else {
+                            setFocusedStaffId(m.id);
+                            setViewMode('week');
+                          }
+                        }}
                         className={cn(
-                          'relative flex flex-1 flex-col items-center gap-1 px-2 py-2.5',
-                          i < staffCount - 1 && 'border-r border-border',
+                          i < visibleStaffCount - 1 && 'border-r border-border',
                         )}
-                        style={{ minWidth: `${STAFF_COL_MIN_W}px` }}>
-                        <Avatar className="h-9 w-9">
-                          {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={`${m.firstName} ${m.lastName}`} />}
-                          <AvatarFallback className={cn('text-xs font-bold', c.light, c.label)}>{m.firstName[0]}{m.lastName[0]}</AvatarFallback>
-                        </Avatar>
-                        <span className="text-[13px] font-semibold text-foreground truncate max-w-full">{m.firstName}</span>
-                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider tabular-nums">
-                          {shift ? `${shift.startTime}–${shift.endTime}` : t('calendar.dayOff')}
-                          <span className="mx-1 text-muted-foreground/40">·</span>
-                          {cnt}
-                        </span>
-                        {/* Staff-tinted hairline accent — subtle column signature */}
-                        <span className={cn('absolute inset-x-3 bottom-0 h-px', c.dot)} aria-hidden />
-                      </div>
+                        style={{ minWidth: `${staffColWidth}px` }}
+                      />
                     );
                   })}
                 </div>
@@ -1243,8 +6499,11 @@ export function CalendarPage() {
                 {/* Grid body */}
                 <div className="relative flex" style={{ height: `${gridH}px` }}>
 
-                  {/* Time gutter */}
-                  <div className="sticky left-0 z-10 shrink-0 border-r border-border bg-card" style={{ width: `${TIME_GUTTER_W}px` }}>
+                  {/* Time gutter — sticky left-0 keeps the time-axis pinned during
+                      horizontal scroll on mobile (when staff columns exceed viewport
+                      width). z-20 sits below the staff-header spacer (z-30) so the
+                      header's pinned cell paints over the gutter when both intersect. */}
+                  <div className="sticky left-0 z-20 shrink-0 border-r border-border bg-card" style={{ width: `${TIME_GUTTER_W}px` }}>
                     {hours.map((hr, i) => (
                       <div key={hr} className="absolute left-0 right-0 pr-2 flex justify-end" style={{ top: `${i * SLOT_HEIGHT}px` }}>
                         <span className="relative -top-2 text-[10px] font-medium text-muted-foreground tabular-nums select-none leading-none">
@@ -1255,7 +6514,7 @@ export function CalendarPage() {
 
                     {showNow && (
                       <div className="absolute left-0 right-0 z-20 flex justify-end pr-0.5" style={{ top: `${(nowMin / MINUTES_PER_SLOT) * SLOT_HEIGHT}px` }}>
-                        <span className="relative -top-[7px] rounded bg-red-500 px-1 py-px text-[9px] font-bold text-white tabular-nums leading-none">
+                        <span className="relative -top-[7px] rounded bg-red-500 px-1 py-px text-[10px] font-bold text-white tabular-nums leading-none">
                           {formatTime(now, timeFormat)}
                         </span>
                       </div>
@@ -1263,25 +6522,67 @@ export function CalendarPage() {
                   </div>
 
                   {/* Staff columns */}
-                  {activeStaff.map((member, ci) => {
+                  {visibleStaff.map((member, ci) => {
                     const col = aptsByStaff.get(member.id) || [];
                     const laneMap = lanesByStaff.get(member.id);
 
-                    // DnD reschedule: drop a booking into this column at the Y position → new start time (staff + day).
-                    // Gated by canOverride — only owner/manager can reassign bookings to different staff/time.
+                    // DnD reschedule: drop a booking OR a break into this column at the Y position → new start time.
+                    // Gated by canOverride — only owner/manager can reassign.
                     const handleDrop = canOverride ? (ev: React.DragEvent<HTMLDivElement>) => {
                       ev.preventDefault();
-                      const aptId = ev.dataTransfer.getData('text/plain');
-                      if (!aptId) return;
-                      const apt = appointments.find(a => a.id === aptId);
-                      if (!apt) return;
+                      const payload = ev.dataTransfer.getData('text/plain');
+                      if (!payload) return;
 
-                      // Compute target minute, snap to 15-min grid
+                      // Compute target minute, snap to 15-min grid (shared between
+                      // booking + break drop logic).
                       const rect = ev.currentTarget.getBoundingClientRect();
                       const y = ev.clientY - rect.top;
                       const rawMin = (y / SLOT_HEIGHT) * MINUTES_PER_SLOT;
                       const snapped = Math.max(0, Math.round(rawMin / 15) * 15);
                       const startMin = DAY_START_HOUR * 60 + snapped;
+
+                      // ── BREAK drop (prefix `brk:`) ──────────────────────
+                      // One-off → commit directly with new HH:mm range.
+                      // Weekly → open confirm modal asking "Все / Только этот".
+                      // Note: column = staff. Re-assigning a break to another
+                      // staff via drag is not supported here (BlockDialog can
+                      // do that explicitly); we keep the staff anchored.
+                      if (payload.startsWith('brk:')) {
+                        const brkId = payload.slice(4);
+                        const brk = allBreaks.find(b => b.id === brkId);
+                        if (!brk || brk.staffId !== member.id) return;
+                        const durMin = parseTimeToMinutes(brk.endTime) - parseTimeToMinutes(brk.startTime);
+                        const newStartMin = startMin;
+                        const newEndMin = startMin + durMin;
+                        const pad = (n: number) => String(n).padStart(2, '0');
+                        const newStart = `${pad(Math.floor(newStartMin / 60))}:${pad(newStartMin % 60)}`;
+                        const newEnd = `${pad(Math.floor(newEndMin / 60))}:${pad(newEndMin % 60)}`;
+                        if (newStart === brk.startTime && newEnd === brk.endTime) return;
+                        const targetDate = format(selectedDate, 'yyyy-MM-dd');
+                        if (brk.recurrence === 'one-off') {
+                          // Direct commit — no modal needed.
+                          breakUpsertMut.mutate({
+                            ...brk,
+                            startTime: newStart,
+                            endTime: newEnd,
+                            startDate: targetDate, // re-anchor to the column's date
+                          });
+                        } else {
+                          // Weekly → defer to confirm modal.
+                          setBreakDragConfirm({
+                            brkId: brk.id,
+                            newStartTime: newStart,
+                            newEndTime: newEnd,
+                            targetDate,
+                          });
+                        }
+                        return;
+                      }
+
+                      // ── APPOINTMENT drop (default) ──────────────────────
+                      const aptId = payload;
+                      const apt = appointments.find(a => a.id === aptId);
+                      if (!apt) return;
 
                       const newStart = new Date(selectedDate);
                       newStart.setHours(0, 0, 0, 0);
@@ -1292,78 +6593,143 @@ export function CalendarPage() {
                       // No-op if nothing changed
                       if (apt.staffId === member.id && parseISO(apt.startTime).getTime() === newStart.getTime()) return;
 
-                      appointmentsApi.update(apt.id, {
-                        startTime: newStart.toISOString(),
-                        endTime: newEnd.toISOString(),
-                        staffId: member.id,
-                      }).then(() => {
-                        queryClient.invalidateQueries({ queryKey: ['appointments'] });
-                        toast.success(t('toast.appointmentUpdated'));
-                      }).catch(() => toast.error(t('toast.appointmentUpdateError')));
+                      // Open the confirmation dialog instead of committing
+                      // immediately. The dialog shows old → new for both time
+                      // and staff; user clicks Save to commit or Cancel to
+                      // dismiss. Prevents accidental drops from costing the
+                      // operator a real reschedule.
+                      const oldStaff = allStaff.find(s => s.id === apt.staffId);
+                      const newStaff = allStaff.find(s => s.id === member.id);
+                      setDragConfirm({
+                        aptId: apt.id,
+                        oldStartTime: apt.startTime,
+                        newStartTime: newStart.toISOString(),
+                        newEndTime: newEnd.toISOString(),
+                        oldStaffId: apt.staffId,
+                        newStaffId: member.id,
+                        oldStaffName: oldStaff ? `${oldStaff.firstName} ${oldStaff.lastName}` : '—',
+                        newStaffName: newStaff ? `${newStaff.firstName} ${newStaff.lastName}` : '—',
+                      });
                     } : undefined;
 
                     return (
                       <div key={member.id}
                         onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; }}
                         onDrop={handleDrop}
-                        className={cn('relative flex-1', ci < staffCount - 1 && 'border-r border-border')}
-                        style={{ minWidth: `${STAFF_COL_MIN_W}px` }}>
+                        onMouseLeave={rebookingApt ? () => {
+                          // Clear ghost only if it was for THIS column —
+                          // otherwise we'd erase the cursor's actual position
+                          // mid-traverse between adjacent columns.
+                          setRebookHover((cur) => (cur && cur.staffId === member.id ? null : cur));
+                        } : undefined}
+                        className={cn('relative flex-1', ci < visibleStaffCount - 1 && 'border-r border-border')}
+                        style={{ minWidth: `${staffColWidth}px` }}>
 
                         {hours.map((hr, i) => (
-                          <div key={hr} className="absolute left-0 right-0 border-t border-border/50" style={{ top: `${i * SLOT_HEIGHT}px` }} />
+                          <div key={hr} className="absolute left-0 right-0 border-t border-dashed border-border" style={{ top: `${i * SLOT_HEIGHT}px` }} />
                         ))}
 
-                        {Array.from({ length: totalSlots }, (_, i) => (
-                          <div key={i} className="absolute left-3 right-3 border-t border-dashed border-border/30" style={{ top: `${i * SLOT_HEIGHT + SLOT_HEIGHT / 2}px` }} />
-                        ))}
+                        {/* Quarter-hour micro-ticks. :30 reads as a slightly bolder rule
+                            so the half-hour rhythm survives at a glance; :15 + :45 are
+                            airier dotted ticks that read as "scan markers", not lanes. */}
+                        {Array.from({ length: totalSlots }).flatMap((_, hi) =>
+                          [1, 2, 3].map(j => {
+                            const isHalf = j === 2;
+                            return (
+                              <div
+                                key={`${hi}-${j}`}
+                                className={cn(
+                                  'absolute left-3 right-3 border-t',
+                                  isHalf ? 'border-dashed border-border/30' : 'border-dotted border-border/20',
+                                )}
+                                style={{ top: `${hi * SLOT_HEIGHT + (SLOT_HEIGHT * j) / SUB_SLOTS_PER_HOUR}px` }}
+                              />
+                            );
+                          }),
+                        )}
 
                         {renderOffDuty(member.id)}
                         {renderBreaks(member.id)}
 
-                        {Array.from({ length: totalSlots * 2 }, (_, i) => {
-                          const hr = DAY_START_HOUR + Math.floor(i / 2);
-                          const mn = (i % 2) * 30;
+                        {/* Rebook ghost preview — faded card showing where the
+                            move will land. Renders only in rebook mode while
+                            the cursor is over this staff column. Pointer-events
+                            none so the slot cells beneath still receive clicks. */}
+                        {rebookingApt && rebookHover && rebookHover.staffId === member.id && (() => {
+                          const dur = differenceInMinutes(
+                            parseISO(rebookingApt.endTime),
+                            parseISO(rebookingApt.startTime),
+                          );
+                          const startMin = (rebookHover.hour - DAY_START_HOUR) * 60 + rebookHover.minute;
+                          const top = (startMin / MINUTES_PER_SLOT) * SLOT_HEIGHT;
+                          const h = (dur / MINUTES_PER_SLOT) * SLOT_HEIGHT;
+                          const totalEndMin = rebookHover.hour * 60 + rebookHover.minute + dur;
+                          const eh = Math.floor(totalEndMin / 60);
+                          const em = totalEndMin % 60;
+                          const fmt = (h: number, m: number) =>
+                            `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                          return (
+                            <motion.div
+                              key={`ghost-${rebookHover.staffId}-${rebookHover.hour}-${rebookHover.minute}`}
+                              initial={reduceMotion ? false : { opacity: 0, scale: 0.97 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ duration: 0.18, ease: MOTION_EASE }}
+                              className="absolute left-1 right-1 z-[15] pointer-events-none rounded-md border-2 border-dashed border-foreground/40 bg-foreground/5 backdrop-blur-[1px] overflow-hidden"
+                              style={{ top: `${top}px`, height: `${h}px` }}
+                            >
+                              <div className="px-2 pt-1.5 text-[10px] tabular-nums text-muted-foreground/85">
+                                {fmt(rebookHover.hour, rebookHover.minute)} – {fmt(eh, em)}
+                              </div>
+                              <div className="px-2 text-[11px] font-semibold text-foreground/75 truncate">
+                                {rebookingApt.client.firstName} {rebookingApt.client.lastName}
+                              </div>
+                              <div className="px-2 text-[10px] text-muted-foreground/80 truncate">
+                                {rebookingApt.service.name}
+                              </div>
+                            </motion.div>
+                          );
+                        })()}
+
+                        {Array.from({ length: totalSlots * SUB_SLOTS_PER_HOUR }, (_, i) => {
+                          const hr = DAY_START_HOUR + Math.floor(i / SUB_SLOTS_PER_HOUR);
+                          const mn = (i % SUB_SLOTS_PER_HOUR) * SLOT_MINUTES;
                           const timeVal = setMinutes(setHours(startOfDay(selectedDate), hr), mn);
                           const past = isToday(selectedDate) && isBefore(timeVal, now);
                           const unavailable = isUnavailable(hr, mn, member.id);
-                          // Owner + manager can click ANY slot — past, off-duty, day-off, on-break.
-                          // Toasts make each override feel deliberate (different message per case).
-                          const canClickAnyway = canOverride;
-                          const clickable = canClickAnyway || (!past && !unavailable);
+                          // Off-shift / break-covered slots are NOT clickable — the
+                          // solid overlay communicates "no booking here"; owner moves
+                          // the shift in /staff or removes the break first. Past in-shift
+                          // slots stay owner-overridable (logging a forgotten appointment
+                          // is a real workflow). Break tiles handle their own clicks via
+                          // the BlockDialog overlay above this slot loop.
+                          // In rebook mode, every in-shift slot is a valid drop target.
+                          const clickable = !unavailable && (canOverride || !past);
                           return (
                             <div key={i}
                               onClick={() => {
                                 if (!clickable) return;
-                                if (past && canClickAnyway) {
+                                if (past && canOverride && !rebookingApt) {
                                   toast.warning(`Logging a past appointment for ${member.firstName} (owner override)`);
-                                } else if (unavailable && canClickAnyway) {
-                                  toast.warning(`${member.firstName} isn't scheduled at this time — booking anyway`);
                                 }
                                 openSlot(hr, mn, member.id);
                               }}
+                              onMouseEnter={rebookingApt && clickable ? () => setRebookHover({ hour: hr, minute: mn, staffId: member.id }) : undefined}
                               className={cn(
                                 'absolute left-0 right-0 transition-colors group/slot',
-                                clickable && !unavailable && !past && 'hover:bg-blue-50/40 dark:hover:bg-blue-950/20 cursor-pointer',
-                                clickable && unavailable && 'hover:bg-amber-50/40 dark:hover:bg-amber-950/20 cursor-pointer z-[9]',
-                                clickable && past && !unavailable && 'hover:bg-muted/60 cursor-pointer',
+                                clickable && !past && !rebookingApt && 'hover:bg-blue-50/40 dark:hover:bg-blue-950/20 cursor-pointer',
+                                clickable && past && !rebookingApt && 'hover:bg-muted/60 cursor-pointer',
+                                clickable && rebookingApt && 'hover:bg-foreground/[0.04] cursor-grab active:cursor-grabbing',
                                 past && !unavailable && 'bg-muted/30',
                               )}
-                              style={{ top: `${(i * SLOT_HEIGHT) / 2}px`, height: `${SLOT_HEIGHT / 2}px` }}
+                              style={{ top: `${(i * SLOT_HEIGHT) / SUB_SLOTS_PER_HOUR}px`, height: `${SLOT_HEIGHT / SUB_SLOTS_PER_HOUR}px` }}
                               title={
-                                past && canClickAnyway
+                                past && canOverride && clickable && !rebookingApt
                                   ? `Log a past appointment for ${member.firstName} (owner override)`
-                                  : clickable && unavailable
-                                  ? `Book ${member.firstName} outside their shift (owner override)`
                                   : undefined
                               }>
-                              {clickable && (
+                              {clickable && !rebookingApt && (
                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/slot:opacity-100 transition-opacity">
-                                  <PlusIcon className={cn(
-                                    'h-3.5 w-3.5',
-                                    unavailable
-                                      ? 'text-amber-500 dark:text-amber-400'
-                                      : 'text-blue-300 dark:text-blue-600',
-                                  )} />
+                                  <PlusIcon className="h-3.5 w-3.5 text-blue-300 dark:text-blue-600" />
                                 </div>
                               )}
                             </div>
@@ -1384,6 +6750,8 @@ export function CalendarPage() {
                     </div>
                   )}
                 </div>
+                </>
+                )}
               </div>
             </div>
           )}
@@ -1398,10 +6766,68 @@ export function CalendarPage() {
           statusMap={statusMap}
           t={t}
           timeFormat={timeFormat}
+          creatorName={formatCreator(detailApt.createdBy)}
+          creatorChip={renderCreatorChip(detailApt.createdBy, { uppercase: true })}
           onClose={() => setDetailApt(null)}
           onChangeStatus={(id, status) => updateStatusMutation.mutate({ id, status })}
           onDelete={handleDelete}
           onFullUpdate={(id, changes) => fullUpdateMutation.mutate({ id, changes })}
+          onCreatePending={async (clientId, slots) => {
+            // Sequential creates so a partial failure leaves earlier slots
+            // committed (consistent with how multi-day BlockDialog fans out).
+            // `override: canOverride` matches the rest of the app — owner +
+            // manager can deliberately stack a follow-up service against an
+            // existing break (e.g. a second cut squeezed before lunch).
+            // Receptionists hit the conflict and have to pick a clean slot.
+            let created = 0;
+            try {
+              for (let i = 0; i < slots.length; i++) {
+                const slot = slots[i];
+                if (!slot.serviceId) continue;
+                const [y, m, d] = slot.date.split('-').map(Number);
+                const [hh, mm] = slot.time.split(':').map(Number);
+                const start = new Date(y, m - 1, d, hh, mm, 0, 0);
+                const end = new Date(start.getTime() + slot.durationMin * 60_000);
+                try {
+                  await appointmentsApi.create({
+                    clientId,
+                    staffId: slot.staffId,
+                    serviceId: slot.serviceId,
+                    startTime: start.toISOString(),
+                    endTime: end.toISOString(),
+                    status: 'scheduled',
+                    notes: slot.notes || '',
+                    locationId: officeId,
+                    createdBy: currentUserId,
+                    override: canOverride,
+                  });
+                  created++;
+                } catch (err) {
+                  // Re-throw with slot context so the modal toast is precise:
+                  //   "Slot #2 (10:00) — booking conflicts with existing".
+                  const slotLabel = `#${i + 2} · ${slot.time}`;
+                  const baseMsg = (err as Error).message ?? 'Create failed';
+                  throw new Error(`${slotLabel} — ${baseMsg}`);
+                }
+              }
+              toast.success(t('calendar.scheduleUpdated'));
+            } finally {
+              // Invalidate even on partial success so the calendar reflects
+              // however many slots did get committed.
+              if (created > 0) {
+                queryClient.invalidateQueries({ queryKey: ['appointments', officeId] });
+                queryClient.invalidateQueries({ queryKey: ['appointments', 'all-offices'] });
+              }
+            }
+          }}
+          onRebook={(a) => {
+            // Enter rebook mode — calendar becomes a slot picker. The next
+            // slot click anywhere (any barber, any time) moves this apt
+            // there. Banner at the top of the page makes the mode visible
+            // and offers Cancel.
+            setDetailApt(null);
+            setRebookingApt(a);
+          }}
           canEditFully={canOverride /* owner + manager */}
           staffList={allStaff}
           serviceList={services}
@@ -1410,67 +6836,424 @@ export function CalendarPage() {
         />
       )}
 
+      {/* ─── Drag-reschedule confirmation — chip-pair diff design ───
+          Status spine on the left edge identifies the appointment's status
+          at a glance. Diff rows render as paired chips (faded old + bold
+          new) with an animated arrow between them. Save button echoes the
+          new time inline so the operator confirms by reading the action. */}
+      {/* ─── Break drag-reschedule confirmation ─────────────────────
+          When a *weekly* break is dragged, we don't know if the operator
+          wants to move every {dayOfWeek} forever or just today. This Dialog
+          asks. one-off breaks bypass the modal and commit directly. */}
+      <Dialog open={!!breakDragConfirm} onOpenChange={(o) => { if (!o) setBreakDragConfirm(null); }}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden">
+          {breakDragConfirm && (() => {
+            const brk = allBreaks.find(b => b.id === breakDragConfirm.brkId);
+            if (!brk) return null;
+            const labelKey = `break.${brk.type}` as TranslationKey;
+            const typeLabel = brk.type === 'custom' && brk.customLabel ? brk.customLabel : t(labelKey);
+            const dayLabel = t(`days.${brk.dayOfWeek}` as TranslationKey);
+            const oldRange = `${brk.startTime}–${brk.endTime}`;
+            const newRange = `${breakDragConfirm.newStartTime}–${breakDragConfirm.newEndTime}`;
+            return (
+              <div>
+                <DialogHeader className="px-6 pt-5 pb-3 border-b border-border">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    {t('break.dragConfirmEyebrow')}
+                  </p>
+                  <DialogTitle className="text-xl font-bold tracking-tight">
+                    {typeLabel}
+                  </DialogTitle>
+                </DialogHeader>
+
+                {/* Diff: old → new range */}
+                <div className="px-6 py-4 flex items-center gap-3 border-b border-border">
+                  <span className="text-[13px] tabular-nums text-muted-foreground line-through">{oldRange}</span>
+                  <span className="text-muted-foreground/50">→</span>
+                  <span className="text-[15px] font-bold tabular-nums text-foreground">{newRange}</span>
+                </div>
+
+                {/* Two options: only this date / all weekly occurrences */}
+                <div className="px-6 py-4 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      breakSplitMut.mutate({
+                        brk,
+                        targetDate: breakDragConfirm.targetDate,
+                        newStart: breakDragConfirm.newStartTime,
+                        newEnd: breakDragConfirm.newEndTime,
+                      });
+                      setBreakDragConfirm(null);
+                    }}
+                    className="w-full rounded-md border border-border p-3.5 text-left hover:border-foreground/40 hover:bg-accent/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  >
+                    <p className="text-[13px] font-bold text-foreground">
+                      {t('break.dragOnlyThis').replace('{day}', dayLabel)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {t('break.dragOnlyThisHint')}
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      breakUpsertMut.mutate({
+                        ...brk,
+                        startTime: breakDragConfirm.newStartTime,
+                        endTime: breakDragConfirm.newEndTime,
+                      });
+                      setBreakDragConfirm(null);
+                    }}
+                    className="w-full rounded-md border-2 border-foreground bg-foreground p-3.5 text-left text-background hover:bg-foreground/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  >
+                    <p className="text-[13px] font-bold">
+                      {t('break.dragAll').replace('{day}', dayLabel)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-background/70">
+                      {t('break.dragAllHint')}
+                    </p>
+                  </button>
+                </div>
+
+                <div className="px-6 py-3 border-t border-border bg-muted/25 flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setBreakDragConfirm(null)}
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {dragConfirm && (() => {
+        const oldStart = parseISO(dragConfirm.oldStartTime);
+        const newStart = parseISO(dragConfirm.newStartTime);
+        const timeChanged = oldStart.getTime() !== newStart.getTime();
+        const staffChanged = dragConfirm.oldStaffId !== dragConfirm.newStaffId;
+        const apt = appointments.find(a => a.id === dragConfirm.aptId);
+        const status = apt?.status ?? 'scheduled';
+        const spineCls =
+          status === 'confirmed' ? 'bg-emerald-500'
+            : status === 'completed' ? 'bg-foreground'
+            : status === 'cancelled' ? 'bg-rose-500'
+            : status === 'no-show' ? 'bg-amber-500'
+            : 'bg-blue-500';
+        const newTimeLabel = formatTime(newStart, timeFormat);
+        const rowVariants = {
+          hidden: reduceMotion ? { opacity: 1 } : { opacity: 0, x: -8 },
+          visible: { opacity: 1, x: 0, transition: { duration: 0.32, ease: MOTION_EASE } },
+        };
+
+        const DiffRow = ({
+          label, oldText, newText, big,
+        }: { label: string; oldText: string; newText: string; big?: boolean }) => (
+          <motion.div variants={rowVariants} className="space-y-1.5">
+            <p className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/75">{label}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={cn(
+                'inline-flex items-center rounded-md px-2.5 py-1 bg-muted/55 text-muted-foreground/75 line-through decoration-muted-foreground/40 tabular-nums truncate max-w-[45%]',
+                big ? 'text-[15px] font-medium' : 'text-[13px] font-medium',
+              )}>
+                {oldText}
+              </span>
+              <motion.span
+                aria-hidden
+                animate={reduceMotion ? {} : { x: [0, 3, 0] }}
+                transition={reduceMotion ? {} : { duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                className="inline-flex"
+              >
+                <ArrowRightIcon className="h-4 w-4 text-foreground/55" />
+              </motion.span>
+              <span className={cn(
+                'inline-flex items-center rounded-md px-2.5 py-1 bg-foreground/[0.06] ring-1 ring-foreground/15 text-foreground tabular-nums shadow-sm truncate',
+                big ? 'text-[20px] font-bold tracking-tight' : 'text-[14px] font-bold',
+              )}>
+                {newText}
+              </span>
+            </div>
+          </motion.div>
+        );
+
+        return (
+          <Dialog open onOpenChange={(o) => { if (!o) setDragConfirm(null); }}>
+            <DialogContent className="!w-[calc(100vw-2rem)] !max-w-[440px] p-0 gap-0 overflow-hidden [&>button]:hidden">
+              <motion.div
+                initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 32 }}
+                className="relative"
+              >
+                {/* Status spine — colored left edge mirroring the apt's tile */}
+                <div className={cn('absolute left-0 top-0 bottom-0 w-1', spineCls)} />
+
+                {/* Custom close — top-right, transparent over header */}
+                <button
+                  type="button"
+                  onClick={() => setDragConfirm(null)}
+                  aria-label="Close"
+                  className="absolute top-3 right-3 inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 z-10"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+
+                {/* Header eyebrow */}
+                <div className="pl-7 pr-12 pt-6 pb-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/85">
+                    {t('calendar.confirmChangesEyebrow')}
+                  </p>
+                </div>
+                <DialogHeader className="sr-only">
+                  <DialogTitle>{t('calendar.confirmChangesEyebrow')}</DialogTitle>
+                </DialogHeader>
+
+                {/* Diff rows — stagger-fade in from left */}
+                <motion.div
+                  initial="hidden"
+                  animate="visible"
+                  transition={{ staggerChildren: reduceMotion ? 0 : 0.06, delayChildren: reduceMotion ? 0 : 0.04 }}
+                  className="pl-7 pr-7 pb-5 space-y-3.5"
+                >
+                  {timeChanged && (
+                    <DiffRow
+                      label={t('calendar.changeTimeRow')}
+                      oldText={formatTime(oldStart, timeFormat)}
+                      newText={newTimeLabel}
+                      big
+                    />
+                  )}
+                  {staffChanged && (
+                    <DiffRow
+                      label={t('calendar.changeStaffRow')}
+                      oldText={dragConfirm.oldStaffName}
+                      newText={dragConfirm.newStaffName}
+                    />
+                  )}
+                </motion.div>
+
+                {/* Footer — Save echoes the new time, Cancel as outline */}
+                <div className="border-t border-border bg-muted/20 px-6 py-4 flex flex-col gap-2.5">
+                  <Button
+                    onClick={() => {
+                      // Snapshot OLD values for the Undo action — once the
+                      // mutation fires, the cache holds the new state.
+                      const oldStartTime = dragConfirm.oldStartTime;
+                      const oldEndTime = parseISO(dragConfirm.oldStartTime).getTime() + (parseISO(dragConfirm.newEndTime).getTime() - parseISO(dragConfirm.newStartTime).getTime());
+                      const oldStaffId = dragConfirm.oldStaffId;
+                      const aptId = dragConfirm.aptId;
+                      // Suppress the auto-toast so we can show our own with
+                      // an Undo action.
+                      suppressNextUpdateToast.current = true;
+                      fullUpdateMutation.mutate({
+                        id: aptId,
+                        changes: {
+                          startTime: dragConfirm.newStartTime,
+                          endTime: dragConfirm.newEndTime,
+                          staffId: dragConfirm.newStaffId,
+                        },
+                      });
+                      // Custom toast with Undo. 6s window — long enough to
+                      // catch a misclick, short enough not to clutter the screen.
+                      toast.success(t('toast.appointmentUpdated'), {
+                        duration: 6000,
+                        action: {
+                          label: 'Undo',
+                          onClick: () => {
+                            fullUpdateMutation.mutate({
+                              id: aptId,
+                              changes: {
+                                startTime: oldStartTime,
+                                endTime: new Date(oldEndTime).toISOString(),
+                                staffId: oldStaffId,
+                              },
+                            });
+                          },
+                        },
+                      });
+                      setDragConfirm(null);
+                    }}
+                    className="w-full h-11 text-[14px] font-semibold gap-2"
+                  >
+                    <span>{t('common.saveChanges')}</span>
+                    {timeChanged && (
+                      <span className="text-[12px] tabular-nums opacity-85 px-1.5 py-0.5 rounded bg-primary-foreground/15">
+                        {newTimeLabel}
+                      </span>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setDragConfirm(null)}
+                    className="w-full h-11 text-[14px] font-semibold border-border text-muted-foreground hover:text-foreground hover:bg-accent/40"
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                </div>
+              </motion.div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
+
+      {/* ─── Block dialog (lunch / dinner / rest / day-off / vacation / sick / training) ─── */}
+      {blockState && (
+        <BlockDialog
+          state={blockState}
+          onClose={() => setBlockState(null)}
+          onSaved={() => setBlockState(null)}
+          // Booking ↔ Block mode tab — only wired in create mode (BlockDialog
+          // hides the tab in edit). Carries the chosen staff over so the
+          // operator doesn't have to re-pick the column they were targeting.
+          onSwitchToBooking={blockState.mode === 'create' ? ({ staffId }) => {
+            setBlockState(null);
+            closeCreate();
+            // Pre-fill date+time so the booking flow has a starting point —
+            // user picked a "general" intent, default to today + next 15 min.
+            setCreateDate(format(selectedDate, 'yyyy-MM-dd'));
+            const next = new Date();
+            const m = Math.ceil(next.getMinutes() / 15) * 15;
+            if (m >= 60) { next.setHours(next.getHours() + 1); next.setMinutes(0); }
+            else next.setMinutes(m);
+            setCreateTime(format(next, 'HH:mm'));
+            if (staffId) setFormData(f => ({ ...f, staffId }));
+            setIsCreateOpen(true);
+          } : undefined}
+          staffList={allStaff}
+          isOwner={isOwner}
+          defaultDow={currentDow}
+        />
+      )}
+
+      {/* ─── Walk-in dialog ─── */}
+      {walkInOpen && (
+        <WalkInDialog
+          open={walkInOpen}
+          onClose={() => { setWalkInOpen(false); setWalkInPrefill(undefined); }}
+          activeStaff={activeStaff}
+          services={services}
+          clients={clients}
+          officeId={officeId}
+          staffColorMap={staffColorMap}
+          prefillName={walkInPrefill}
+        />
+      )}
+
+      {/* ─── Edit-day shift override modal ───
+          Click on any gray off-shift band for owner/manager opens this.
+          Three modes: Day off / Standard (use weekly default) / Custom hours.
+          Saves a per-date ShiftOverride; Standard removes any existing one. */}
+      {editDayModal && (
+        <EditDayShiftModal
+          open
+          staffId={editDayModal.staffId}
+          staffName={editDayModal.staffName}
+          selectedDate={selectedDate}
+          weeklyShift={allShifts.find(sh => sh.staffId === editDayModal.staffId && sh.dayOfWeek === currentDow) ?? null}
+          existingOverride={overrideByStaff.get(editDayModal.staffId) ?? null}
+          onClose={() => setEditDayModal(null)}
+        />
+      )}
+
       {/* ─── Create Modal — editorial pattern ───────────
           Eyebrow + display title. When/Service/Barber/Notes
           as labelled fields with shadcn primitives (no native
           inputs, no blue-tinted "When" panel). */}
       <Dialog open={isCreateOpen} onOpenChange={open => { if (!open) closeCreate(); }}>
-        <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">New</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Add to calendar</p>
             <DialogTitle className="text-2xl sm:text-3xl font-bold tracking-tight">
               {t('calendar.newAppointment')}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-6">
-            {/* Date grid + Time wheel in one row — month grid on the left
-                (receptionist's mental model: weeks + day-of-week visible),
-                time wheel on the right. Both wrapped in matching card shells
-                with min-h to align heights regardless of month length.
-                Stacks vertically on mobile so neither control overflows. */}
-            <div className="flex flex-col md:flex-row md:items-stretch md:justify-center gap-4 pt-2">
-              <div className="rounded-2xl border border-border bg-card p-5 w-full md:w-[300px] mx-auto md:mx-0 flex items-center justify-center">
-                <MiniCalendar
-                  selectedDate={createDate ? parseISO(createDate) : new Date()}
-                  onSelectDate={(d) => setCreateDate(format(d, 'yyyy-MM-dd'))}
-                  appointments={appointments}
-                />
-              </div>
-              <div className="flex items-center justify-center mx-auto md:mx-0">
-                <TimeWheelPicker
+          {/* Mode tabs — match the BlockDialog tab strip so the operator can
+              flip intent without restarting the flow. Clicking "Block" closes
+              this dialog and opens BlockDialog with the chosen staff carried
+              over (currentDow as default day). */}
+          {canOverride && (
+            <div className="flex border-b border-border -mx-6 px-6 -mt-2 mb-2">
+              <button
+                type="button"
+                className="relative px-3 py-2 text-sm font-semibold text-foreground"
+                aria-pressed
+              >
+                Booking
+                <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const carryStaffId = formData.staffId || selectedSlot?.staffId;
+                  closeCreate();
+                  setBlockState({
+                    mode: 'create',
+                    staffId: carryStaffId || undefined,
+                    dayOfWeek: currentDow,
+                  });
+                }}
+                className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Block
+              </button>
+            </div>
+          )}
+
+          <div className="space-y-5">
+            {/* When — date and time triggers. Both open Popovers:
+                - Date  → MiniCalendar with month navigation + day grid.
+                          Locale-aware display ("6 мая 2026" instead of the
+                          ambiguous browser-default "06/05/2026").
+                - Time  → TimePickerField with the dark alarm-clock hero,
+                          LayoutGroup-spring pill animations on hour/minute
+                          cells, and "Now" shortcut. Honors the operator's
+                          time-format and granularity settings. */}
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {t('calendar.sectionWhen')}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Popover open={createDatePickerOpen} onOpenChange={setCreateDatePickerOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="group flex w-full items-center justify-between gap-2 rounded-md border border-input bg-input-background px-3 h-10 text-sm font-medium tabular-nums text-foreground transition-colors hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                      aria-label={t('calendar.sectionWhen')}
+                    >
+                      <span className="truncate">
+                        {createDate
+                          ? format(parseISO(createDate), 'd MMM yyyy', { locale: dateLocale })
+                          : <span className="text-muted-foreground/60">—</span>}
+                      </span>
+                      <CalendarDaysIcon className="h-4 w-4 text-muted-foreground/70 group-hover:text-foreground transition-colors shrink-0" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-3" align="start">
+                    <MiniCalendar
+                      selectedDate={createDate ? parseISO(createDate) : selectedDate}
+                      onSelectDate={(d) => {
+                        setCreateDate(format(d, 'yyyy-MM-dd'));
+                        setCreateDatePickerOpen(false);
+                      }}
+                      appointments={appointments}
+                    />
+                  </PopoverContent>
+                </Popover>
+                <TimePickerField
                   value={createTime}
                   onChange={setCreateTime}
-                  startHour={DAY_START_HOUR}
-                  endHour={DAY_END_HOUR}
-                  minuteStep={5}
-                  format={timeFormat}
-                  ariaLabel="Appointment start time"
+                  timeFormat={timeFormat}
+                  ariaLabel={t('calendar.sectionWhen')}
                 />
               </div>
             </div>
 
-            {/* Pre-selected barber chip — sits below the WHEN block when present. */}
-            {selectedSlot?.staffId && (() => {
-              const st = activeStaff.find(s => s.id === selectedSlot.staffId);
-              if (!st) return null;
-              const c = getStaffColor(staffColorMap.get(st.id) ?? 0);
-              return (
-                <div className="flex justify-center">
-                  <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <Avatar className="h-4 w-4">
-                      {st.avatarUrl && <AvatarImage src={st.avatarUrl} alt={st.firstName} />}
-                      <AvatarFallback className={cn('text-[8px] font-bold', c.light, c.label)}>{st.firstName[0]}{st.lastName[0]}</AvatarFallback>
-                    </Avatar>
-                    <span>{t('calendar.preselectedBarber')}: {st.firstName}</span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ─── WHO section ─────────────────────────────
-                Hairline rule above + tabular eyebrow makes this read as a
-                discrete operator chunk, not just another form field. */}
+            {/* ─── WHO section ───────────────────────────── */}
             <div className="border-t border-border pt-5">
               <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.sectionWho')}</p>
 
@@ -1487,27 +7270,35 @@ export function CalendarPage() {
                   const looksLikePhone = /[\d+()]/.test(q);
                   const looksLikeEmail = q.includes('@');
                   setNewClient({
-                    firstName: !looksLikePhone && !looksLikeEmail ? q : '',
-                    lastName: '',
+                    ...EMPTY_NEW_CLIENT_DRAFT,
+                    fullName: !looksLikePhone && !looksLikeEmail ? q : '',
                     phone: looksLikePhone ? q : '',
                     email: looksLikeEmail ? q : '',
-                    avatarUrl: '',
                   });
                   setIsCreatingClient(true);
                 }}
                 onCancelCreate={() => setIsCreatingClient(false)}
                 newClient={newClient}
                 onNewClientChange={setNewClient}
-                onSubmitNewClient={() => createClientMut.mutate({
-                  firstName: newClient.firstName.trim(),
-                  lastName:  newClient.lastName.trim(),
-                  phone:     newClient.phone.trim(),
-                  email:     newClient.email.trim(),
-                  notes:     '',
-                  avatarUrl: newClient.avatarUrl?.trim() || undefined,
-                  officeIds: [officeId],
-                })}
+                onSubmitNewClient={() => {
+                  const { firstName, lastName } = splitFullName(newClient.fullName);
+                  createClientMut.mutate({
+                    firstName,
+                    lastName,
+                    phone:     newClient.phone.trim(),
+                    email:     newClient.email.trim(),
+                    notes:     newClient.notes.trim(),
+                    avatarUrl: newClient.avatarUrl?.trim() || undefined,
+                    officeIds: [officeId],
+                  });
+                }}
                 isSubmittingClient={createClientMut.isPending}
+                onWalkIn={(prefill) => {
+                  closeCreate();
+                  setWalkInPrefill(prefill);
+                  setWalkInOpen(true);
+                }}
+                onOpenProfile={(id) => setProfileSheetClientId(id)}
               />
 
               {/* Barber as a horizontal avatar chip strip — visual, fast to
@@ -1545,22 +7336,326 @@ export function CalendarPage() {
               </div>
             </div>
 
-            {/* ─── WHAT section — service ─────────────────── */}
+            {/* ─── WHAT section — services (Image #170-172) ───
+                Selected services render as full-width cards with a scissor
+                tile + name + meta line (with staff and computed time) + price
+                + remove. The "Add service" CTA below is a full-width primary-
+                tinted button — opens a Dialog-based picker (ServicePickerSheet)
+                with search + categorized list. */}
             <div className="border-t border-border pt-5">
-              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.sectionWhat')}</p>
-              <Select value={formData.serviceId} onValueChange={v => setFormData(f => ({ ...f, serviceId: v }))}>
-                <SelectTrigger className="h-11 tabular-nums"><SelectValue placeholder={t('calendar.selectService')} /></SelectTrigger>
-                <SelectContent>
-                  {services.map(s => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span className="flex items-center gap-3 w-full">
-                        <span>{s.name}</span>
-                        <span className="ml-auto text-xs text-muted-foreground tabular-nums">€{s.price} · {s.duration}m</span>
+              <h3 className="mb-3 text-lg font-bold tracking-tight text-foreground">{t('calendar.services')}</h3>
+              {(() => {
+                const picked = formData.serviceIds.map(id => services.find(s => s.id === id)).filter((s): s is Service => !!s);
+                const totalDuration = picked.reduce((sum, s) => sum + s.duration, 0);
+                const totalPrice    = picked.reduce((sum, s) => sum + s.price, 0);
+                const staff = allStaff.find(s => s.id === formData.staffId);
+                const staffShort = staff ? staff.firstName : '';
+                // Compute sequential start times — each service starts where
+                // the previous ended. baseHM matches the form's "When" field.
+                const formatHM = (mins: number) => {
+                  const h = Math.floor(mins / 60);
+                  const m = mins % 60;
+                  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                };
+                const timeParts = createTime.match(/^(\d{2}):(\d{2})$/);
+                const baseMin = timeParts ? Number(timeParts[1]) * 60 + Number(timeParts[2]) : 0;
+                let cursorMin = baseMin;
+                return (
+                  <div className="space-y-2.5">
+                    <AnimatePresence initial={false}>
+                      {picked.map((svc, idx) => {
+                        const startHM = formatHM(cursorMin);
+                        cursorMin += svc.duration;
+                        const palette = paletteForCategory(svc.categoryId);
+                        const initials = svc.name.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+                        return (
+                          <motion.div
+                            key={svc.id}
+                            layout
+                            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, height: 0, marginTop: 0, scale: 0.96 }}
+                            transition={{ type: 'spring', stiffness: 380, damping: 28, mass: 0.6 }}
+                            className="relative flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-3 overflow-hidden hover:border-foreground/20 hover:shadow-[0_2px_8px_-4px_rgba(0,0,0,0.08)] transition-[border-color,box-shadow] duration-200"
+                          >
+                            {/* Sequence index thread — small "1·2·3" mark on
+                                left edge when multi-service. Helps operator
+                                track which service runs in which order. */}
+                            {picked.length > 1 && (
+                              <span
+                                aria-hidden
+                                className={cn(
+                                  'absolute left-0 top-2 bottom-2 w-1 rounded-r-full',
+                                  palette.dot,
+                                )}
+                              />
+                            )}
+                            {/* Gradient thumbnail — same vocabulary as the picker
+                                row. Two-letter initials reinforce service identity. */}
+                            <div className={cn(
+                              'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-[14px] font-bold text-white shadow-[0_0_0_1px_rgba(0,0,0,0.04)]',
+                              palette.grad,
+                              picked.length > 1 && 'ml-1.5',
+                            )}>
+                              {initials}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                {picked.length > 1 && (
+                                  <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-muted text-[10px] font-bold tabular-nums text-muted-foreground shrink-0">
+                                    {idx + 1}
+                                  </span>
+                                )}
+                                <p className="text-[14px] font-semibold tracking-tight text-foreground truncate">
+                                  {svc.name}
+                                </p>
+                              </div>
+                              {/* Meta chips — staff + start-time + duration as
+                                  paired pills with icons. Skim-friendly. */}
+                              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                                {staffShort && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                    <UserIcon className="h-2.5 w-2.5" />
+                                    {staffShort}
+                                  </span>
+                                )}
+                                <span className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                                  <ClockIcon className="h-2.5 w-2.5" />
+                                  {startHM}
+                                </span>
+                                <span className="inline-flex items-center rounded-full bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                                  {svc.duration}m
+                                </span>
+                              </div>
+                            </div>
+                            {/* Stacked price column — BIG bold + small muted */}
+                            <div className="shrink-0 text-right tabular-nums">
+                              <p className="text-[15px] font-bold text-foreground leading-none">
+                                €{svc.price}
+                              </p>
+                            </div>
+                            {/* Remove — small, muted, scale-pulse on hover */}
+                            <motion.button
+                              type="button"
+                              onClick={() => setFormData(f => ({ ...f, serviceIds: f.serviceIds.filter(id => id !== svc.id) }))}
+                              aria-label={t('calendar.removeService')}
+                              whileHover={{ scale: 1.1, rotate: 90 }}
+                              whileTap={{ scale: 0.92 }}
+                              transition={{ type: 'spring', stiffness: 500, damping: 20 }}
+                              className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </motion.button>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+                    {/* Total line — only when 2+ services. Animated mount/unmount. */}
+                    <AnimatePresence>
+                      {picked.length > 1 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.2, ease: MOTION_EASE }}
+                          className="flex items-center justify-between px-3 text-[12px]"
+                        >
+                          <span className="font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+                            {t('calendar.servicesTotal').split('·')[0].trim()}
+                          </span>
+                          <span className="tabular-nums">
+                            <span className="text-muted-foreground">{totalDuration}m</span>
+                            <span className="mx-1.5 text-muted-foreground/50">·</span>
+                            <span className="font-semibold text-foreground">€{totalPrice}</span>
+                          </span>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    {/* Add (another) service trigger — Select-dropdown style
+                        per Image #183 + motion polish. Plus-icon prefix when
+                        empty (signals "create"); chevron rotates on hover to
+                        signal "this opens something". */}
+                    <motion.button
+                      type="button"
+                      onClick={() => setAddServiceOpen(true)}
+                      whileHover={{ scale: 1.005 }}
+                      whileTap={{ scale: 0.995 }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+                      className="group w-full inline-flex items-center justify-between gap-2 h-11 rounded-lg border border-border bg-card px-3 text-sm hover:bg-accent/40 hover:border-foreground/30 hover:shadow-[0_2px_8px_-4px_rgba(0,0,0,0.08)] transition-[border-color,background,box-shadow,opacity] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-foreground/5 text-muted-foreground group-hover:bg-foreground group-hover:text-background transition-colors">
+                          <PlusIcon className="h-3 w-3" strokeWidth={2.5} />
+                        </span>
+                        <span className="text-muted-foreground group-hover:text-foreground transition-colors">
+                          {picked.length === 0 ? t('calendar.addService').replace('+ ', '') : t('calendar.addAnotherService').replace('+ ', '')}
+                        </span>
                       </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                      <ChevronDownIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground group-hover:rotate-180 transition-all duration-200" />
+                    </motion.button>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* ─── REPEAT — pro-max with timeline visualization ─────
+                Toggle ON unfolds steppers + visual occurrence timeline + end-
+                date footer. Section gets a soft blue tint when active. The
+                timeline strip turns abstract numbers ("every 1 week × 4")
+                into concrete dates ("May 7 → 14 → 21 → 28") so operators see
+                what they're scheduling. */}
+            <div className={cn(
+              'border-t border-border pt-5 -mx-1 px-1 rounded-md transition-colors duration-300',
+              recurrenceEnabled && 'bg-blue-50/40 dark:bg-blue-950/15',
+            )}>
+              <div className="flex items-center justify-between gap-3 px-2">
+                <div className="inline-flex items-center gap-2.5">
+                  <span className={cn(
+                    'inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors',
+                    recurrenceEnabled ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground/70',
+                  )}>
+                    <ArrowPathIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                  </span>
+                  <p className="text-base font-bold tracking-tight text-foreground">
+                    {t('calendar.repeatToggle')}
+                  </p>
+                </div>
+                <Switch checked={recurrenceEnabled} onCheckedChange={setRecurrenceEnabled} aria-label={t('calendar.repeatToggle')} />
+              </div>
+              <AnimatePresence initial={false}>
+                {recurrenceEnabled && (() => {
+                  const wKey = pluralKey(language, recurrenceWeeks);
+                  const tKey = pluralKey(language, recurrenceCount);
+                  const weekUnit = t(wKey === 'One' ? 'calendar.weeksOne' : wKey === 'Few' ? 'calendar.weeksFew' : 'calendar.weeksMany');
+                  const timeUnit = t(tKey === 'One' ? 'calendar.timesOne' : tKey === 'Few' ? 'calendar.timesFew' : 'calendar.timesMany');
+                  const dateParts = createDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                  let occDates: Date[] = [];
+                  let untilLabel = '';
+                  if (dateParts) {
+                    const base = new Date(Number(dateParts[1]), Number(dateParts[2]) - 1, Number(dateParts[3]));
+                    occDates = Array.from({ length: Math.min(recurrenceCount, 52) }, (_, i) => addWeeks(base, i * recurrenceWeeks));
+                    const last = occDates[occDates.length - 1];
+                    untilLabel = format(last, 'EEEE, d MMMM yyyy', { locale: dateLocale });
+                  }
+                  // Timeline collapses "...···" middle when too many dots to fit
+                  const visibleDots = occDates.length > 8
+                    ? [...occDates.slice(0, 3), null, ...occDates.slice(-3)]
+                    : occDates;
+                  return (
+                    <motion.div
+                      key="recurrence-controls"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.32, ease: MOTION_EASE }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-5 px-2 space-y-5">
+                        {/* Two stepper columns with stagger fade-in */}
+                        <motion.div
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.08, duration: 0.28, ease: MOTION_EASE }}
+                          className="grid grid-cols-2 gap-5"
+                        >
+                          <div>
+                            <Label className="text-[13px] font-medium text-muted-foreground mb-2 block">
+                              {t('calendar.repeatEvery')}
+                            </Label>
+                            <div className="flex items-center gap-2.5">
+                              <Stepper value={recurrenceWeeks} onChange={setRecurrenceWeeks} min={1} max={12} ariaLabel={t('calendar.repeatEvery')} />
+                              <span className="text-sm text-muted-foreground tabular-nums">{weekUnit}</span>
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-[13px] font-medium text-muted-foreground mb-2 block">
+                              {t('calendar.endsAfterLabel')}
+                            </Label>
+                            <div className="flex items-center gap-2.5">
+                              <Stepper value={recurrenceCount} onChange={setRecurrenceCount} min={1} max={52} ariaLabel={t('calendar.endsAfterLabel')} />
+                              <span className="text-sm text-muted-foreground tabular-nums">{timeUnit}</span>
+                            </div>
+                          </div>
+                        </motion.div>
+
+                        {/* Visual occurrence timeline — N dots evenly spaced
+                            on a thin connector line, each labeled with its
+                            date below. Operator instantly sees the schedule. */}
+                        {visibleDots.length > 0 && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.16, duration: 0.32, ease: MOTION_EASE }}
+                          >
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80 mb-2.5">
+                              Schedule
+                            </p>
+                            <div className="relative pt-2 pb-7">
+                              {/* Hairline connector */}
+                              <div className="absolute left-3 right-3 top-3 h-px bg-border" aria-hidden />
+                              {/* Dots */}
+                              <div className="relative flex items-center justify-between">
+                                {visibleDots.map((d, i) => {
+                                  if (d === null) {
+                                    return (
+                                      <span key={`gap-${i}`} className="text-muted-foreground/40 text-[10px] tabular-nums">···</span>
+                                    );
+                                  }
+                                  const isFirst = i === 0;
+                                  const isLast = i === visibleDots.length - 1;
+                                  return (
+                                    <motion.div
+                                      key={d.toISOString()}
+                                      initial={{ scale: 0, opacity: 0 }}
+                                      animate={{ scale: 1, opacity: 1 }}
+                                      transition={{ delay: 0.2 + i * 0.04, type: 'spring', stiffness: 460, damping: 20 }}
+                                      className="relative flex flex-col items-center"
+                                    >
+                                      <span className={cn(
+                                        'h-2.5 w-2.5 rounded-full ring-2',
+                                        isFirst
+                                          ? 'bg-primary ring-primary/25'
+                                          : isLast
+                                            ? 'bg-foreground ring-foreground/20'
+                                            : 'bg-card ring-foreground/30',
+                                      )} aria-hidden />
+                                      <span className={cn(
+                                        'absolute top-5 text-[10px] tabular-nums whitespace-nowrap',
+                                        isFirst ? 'font-bold text-foreground' : isLast ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                                      )}>
+                                        {format(d, 'd MMM', { locale: dateLocale })}
+                                      </span>
+                                    </motion.div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {/* Footer chip — bigger and more prominent than v1.
+                            Date is the main signal; refresh icon plays decorator. */}
+                        {untilLabel && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.24, duration: 0.28, ease: MOTION_EASE }}
+                            className="flex items-center gap-2.5 rounded-lg bg-card border border-border px-3.5 py-2.5"
+                          >
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
+                              <ArrowPathIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                            </span>
+                            <span className="text-[12.5px] text-muted-foreground">
+                              {t('calendar.repeatsUntil').replace('{date}', '').trim().replace(/[,]?\s*$/, '')}
+                              <span className="ml-1 font-bold text-foreground">{untilLabel}</span>
+                            </span>
+                          </motion.div>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })()}
+              </AnimatePresence>
             </div>
 
             {/* ─── NOTES — optional ─────────────────────── */}
@@ -1576,63 +7671,125 @@ export function CalendarPage() {
               />
             </div>
 
-            {/* ─── Summary + actions ──────────────────────
-                Live booking summary updates as fields fill in, so the
-                receptionist can confirm what's about to be created without
-                scrolling back up. Tabular-nums for prices/durations. */}
+            {/* ─── Bottom action bar ──────────────────────
+                Single hairline row. Live price + duration on the left
+                (tabular-nums), Cancel + Save on the right. No more brutalist
+                arrow + uppercase tracking — clean shadcn Button matches the
+                competitor's restraint and stops competing visually with the
+                form fields above. */}
             {(() => {
-              const svc = services.find(s => s.id === formData.serviceId);
-              const staff = activeStaff.find(s => s.id === formData.staffId);
-              const client = clients.find(c => c.id === formData.clientId);
-              const dateLabel = createDate ? format(parseISO(createDate), 'EEE, MMM d') : '—';
-              const summaryReady = !!(svc && staff && client && createDate && createTime);
+              const picked = formData.serviceIds.map(id => services.find(s => s.id === id)).filter((s): s is Service => !!s);
+              const totalPrice = picked.reduce((sum, s) => sum + s.price, 0);
+              const totalDuration = picked.reduce((sum, s) => sum + s.duration, 0);
+              const summaryReady = picked.length > 0 && !!formData.staffId && !!formData.clientId && !!createDate && !!createTime;
               return (
-                <div className="border-t border-border pt-5 space-y-4">
-                  <div className="flex items-baseline justify-between gap-3 flex-wrap text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground tabular-nums">
-                    <span>{t('calendar.summary')}</span>
-                    {svc && (
-                      <span className="text-foreground">€{svc.price} <span className="text-muted-foreground/60">· {svc.duration}m</span></span>
+                <div className="border-t border-border pt-5 flex items-center gap-3">
+                  <div className="text-[11px] tabular-nums text-muted-foreground">
+                    {picked.length > 0 ? (
+                      <span><span className="font-semibold text-foreground">€{totalPrice}</span> · {totalDuration}m{picked.length > 1 && <span className="text-muted-foreground/60"> · {picked.length}×</span>}</span>
+                    ) : (
+                      <span className="text-muted-foreground/60">{t('calendar.selectService')}</span>
                     )}
                   </div>
-                  <p className="text-sm text-foreground tracking-tight">
-                    <span className="tabular-nums">{dateLabel} · {createTime || '—:—'}</span>
-                    {svc && <> · {svc.name}</>}
-                    {staff && <> · with <span className="font-semibold">{staff.firstName}</span></>}
-                    {client && <> · for <span className="font-semibold">{client.firstName} {client.lastName}</span></>}
-                  </p>
-
-                  <div className="flex items-center gap-3 pt-1">
-                    <button
-                      type="button"
-                      onClick={closeCreate}
-                      className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {t('common.cancel')}
-                    </button>
-                    {/* Brutalist mark button — same vocabulary as the customer site CTA. */}
-                    <button
-                      type="button"
-                      onClick={handleSubmit}
-                      disabled={createMutation.isPending || !summaryReady}
-                      className={cn(
-                        'group ml-auto inline-flex items-center bg-primary text-primary-foreground py-0 pl-6 pr-0 text-sm font-semibold uppercase tracking-[0.18em] transition-colors duration-200',
-                        'hover:bg-foreground hover:text-background disabled:opacity-50 disabled:cursor-not-allowed',
-                      )}
-                    >
-                      <span className="py-3 text-left tabular-nums">
-                        {createMutation.isPending ? t('calendar.creating') : t('calendar.createAppointment')}
-                      </span>
-                      <span className="border-l border-black/30 dark:border-white/20 p-3 inline-flex items-center transition-transform duration-200 group-hover:translate-x-[2px]">
-                        <ArrowRightIcon className="h-4 w-4" />
-                      </span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={closeCreate}
+                    className="ml-auto text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={createMutation.isPending || !summaryReady}
+                  >
+                    {createMutation.isPending ? t('calendar.creating') : t('common.saveChanges')}
+                  </Button>
                 </div>
               );
             })()}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ─── Client Profile Sheet ──────────────────────
+          Click on the selected-client tile inside the booking modal opens
+          this. Edit pencil opens CreateClientModal stacked on top of the
+          sheet (sheet stays mounted). Appointments are hydrated here at
+          the data boundary because allAppointments is base Appointment[]
+          (no joins) — passing it raw was the cause of the
+          "Cannot read properties of undefined (reading 'name')" crash. */}
+      <ClientProfileSheet
+        open={!!profileSheetClientId}
+        client={clients.find(c => c.id === profileSheetClientId) ?? null}
+        appointments={
+          profileSheetClientId
+            ? allAppointments
+                .filter(a => a.clientId === profileSheetClientId)
+                .map(a => {
+                  const service = services.find(s => s.id === a.serviceId);
+                  const staff = allStaff.find(s => s.id === a.staffId);
+                  const aptClient = clients.find(c => c.id === a.clientId);
+                  if (!service || !staff || !aptClient) return null;
+                  return { ...a, service, staff, client: aptClient } satisfies AppointmentWithDetails;
+                })
+                .filter((a): a is AppointmentWithDetails => a !== null)
+                .sort((a, b) =>
+                  parseISO(b.startTime).getTime() - parseISO(a.startTime).getTime(),
+                )
+            : []
+        }
+        onClose={() => setProfileSheetClientId(null)}
+        onEdit={() => {
+          if (profileSheetClientId) setEditClientId(profileSheetClientId);
+        }}
+        t={t}
+      />
+
+      {/* ─── Edit-mode CreateClientModal ────────────
+          Stacks on top of the profile sheet. Reuses the same modal as
+          Create flow, with editingClient prop reseeding the draft and
+          submit dispatching to clientsApi.update. */}
+      <CreateClientModal
+        open={!!editClientId}
+        t={t}
+        draft={editClientDraft}
+        onChange={setEditClientDraft}
+        onCancel={() => { setEditClientId(null); setEditClientDraft(EMPTY_NEW_CLIENT_DRAFT); }}
+        onSubmit={() => {
+          if (!editClientId) return;
+          const { firstName, lastName } = splitFullName(editClientDraft.fullName);
+          editClientMut.mutate({
+            id: editClientId,
+            data: {
+              firstName,
+              lastName,
+              phone: editClientDraft.phone.trim(),
+              email: editClientDraft.email.trim(),
+              notes: editClientDraft.notes.trim(),
+              ...(editClientDraft.avatarUrl?.trim()
+                ? { avatarUrl: editClientDraft.avatarUrl.trim() }
+                : {}),
+            },
+          });
+        }}
+        isSubmitting={editClientMut.isPending}
+        editingClient={clients.find(c => c.id === editClientId) ?? null}
+      />
+
+      {/* ─── Service Picker Sheet — opened from booking modal "Add service" CTA */}
+      <ServicePickerSheet
+        open={addServiceOpen}
+        onClose={() => setAddServiceOpen(false)}
+        services={services}
+        categories={categories}
+        staffName={(() => {
+          const s = allStaff.find(s => s.id === formData.staffId);
+          return s ? s.firstName : '';
+        })()}
+        selectedIds={formData.serviceIds}
+        onSelect={(serviceId) => setFormData(f => ({ ...f, serviceIds: [...f.serviceIds, serviceId] }))}
+        t={t}
+      />
 
       {/* ─── Conflict Dialog — editorial pattern ─────
           Amber eyebrow signals exception state. Conflict
@@ -1651,24 +7808,30 @@ export function CalendarPage() {
           {(() => {
             // Detect whether the conflicts are at the SAME office (true double-book)
             // or CROSS-OFFICE (barber works at two shops, can't be in two places at once).
-            // The wording adapts so it's never misleading.
+            // The wording adapts so it's never misleading. Break-only conflicts get
+            // their own message — "this slot overlaps a scheduled break."
             const conflicts = conflictState?.conflicts ?? [];
-            const pendingLocationId = conflictState?.pending.locationId;
-            const allCrossOffice = conflicts.every((c) => c.office.id !== pendingLocationId);
-            const sameOffice = conflicts.every((c) => c.office.id === pendingLocationId);
+            const breakConflicts = conflictState?.breakConflicts ?? [];
+            const pendingLocationId = conflictState?.pending[0]?.locationId;
+            const allCrossOffice = conflicts.length > 0 && conflicts.every((c) => c.office.id !== pendingLocationId);
+            const sameOffice = conflicts.length > 0 && conflicts.every((c) => c.office.id === pendingLocationId);
+            const breakOnly = conflicts.length === 0 && breakConflicts.length > 0;
             return (
               <p className="text-sm text-muted-foreground leading-relaxed">
-                {allCrossOffice
-                  ? 'This barber is already working at the other shop during this slot.'
-                  : sameOffice
-                    ? 'This time slot already has a booking with this barber.'
-                    : 'This barber has overlapping bookings during this slot.'}
+                {breakOnly
+                  ? 'This time slot overlaps a scheduled break for this barber.'
+                  : allCrossOffice
+                    ? 'This barber is already working at the other shop during this slot.'
+                    : sameOffice
+                      ? 'This time slot already has a booking with this barber.'
+                      : 'This barber has overlapping bookings during this slot.'}
               </p>
             );
           })()}
 
           {/* Conflict rows — hairline-divided, full-bleed list (no muted panels).
-              Tabular-nums on the date+time so the list reads as a ledger. */}
+              Tabular-nums on the date+time so the list reads as a ledger.
+              Both appointment-conflicts and break-conflicts are rendered here. */}
           <div className="divide-y divide-border border-y border-border -mx-6 mt-1">
             {conflictState?.conflicts.map(({ appointment, office }) => {
               const cs = new Date(appointment.startTime);
@@ -1682,6 +7845,24 @@ export function CalendarPage() {
                     <MapPinIcon className="h-3 w-3 shrink-0" />
                     {office.name}
                     <span className="normal-case tracking-normal text-muted-foreground/70">· {office.address}</span>
+                  </p>
+                </div>
+              );
+            })}
+            {conflictState?.breakConflicts.map(({ break: brk }) => {
+              const Icon = BLOCK_ICON[brk.type];
+              const breakLabel = brk.type === 'custom' && brk.customLabel?.trim()
+                ? brk.customLabel.trim()
+                : t(BLOCK_TKEY[brk.type]);
+              return (
+                <div key={brk.id} className="px-6 py-3.5">
+                  <p className="text-sm font-semibold text-foreground tabular-nums">
+                    {brk.startTime} — {brk.endTime}
+                  </p>
+                  <p className="mt-1 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em] text-amber-700 dark:text-amber-400">
+                    <Icon className="h-3 w-3 shrink-0" />
+                    {t('block.groupBreak')}
+                    <span className="normal-case tracking-normal text-muted-foreground/70">· {breakLabel}</span>
                   </p>
                 </div>
               );
@@ -1722,6 +7903,36 @@ export function CalendarPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ─── Floating Action Button — quick "new booking" entry point ─────
+          Lives at fixed bottom-right so receptionists can fire a booking
+          from any scroll position, even mid-call. Hidden when any modal is
+          already open (avoid stacking) or in rebook mode (banner takes top).
+          Spring entrance + press feedback give it the "primary action" weight
+          competitor apps use. */}
+      <AnimatePresence>
+        {!isCreateOpen && !blockState && !conflictState && !rebookingApt && !detailApt && (
+          <motion.button
+            key="fab-new-booking"
+            type="button"
+            onClick={() => { closeCreate(); setIsCreateOpen(true); }}
+            initial={reduceMotion ? false : { opacity: 0, scale: 0.6, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.6, y: 12 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+            whileHover={reduceMotion ? undefined : { y: -2, scale: 1.04 }}
+            whileTap={reduceMotion ? undefined : { scale: 0.94 }}
+            className={cn(
+              'fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-foreground text-background ring-1 ring-foreground/20 flex items-center justify-center focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-foreground/25 transition-shadow',
+              ELEVATION.fab,
+            )}
+            aria-label={t('calendar.newAppointment')}
+            title={t('calendar.newAppointment')}
+          >
+            <PlusIcon className="h-6 w-6" strokeWidth={2.4} />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1733,6 +7944,15 @@ export function CalendarPage() {
 //   2. Selected client surface (with visit count + last-visit date)
 //   3. Filtered results (up to 5 matches)
 //   4. "Add new client" inline form
+interface NewClientDraft {
+  fullName: string;
+  phone: string;
+  email: string;
+  notes: string;
+  avatarUrl: string;
+  marketingOk: boolean;
+}
+
 interface ClientAutocompleteProps {
   t: (key: TranslationKey) => string;
   clients: Client[];
@@ -1743,18 +7963,72 @@ interface ClientAutocompleteProps {
   isCreatingClient: boolean;
   onStartCreate: () => void;
   onCancelCreate: () => void;
-  newClient: { firstName: string; lastName: string; phone: string; email: string; avatarUrl: string };
-  onNewClientChange: (v: { firstName: string; lastName: string; phone: string; email: string; avatarUrl: string }) => void;
+  newClient: NewClientDraft;
+  onNewClientChange: (v: NewClientDraft) => void;
   onSubmitNewClient: () => void;
   isSubmittingClient: boolean;
+  /** Optional. When provided, the empty-state dropdown surfaces a
+   *  "Walk-in (no booking)" shortcut alongside "Create new client".
+   *  When the user has typed a query, the shortcut label echoes that
+   *  query and the prefill is forwarded — e.g., open WalkInDialog with
+   *  the typed name pre-filled. Used by the booking dialog only —
+   *  WalkInDialog's own ClientAutocomplete omits this to avoid a
+   *  recursion of "walk-in inside walk-in." */
+  onWalkIn?: (prefillName?: string) => void;
+  /** Optional. When provided, clicking the selected-client tile body opens
+   *  a focused profile sheet (contact info, notes, history). Threaded only
+   *  by the booking dialog — WalkInDialog omits this for now. */
+  onOpenProfile?: (id: string) => void;
+}
+
+// Highlight the matched substring inside a name. The whole name renders in
+// `text-foreground`; the matched chunk gets `font-bold` so it pops out by
+// weight (not color) — same trick the competitor uses.
+function highlightMatch(text: string, query: string): React.ReactNode {
+  const trimmed = query.trim();
+  if (!trimmed) return text;
+  const lower = text.toLowerCase();
+  const q = trimmed.toLowerCase();
+  const out: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  while (i < text.length) {
+    const idx = lower.indexOf(q, i);
+    if (idx === -1) {
+      out.push(<span key={key++}>{text.slice(i)}</span>);
+      break;
+    }
+    if (idx > i) out.push(<span key={key++}>{text.slice(i, idx)}</span>);
+    out.push(
+      <span key={key++} className="font-bold text-foreground">
+        {text.slice(idx, idx + q.length)}
+      </span>,
+    );
+    i = idx + q.length;
+  }
+  return <>{out}</>;
 }
 
 function ClientAutocomplete({
   t, clients, selectedClientId, onSelectClient, search, onSearchChange,
   isCreatingClient, onStartCreate, onCancelCreate,
   newClient, onNewClientChange, onSubmitNewClient, isSubmittingClient,
+  onWalkIn, onOpenProfile,
 }: ClientAutocompleteProps) {
+  const [language] = useLanguage();
   const selected = clients.find(c => c.id === selectedClientId);
+
+  // Wrapper-level focus tracking. The dropdown stays open while focus
+  // moves between the input and any item button (relatedTarget inside
+  // the wrapper); it closes only when focus leaves the wrapper entirely.
+  // This is the canonical combobox pattern — beats setTimeout hacks.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
+  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (!wrapperRef.current?.contains(e.relatedTarget as Node | null)) {
+      setIsFocused(false);
+    }
+  };
 
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1765,39 +8039,66 @@ function ClientAutocomplete({
         c.email.toLowerCase().includes(q) ||
         c.phone.toLowerCase().includes(q),
       )
-      .slice(0, 5);
+      .slice(0, 8);
   }, [clients, search]);
 
-  // Selected-client surface — shows history at a glance
+  // Selected-client surface — clicking the inner row opens the profile
+  // dialog; the trailing X button clears the selection without bubbling.
   if (selected && !isCreatingClient) {
     const grad = AVATAR_GRADIENTS[hashToIndex(selected.id, AVATAR_GRADIENTS.length)];
-    const lastVisit = selected.lastVisitAt ? format(new Date(selected.lastVisitAt), 'MMM d, yyyy') : null;
+    const tileLocale = language === 'ru' ? ruLocale : language === 'lt' ? ltLocale : enLocale;
+    const lastVisit = selected.lastVisitAt
+      ? format(new Date(selected.lastVisitAt), 'MMM d, yyyy', { locale: tileLocale })
+      : null;
+    const profileEnabled = !!onOpenProfile;
+    const previousVisitsKey = (`clientSheet.previousVisits${pluralKey(language, selected.totalVisits)}`) as TranslationKey;
+    const previousVisitsText = t(previousVisitsKey).replace('{count}', String(selected.totalVisits));
+    const lastVisitLine = lastVisit
+      ? `· ${t('clientSheet.metaLast').replace('{date}', lastVisit)}`
+      : null;
     return (
       <div>
         <Label className="text-sm">{t('calendar.client')}</Label>
         <div className="mt-1.5 rounded-lg border border-border bg-card p-3">
           <div className="flex items-center gap-3">
-            <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white', grad)}>
-              {selected.firstName[0]}{selected.lastName[0]}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-foreground truncate">{selected.firstName} {selected.lastName}</p>
-              <p className="text-xs text-muted-foreground truncate tabular-nums">{selected.phone}</p>
-            </div>
             <button
               type="button"
-              onClick={() => { onSelectClient(''); onSearchChange(''); }}
-              className="text-xs font-medium text-muted-foreground hover:text-foreground underline underline-offset-2"
+              disabled={!profileEnabled}
+              onClick={() => onOpenProfile?.(selected.id)}
+              className={cn(
+                'flex min-w-0 flex-1 items-center gap-3 rounded-md text-left -m-1 p-1 transition-colors',
+                profileEnabled
+                  ? 'hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer'
+                  : 'cursor-default',
+              )}
+              aria-label={profileEnabled
+                ? t('clientSheet.openProfile').replace('{name}', `${selected.firstName} ${selected.lastName}`)
+                : undefined}
             >
-              Change
+              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-bold text-white', grad)}>
+                {selected.firstName[0]}{selected.lastName[0]}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-foreground truncate">{selected.firstName} {selected.lastName}</p>
+                <p className="text-xs text-muted-foreground truncate tabular-nums">{selected.phone}</p>
+              </div>
+            </button>
+            {/* Clear-selection X button. Replaces the prior "Change" text link —
+                more iconic, smaller footprint. stopPropagation keeps the outer
+                profile-open click target from also firing. */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSelectClient(''); onSearchChange(''); }}
+              className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              aria-label={t('clientPicker.clearClient')}
+            >
+              <XMarkIcon className="h-4 w-4" />
             </button>
           </div>
           {(selected.totalVisits > 0 || lastVisit) && (
             <div className="mt-2 pt-2 border-t border-border/60 flex items-center gap-3 text-[11px] text-muted-foreground">
-              <span className="tabular-nums">
-                <span className="font-semibold text-foreground">{selected.totalVisits}</span> previous visit{selected.totalVisits === 1 ? '' : 's'}
-              </span>
-              {lastVisit && <span>· last {lastVisit}</span>}
+              <span className="tabular-nums">{previousVisitsText}</span>
+              {lastVisitLine && <span>{lastVisitLine}</span>}
             </div>
           )}
         </div>
@@ -1805,215 +8106,733 @@ function ClientAutocomplete({
     );
   }
 
-  // New-client inline form — sub-form embedded in the parent dialog.
-  // Stays inline (no nested modal) because stacked dialogs trap focus and
-  // confuse keyboard nav; an inline expansion is the editorial-vocabulary
-  // way to say "you're filling in a child of this dialog."
-  if (isCreatingClient) {
-    return (
-      <div>
-        <Label className="text-sm">{t('calendar.client')}</Label>
+  // Picker — Input + focus + query gated dropdown. Empty focused state shows
+  // nothing extra (clean — operator just sees the input). Once they type, the
+  // dropdown appears with query-echoed CTAs + Results. This keeps the modal
+  // visually quiet at default and surfaces actions only when there's intent.
+  const hasQuery = !!search.trim();
+  const showDropdown = isFocused && hasQuery;
 
-        {/* Surface: left-rule + soft surface (instead of dashed full-border).
-            Reads as "currently editing inline", not "drop a file here". */}
-        <div className="mt-1.5 rounded-lg border border-border border-l-[3px] border-l-primary bg-muted/30 p-4 space-y-4">
-          {/* Eyebrow — same vocabulary as the parent dialog's section labels */}
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
-            {t('calendar.newClient')}
-          </p>
-
-          {/* Row 1 — clickable avatar + first/last name. The avatar IS the
-              upload control (no separate "Add photo" button), with smart
-              initials fallback as user types and a camera overlay on hover. */}
-          <div className="grid grid-cols-[64px_1fr_1fr] gap-3 items-end">
-            <label
-              htmlFor="new-client-photo"
-              title={newClient.avatarUrl ? t('calendar.changePhoto') : t('calendar.addPhoto')}
-              className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-muted to-accent/60 ring-2 ring-background flex items-center justify-center cursor-pointer hover:ring-primary/40 transition-all"
-            >
-              <input
-                id="new-client-photo"
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  try {
-                    const dataUrl = await fileToDataUrl(file, { maxSide: 400, quality: 0.8 });
-                    onNewClientChange({ ...newClient, avatarUrl: dataUrl });
-                  } catch {
-                    toast.error('Could not read image — try another file');
-                  }
-                  e.target.value = '';
-                }}
-              />
-              {newClient.avatarUrl ? (
-                <img src={newClient.avatarUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-              ) : newClient.firstName || newClient.lastName ? (
-                <span className="text-base font-bold text-muted-foreground">
-                  {(newClient.firstName[0] || '').toUpperCase()}{(newClient.lastName[0] || '').toUpperCase()}
-                </span>
-              ) : (
-                <UserIcon className="h-7 w-7 text-muted-foreground/50" />
-              )}
-              {/* Camera overlay on hover — telegraphs "click to upload" */}
-              <span className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <CameraIcon className="h-5 w-5 text-white" />
-              </span>
-            </label>
-
-            <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-                {t('calendar.firstName')} <span className="text-primary">*</span>
-              </p>
-              <Input
-                value={newClient.firstName}
-                onChange={(e) => onNewClientChange({ ...newClient, firstName: e.target.value })}
-                autoFocus
-                className="text-sm h-9"
-              />
-            </div>
-            <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-                {t('calendar.lastName')}
-              </p>
-              <Input
-                value={newClient.lastName}
-                onChange={(e) => onNewClientChange({ ...newClient, lastName: e.target.value })}
-                className="text-sm h-9"
-              />
-            </div>
-          </div>
-
-          {/* Row 2 — phone + email */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-                Phone <span className="text-primary">*</span>
-              </p>
-              <Input
-                value={newClient.phone}
-                onChange={(e) => onNewClientChange({ ...newClient, phone: e.target.value })}
-                placeholder="+370 6X XXX XXX"
-                className="text-sm h-9 tabular-nums"
-              />
-            </div>
-            <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-                Email
-              </p>
-              <Input
-                type="email"
-                value={newClient.email}
-                onChange={(e) => onNewClientChange({ ...newClient, email: e.target.value })}
-                placeholder="optional"
-                className="text-sm h-9"
-              />
-            </div>
-          </div>
-
-          {/* Footer — photo hint + actions on one row */}
-          <div className="flex items-center gap-3 pt-1">
-            <p className="text-[10px] text-muted-foreground/60 flex-1 truncate">
-              {newClient.avatarUrl ? (
-                <button
-                  type="button"
-                  onClick={() => onNewClientChange({ ...newClient, avatarUrl: '' })}
-                  className="underline underline-offset-2 hover:text-foreground transition-colors"
-                >
-                  {t('calendar.removePhoto')}
-                </button>
-              ) : t('calendar.photoHint')}
-            </p>
-            <button
-              type="button"
-              onClick={onCancelCreate}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {t('common.cancel')}
-            </button>
-            {/* Brutalist mark Save — same vocabulary as parent dialog's CTA */}
-            <button
-              type="button"
-              onClick={onSubmitNewClient}
-              disabled={isSubmittingClient || !newClient.firstName.trim() || !newClient.phone.trim()}
-              className="group inline-flex items-center bg-primary text-primary-foreground py-0 pl-4 pr-0 text-xs font-semibold uppercase tracking-[0.18em] hover:bg-foreground hover:text-background transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <span className="py-2 text-left tabular-nums">
-                {isSubmittingClient ? '...' : t('calendar.saveAndUse')}
-              </span>
-              <span className="border-l border-black/30 dark:border-white/20 p-2 inline-flex items-center transition-transform duration-200 group-hover:translate-x-[2px]">
-                <ArrowRightIcon className="h-3.5 w-3.5" />
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Search + result list
   return (
-    <div>
-      <Label className="text-sm">{t('calendar.client')}</Label>
-      <Input
-        value={search}
-        onChange={(e) => onSearchChange(e.target.value)}
-        placeholder={t('calendar.searchClient')}
-        className="mt-1.5"
-        autoFocus
-      />
-      {search.trim() && (
-        <div className="mt-1.5 rounded-lg border border-border bg-card overflow-hidden max-h-56 overflow-y-auto">
-          {matches.length === 0 ? (
-            <button
-              type="button"
-              onClick={onStartCreate}
-              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+    <>
+      <div ref={wrapperRef} onFocus={() => setIsFocused(true)} onBlur={handleBlur}>
+        <Label className="text-sm">{t('calendar.client')}</Label>
+        <Input
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder={t('calendar.searchClient')}
+          className="mt-1.5"
+          autoFocus
+        />
+
+        <AnimatePresence initial={false}>
+          {showDropdown && (
+            <motion.div
+              key="autocomplete-dropdown"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.18, ease: MOTION_EASE }}
+              className="mt-1.5 rounded-lg border border-border bg-card overflow-hidden"
             >
-              <PlusIcon className="h-4 w-4 text-primary shrink-0" />
-              <span className="text-foreground">Add "<span className="font-semibold">{search.trim()}</span>" as a new client</span>
-            </button>
-          ) : (
-            <>
-              {matches.map(c => {
-                const grad = AVATAR_GRADIENTS[hashToIndex(c.id, AVATAR_GRADIENTS.length)];
-                const last = c.lastVisitAt ? format(new Date(c.lastVisitAt), 'MMM d') : null;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => onSelectClient(c.id)}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left border-b border-border/50 last:border-0 hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                  >
-                    <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-[11px] font-bold text-white', grad)}>
-                      {c.firstName[0]}{c.lastName[0]}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground truncate">{c.firstName} {c.lastName}</p>
-                      <p className="text-[11px] text-muted-foreground truncate tabular-nums">{c.phone}</p>
-                    </div>
-                    {c.totalVisits > 0 && (
-                      <span className="shrink-0 text-[10px] font-semibold text-muted-foreground tabular-nums bg-muted rounded-full px-1.5 py-0.5" title={`${c.totalVisits} previous visits`}>
-                        {c.totalVisits}×{last ? ` · ${last}` : ''}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              {/* CTA 1 — Create new client (echoes query when present) */}
               <button
                 type="button"
                 onClick={onStartCreate}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent transition-colors border-t border-border/50 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                className="group flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-accent transition-colors focus-visible:outline-none focus-visible:bg-accent"
               >
-                <PlusIcon className="h-3.5 w-3.5 shrink-0" />
-                Not in list — add as new client
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary group-hover:bg-primary/15 transition-colors">
+                  <PlusIcon className="h-4 w-4" />
+                </span>
+                <span className="flex-1 text-sm font-medium text-foreground truncate">
+                  {hasQuery
+                    ? t('clientPicker.createNewWith').replace('{query}', search.trim())
+                    : t('calendar.createNewClient')}
+                </span>
+                <ArrowRightIcon className="h-4 w-4 text-muted-foreground/40 group-hover:text-foreground/60 group-hover:translate-x-0.5 transition-all" />
               </button>
-            </>
+
+              {/* CTA 2 — Walk-in (echoes query when present) */}
+              {onWalkIn && (
+                <button
+                  type="button"
+                  onClick={() => onWalkIn(hasQuery ? search.trim() : undefined)}
+                  className="group flex w-full items-center gap-3 px-3 py-3 text-left border-t border-border/60 hover:bg-accent transition-colors focus-visible:outline-none focus-visible:bg-accent"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-foreground group-hover:bg-foreground/15 transition-colors">
+                    <BoltIcon className="h-4 w-4" />
+                  </span>
+                  <span className="flex-1 text-sm font-medium text-foreground truncate">
+                    {hasQuery
+                      ? t('clientPicker.saveWalkInWith').replace('{query}', search.trim())
+                      : t('calendar.walkInShortcut')}
+                  </span>
+                  <ArrowRightIcon className="h-4 w-4 text-muted-foreground/40 group-hover:text-foreground/60 group-hover:translate-x-0.5 transition-all" />
+                </button>
+              )}
+
+              {/* Results — only when query has matches. Eyebrow header
+                  separates the two CTAs above from the matched clients. */}
+              {hasQuery && matches.length > 0 && (
+                <div className="border-t border-border/60">
+                  <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                    {t('clientPicker.results')}
+                  </p>
+                  <div className="max-h-72 overflow-y-auto">
+                    {matches.map(c => {
+                      const grad = AVATAR_GRADIENTS[hashToIndex(c.id, AVATAR_GRADIENTS.length)];
+                      const fullName = `${c.firstName} ${c.lastName}`.trim();
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => onSelectClient(c.id)}
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-accent transition-colors focus-visible:outline-none focus-visible:bg-accent"
+                        >
+                          <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-[11px] font-bold text-white', grad)}>
+                            {c.firstName[0]}{c.lastName[0]}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground/85 truncate">
+                              {highlightMatch(fullName, search)}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                            {c.phone}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Dedicated create-client modal — opens above the booking dialog
+          when the operator picks "Create new client". Single full-name
+          field (split on save), LT-prefixed phone, optional notes,
+          marketing toggle + GDPR link, Cancel/Save footer. */}
+      <CreateClientModal
+        open={isCreatingClient}
+        t={t}
+        draft={newClient}
+        onChange={onNewClientChange}
+        onCancel={onCancelCreate}
+        onSubmit={onSubmitNewClient}
+        isSubmitting={isSubmittingClient}
+      />
+    </>
+  );
+}
+
+// ─── CreateClientModal ──────────────────────────────────────────
+// Standalone Dialog opened from the booking flow's "Create new client"
+// shortcut OR from the profile sheet's edit pencil. Single full-name
+// field, LT phone prefix, email, notes, marketing toggle. When
+// `editingClient` is present, the modal reseeds the draft from that
+// client whenever its id changes, swaps title/eyebrow copy, and the
+// parent dispatches `onSubmit` to clientsApi.update instead of create.
+function CreateClientModal({
+  open, t, draft, onChange, onCancel, onSubmit, isSubmitting, editingClient = null,
+}: {
+  open: boolean;
+  t: (key: TranslationKey) => string;
+  draft: NewClientDraft;
+  onChange: (v: NewClientDraft) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+  isSubmitting: boolean;
+  editingClient?: Client | null;
+}) {
+  const isEditMode = !!editingClient;
+  const canSave = draft.fullName.trim().length > 0 && !isSubmitting;
+
+  // When the modal is opened against a different client (or just opened
+  // in edit mode for the first time), reseed the draft from that client.
+  // Keying off `editingClient?.id` prevents an infinite loop while still
+  // reacting to a swap-out across re-opens.
+  useEffect(() => {
+    if (!editingClient) return;
+    onChange({
+      fullName: `${editingClient.firstName} ${editingClient.lastName}`.trim(),
+      phone: editingClient.phone ?? '',
+      email: editingClient.email ?? '',
+      notes: editingClient.notes ?? '',
+      avatarUrl: editingClient.avatarUrl ?? '',
+      marketingOk: false, // not stored on Client today; default off
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingClient?.id]);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+      <DialogContent
+        className="!w-[calc(100vw-2rem)] !max-w-[480px] overflow-x-hidden p-0 gap-0 [&>button]:hidden"
+      >
+        {/* Header — eyebrow + display title, hairline divider below.
+            In edit mode an identity anchor row (avatar + current name +
+            phone) sits between the title and the divider so the operator
+            never has to wonder which client they're editing. */}
+        <div className="relative px-7 pt-6 pb-4 border-b border-border">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="absolute right-4 top-4 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            aria-label={t('common.cancel')}
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {isEditMode ? t('clientSheet.editClientEyebrow') : t('calendar.newClient')}
+          </p>
+          <DialogTitle className="mt-1 text-2xl font-bold tracking-tight">
+            {isEditMode ? t('clientSheet.editClient') : t('calendar.createClientTitle')}
+          </DialogTitle>
+          {isEditMode && editingClient && (
+            <div className="mt-3 flex items-center gap-2.5 pt-3 border-t border-border/60">
+              <div
+                className={cn(
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-[11px] font-bold text-white shadow-sm ring-1 ring-foreground/[0.06]',
+                  AVATAR_GRADIENTS[hashToIndex(editingClient.id, AVATAR_GRADIENTS.length)],
+                )}
+              >
+                {editingClient.firstName[0]}{editingClient.lastName[0]}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground truncate leading-tight">
+                  {editingClient.firstName} {editingClient.lastName}
+                </p>
+                {editingClient.phone && (
+                  <p className="text-[11px] text-muted-foreground truncate tabular-nums leading-tight mt-0.5">
+                    {editingClient.phone}
+                  </p>
+                )}
+              </div>
+            </div>
           )}
         </div>
-      )}
-    </div>
+
+        <div className="px-7 py-5 space-y-5">
+          {/* Full name — single field, headline weight on focus */}
+          <div className="min-w-0">
+            <Label htmlFor="cc-full-name" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+              {t('calendar.fullName')} <span className="text-primary">*</span>
+            </Label>
+            <Input
+              id="cc-full-name"
+              autoFocus
+              value={draft.fullName}
+              onChange={(e) => onChange({ ...draft, fullName: e.target.value })}
+              className="mt-1.5 h-11 text-base"
+            />
+          </div>
+
+          {/* Phone + Email — single full-width inputs. The LT prefix box
+              was dropped because it conflicted with international numbers
+              (e.g., +998 for an Uzbek client showed as "+370 +998..." which
+              read as nonsense). Placeholder gives the LT format hint
+              without lying about international values. */}
+          <div className="grid grid-cols-2 gap-3 min-w-0">
+            <div className="min-w-0">
+              <Label htmlFor="cc-phone" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+                {t('calendar.phoneNumber')}
+              </Label>
+              <Input
+                id="cc-phone"
+                value={draft.phone}
+                onChange={(e) => onChange({ ...draft, phone: e.target.value })}
+                placeholder="+370 6XX XXX XXX"
+                inputMode="tel"
+                className="mt-1.5 h-11 tabular-nums"
+              />
+            </div>
+            <div className="min-w-0">
+              <Label htmlFor="cc-email" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+                {t('calendar.emailAddress')}
+              </Label>
+              <Input
+                id="cc-email"
+                type="email"
+                value={draft.email}
+                onChange={(e) => onChange({ ...draft, email: e.target.value })}
+                className="mt-1.5 h-11"
+              />
+            </div>
+          </div>
+
+          {/* Note */}
+          <div className="min-w-0">
+            <Textarea
+              value={draft.notes}
+              onChange={(e) => onChange({ ...draft, notes: e.target.value })}
+              placeholder={t('calendar.clientNotePlaceholder')}
+              rows={3}
+              className="resize-none"
+            />
+          </div>
+
+          {/* Marketing toggle + GDPR link */}
+          <div className="flex items-start gap-3 pt-1">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">{t('calendar.marketingComms')}</p>
+              <a
+                href="https://gdpr.eu/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+              >
+                {t('calendar.gdprLearnMore')}
+                <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+              </a>
+            </div>
+            <Switch
+              checked={draft.marketingOk}
+              onCheckedChange={(v) => onChange({ ...draft, marketingOk: v })}
+              aria-label={t('calendar.marketingComms')}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-7 py-4 border-t border-border flex items-center justify-end gap-2">
+          <Button variant="outline" onClick={onCancel}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={onSubmit} disabled={!canSave}>
+            {isSubmitting ? '…' : t('common.save')}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── ClientProfileSheet ──────────────────────────────────────────
+// Centered Dialog opened by clicking the selected-client tile in the
+// booking flow. Editorial layout with hairline dividers between
+// sections (no nested cards), icon-prefixed contact rows, compact
+// inline empty states, and a stagger motion entrance. Edit pencil
+// delegates back up to the parent so CreateClientModal can open in
+// edit mode stacked on top (booking dialog → profile dialog → edit
+// modal — three layers of Radix portals; ESC pops them in reverse).
+type HistoryTab = 'all' | 'upcoming' | 'completed' | 'cancelled';
+
+function ClientProfileSheet({
+  open, client, appointments, onClose, onEdit, t,
+}: {
+  open: boolean;
+  client: Client | null;
+  appointments: AppointmentWithDetails[];
+  onClose: () => void;
+  onEdit: () => void;
+  t: (key: TranslationKey) => string;
+}) {
+  const queryClient = useQueryClient();
+  const reduce = useReducedMotion();
+  const [language] = useLanguage();
+  const [noteEditing, setNoteEditing] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [historyTab, setHistoryTab] = useState<HistoryTab>('all');
+
+  // Reset on (re)open or client swap so a previous client's draft note
+  // never leaks into a fresh open against someone else.
+  useEffect(() => {
+    if (!open) return;
+    setNoteEditing(false);
+    setNoteDraft(client?.notes ?? '');
+    setHistoryTab('all');
+  }, [open, client?.id]);
+
+  const updateNoteMut = useMutation({
+    mutationFn: (notes: string) => clientsApi.update(client!.id, { notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      setNoteEditing(false);
+      toast.success(t('toast.clientUpdated'));
+    },
+    onError: () => toast.error(t('toast.clientUpdateError')),
+  });
+
+  // Status buckets — feed both the tab counts and the visible list.
+  const now = Date.now();
+  const upcomingList = useMemo(() => appointments.filter(a =>
+    (a.status === 'scheduled' || a.status === 'confirmed') &&
+    parseISO(a.startTime).getTime() >= now,
+  ), [appointments, now]);
+  const completedList = useMemo(
+    () => appointments.filter(a => a.status === 'completed'),
+    [appointments],
+  );
+  const cancelledList = useMemo(
+    () => appointments.filter(a => a.status === 'cancelled' || a.status === 'no_show'),
+    [appointments],
+  );
+  const tabs: { id: HistoryTab; label: string; count: number }[] = [
+    { id: 'all', label: t('clientSheet.tabAll'), count: appointments.length },
+    { id: 'upcoming', label: t('clientSheet.tabUpcoming'), count: upcomingList.length },
+    { id: 'completed', label: t('clientSheet.tabCompleted'), count: completedList.length },
+    { id: 'cancelled', label: t('clientSheet.tabCancelled'), count: cancelledList.length },
+  ];
+  const visible =
+    historyTab === 'all' ? appointments
+    : historyTab === 'upcoming' ? upcomingList
+    : historyTab === 'completed' ? completedList
+    : cancelledList;
+
+  if (!client) return null;
+  const grad = AVATAR_GRADIENTS[hashToIndex(client.id, AVATAR_GRADIENTS.length)];
+  const fullName = `${client.firstName} ${client.lastName}`.trim();
+
+  // Locale-aware date format (matches the rest of calendar.tsx — see :2452+)
+  const dateLocale = language === 'ru' ? ruLocale : language === 'lt' ? ltLocale : enLocale;
+
+  // Meta eyebrow text — visits + (last visit OR joined). Plural forms
+  // routed through CLDR-style category keys; date prefixes localized.
+  const visitsKey = (`clientSheet.metaVisits${pluralKey(language, client.totalVisits)}`) as TranslationKey;
+  const visitsText = t(visitsKey).replace('{count}', String(client.totalVisits));
+  const lastVisitText = client.lastVisitAt
+    ? t('clientSheet.metaLast').replace(
+        '{date}',
+        format(parseISO(client.lastVisitAt), 'MMM d, yyyy', { locale: dateLocale }),
+      )
+    : null;
+  const joinedText = client.createdAt
+    ? t('clientSheet.metaJoined').replace(
+        '{date}',
+        format(parseISO(client.createdAt), 'MMM yyyy', { locale: dateLocale }),
+      )
+    : null;
+  const metaText = [visitsText, lastVisitText ?? joinedText].filter(Boolean).join(' · ');
+
+  // Stagger motion variants — sections fade-up in sequence
+  const containerVariants = reduce ? {} : {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: { staggerChildren: 0.07, delayChildren: 0.05 },
+    },
+  };
+  const sectionVariants = reduce ? {} : {
+    hidden: { opacity: 0, y: 8 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.32, ease: MOTION_EASE } },
+  };
+
+  const sectionEyebrow = 'text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70';
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent
+        className="!w-[calc(100vw-2rem)] !max-w-[520px] max-h-[88vh] overflow-hidden p-0 gap-0 flex flex-col [&>button]:hidden"
+      >
+        <DialogTitle className="sr-only">{fullName}</DialogTitle>
+
+        {/* Header — eyebrow-driven editorial. Bigger gradient avatar
+            anchors the layout; meta line sits above the display name as
+            an editorial caption. */}
+        <div className="shrink-0 px-5 pt-5 pb-4 border-b border-border">
+          <div className="flex items-start gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="-ml-1 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              aria-label={t('clientSheet.back')}
+            >
+              <ChevronLeftIcon className="h-5 w-5" />
+            </button>
+
+            <div className={cn(
+              'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-base font-bold text-white shadow-sm ring-1 ring-foreground/[0.06]',
+              grad,
+            )}>
+              {client.firstName[0]}{client.lastName[0]}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className={cn(sectionEyebrow, 'tabular-nums')}>{metaText}</p>
+              <h2 className="mt-0.5 truncate text-xl font-bold tracking-tight">{fullName}</h2>
+            </div>
+
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex h-9 w-9 items-center justify-center rounded-md text-primary hover:bg-primary/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              aria-label={t('clientSheet.editClient')}
+            >
+              <PencilSquareIcon className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="-mr-1 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              aria-label={t('clientSheet.close')}
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body — sections separated by hairlines, not card chrome.
+            Stagger entrance uses Framer Motion variants. */}
+        <motion.div
+          key={client.id}
+          className="flex-1 min-h-0 overflow-y-auto"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          {/* CONTACT SECTION — icon-prefixed rows */}
+          <motion.section variants={sectionVariants} className="px-5 pt-5 pb-5">
+            <h3 className={sectionEyebrow}>{t('clientSheet.contactInfo')}</h3>
+            <div className="mt-2 -mx-2 divide-y divide-border/40">
+              {client.phone && (
+                <a
+                  href={`tel:${client.phone}`}
+                  className="group flex items-center gap-3 rounded-md px-2 py-2.5 hover:bg-accent/40 transition-colors"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground/80 group-hover:bg-muted group-hover:text-foreground transition-colors">
+                    <PhoneIcon className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="text-sm text-foreground tabular-nums truncate">
+                    {client.phone}
+                  </span>
+                </a>
+              )}
+              {client.email && (
+                <a
+                  href={`mailto:${client.email}`}
+                  className="group flex items-center gap-3 rounded-md px-2 py-2.5 hover:bg-accent/40 transition-colors"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground/80 group-hover:bg-muted group-hover:text-foreground transition-colors">
+                    <EnvelopeIcon className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="text-sm text-foreground truncate">{client.email}</span>
+                </a>
+              )}
+              {!client.phone && !client.email && (
+                <p className="px-2 py-2.5 text-sm text-muted-foreground/60 italic">—</p>
+              )}
+            </div>
+          </motion.section>
+
+          <div className="border-t border-border/60" aria-hidden />
+
+          {/* NOTES SECTION — compact. Inline "+ Add note" when empty,
+              soft accent-bordered card when filled, editable in-place. */}
+          <motion.section variants={sectionVariants} className="px-5 pt-5 pb-5">
+            <div className="flex items-center justify-between">
+              <h3 className={sectionEyebrow}>{t('clientSheet.notes')}</h3>
+              {!noteEditing && !(client.notes && client.notes.trim()) && (
+                <button
+                  type="button"
+                  onClick={() => { setNoteDraft(''); setNoteEditing(true); }}
+                  className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline"
+                >
+                  <PlusIcon className="h-3.5 w-3.5" />
+                  {t('clientSheet.addNote')}
+                </button>
+              )}
+            </div>
+
+            <div className="mt-2.5">
+              <AnimatePresence mode="popLayout" initial={false}>
+                {noteEditing ? (
+                  <motion.div
+                    key="note-edit"
+                    initial={reduce ? false : { opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduce ? undefined : { opacity: 0, y: -4 }}
+                    transition={{ duration: 0.18, ease: MOTION_EASE }}
+                    className="rounded-lg border-l-2 border-l-primary border border-border bg-card pl-3 pr-2 py-2"
+                  >
+                    <Textarea
+                      value={noteDraft}
+                      onChange={(e) => setNoteDraft(e.target.value)}
+                      autoFocus
+                      rows={3}
+                      placeholder={t('calendar.clientNotePlaceholder')}
+                      className="resize-none border-0 px-0 py-1 focus-visible:ring-0 bg-transparent shadow-none"
+                    />
+                    <div className="mt-1.5 flex items-center justify-end gap-2 pt-1.5 border-t border-border/40">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setNoteEditing(false); setNoteDraft(client.notes ?? ''); }}
+                      >
+                        {t('common.cancel')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => updateNoteMut.mutate(noteDraft.trim())}
+                        disabled={updateNoteMut.isPending}
+                      >
+                        {updateNoteMut.isPending ? '…' : t('common.save')}
+                      </Button>
+                    </div>
+                  </motion.div>
+                ) : (client.notes && client.notes.trim()) ? (
+                  <motion.div
+                    key="note-card"
+                    initial={reduce ? false : { opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduce ? undefined : { opacity: 0, y: -4 }}
+                    transition={{ duration: 0.18, ease: MOTION_EASE }}
+                    className="group relative rounded-lg border-l-2 border-l-primary/60 border border-border bg-card pl-3 pr-3 py-3"
+                  >
+                    <p className="text-sm text-foreground whitespace-pre-wrap break-words pr-12">
+                      {client.notes}
+                    </p>
+                    <div className="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={() => { setNoteDraft(client.notes); setNoteEditing(true); }}
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        aria-label={t('clientSheet.editNote')}
+                      >
+                        <PencilSquareIcon className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateNoteMut.mutate('')}
+                        disabled={updateNoteMut.isPending}
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors disabled:opacity-50"
+                        aria-label={t('clientSheet.clearNote')}
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.p
+                    key="note-empty"
+                    initial={reduce ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={reduce ? undefined : { opacity: 0 }}
+                    transition={{ duration: 0.18 }}
+                    className="text-sm text-muted-foreground/60 italic"
+                  >
+                    {t('clientSheet.noNotesSub')}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.section>
+
+          <div className="border-t border-border/60" aria-hidden />
+
+          {/* HISTORY SECTION — tab strip with LayoutGroup-animated underline */}
+          <motion.section variants={sectionVariants} className="px-5 pt-5 pb-6">
+            <h3 className={sectionEyebrow}>{t('clientSheet.history')}</h3>
+
+            <LayoutGroup id="profile-history-tabs">
+              <div className="mt-2 flex items-center gap-1 border-b border-border overflow-x-auto -mx-1 px-1 scrollbar-none">
+                {tabs.map(tab => {
+                  const active = historyTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setHistoryTab(tab.id)}
+                      className={cn(
+                        'relative inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:text-foreground',
+                        active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                      )}
+                      aria-pressed={active}
+                    >
+                      {tab.label}
+                      <span className={cn(
+                        'inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums transition-colors',
+                        active ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground',
+                      )}>
+                        {tab.count}
+                      </span>
+                      {active && (
+                        <motion.span
+                          layoutId="profile-history-underline"
+                          className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground"
+                          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </LayoutGroup>
+
+            <div className="mt-4">
+              <AnimatePresence mode="popLayout" initial={false}>
+                {visible.length === 0 ? (
+                  <motion.div
+                    key={`empty-${historyTab}`}
+                    initial={reduce ? false : { opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduce ? undefined : { opacity: 0, y: -4 }}
+                    transition={{ duration: 0.2, ease: MOTION_EASE }}
+                    className="flex items-center gap-2.5 px-1 py-2 text-sm text-muted-foreground/70 italic"
+                  >
+                    <CalendarDaysIcon className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+                    {t('clientSheet.appointmentsHint')}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key={`list-${historyTab}`}
+                    initial={reduce ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={reduce ? undefined : { opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="space-y-2"
+                  >
+                    {visible.map((apt, i) => (
+                      <motion.div
+                        key={apt.id}
+                        initial={reduce ? false : { opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.24, delay: i * 0.04, ease: MOTION_EASE }}
+                        className="relative overflow-hidden rounded-lg border border-border bg-card pl-4 pr-4 py-3 hover:border-foreground/20 transition-colors"
+                      >
+                        {/* Status accent rail — 3px left stripe in the
+                            status hue, matching the calendar grid tile
+                            vocabulary so the eye reads "scheduled / confirmed
+                            / completed" instantly without parsing the chip. */}
+                        <span
+                          aria-hidden
+                          className={cn('absolute left-0 top-0 bottom-0 w-[3px]', STATUS_STRIPE[apt.status])}
+                        />
+                        <div className="flex items-start justify-between gap-3 pl-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground truncate">
+                              {apt.service?.name ?? '—'}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
+                              {format(parseISO(apt.startTime), 'MMM d, yyyy · HH:mm', { locale: dateLocale })}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground/80 truncate mt-0.5">
+                              {apt.staff?.firstName ?? ''} {apt.staff?.lastName ?? ''}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <p className="text-sm font-bold text-foreground tabular-nums leading-none">
+                              €{apt.service?.price ?? 0}
+                            </p>
+                            <span className={cn(
+                              'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap',
+                              STATUS_PILL[apt.status],
+                            )}>
+                              {t(STATUS_TKEY[apt.status])}
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.section>
+        </motion.div>
+      </DialogContent>
+    </Dialog>
   );
 }

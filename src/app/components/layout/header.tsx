@@ -4,7 +4,7 @@ import {
   HomeIcon, CalendarIcon, ClipboardDocumentListIcon, UserGroupIcon, UsersIcon,
   ScissorsIcon, Cog6ToothIcon, QuestionMarkCircleIcon, ChartBarIcon, ShieldCheckIcon,
   Bars3Icon, XMarkIcon, SunIcon, MoonIcon, CheckIcon,
-  ArrowRightStartOnRectangleIcon,
+  ArrowRightStartOnRectangleIcon, UserCircleIcon, GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 import { useTheme } from 'next-themes';
 import { cn } from '../ui/utils';
@@ -13,6 +13,7 @@ import { useAuthStore } from '../../store/auth-store';
 import { usePermission } from '../../hooks/use-permission';
 import { OfficeSwitcher } from '../office-switcher';
 import { GlobalSearch } from '../global-search';
+import { NotificationsBell } from '../notifications-bell';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import type { Language, Permission, StaffRole } from '../../types';
 import type { TranslationKey } from '../../i18n';
@@ -76,12 +77,24 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <div className="flex h-14 items-center gap-2 px-4 md:px-6">
-        {/* Brand */}
-        <NavLink to="/overview" className="flex items-center gap-2 shrink-0">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+        {/* Brand — two-line stacked logotype: "DeLegends" as the dominant
+            18 px Bold mark, "barbershop" as a small wide-tracked secondary
+            line. Left-aligned to the icon's right edge so the eye reads
+            ✂ → D → L → e... in one stroke. "barbershop" is hardcoded as a
+            logotype element (not translated) — same way "Apple Inc." stays
+            English across locales. */}
+        <NavLink to="/overview" className="flex items-center gap-2.5 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
             <ScissorsIcon className="h-5 w-5 text-primary-foreground" />
           </div>
-          <span className="hidden sm:inline font-bold text-foreground">BarberPro</span>
+          <div className="hidden sm:flex flex-col leading-none">
+            <span className="text-[18px] font-bold tracking-tight text-foreground">
+              {t('brand.name')}
+            </span>
+            <span className="mt-1 text-[10px] font-medium tracking-[0.22em] uppercase text-muted-foreground">
+              barbershop
+            </span>
+          </div>
         </NavLink>
 
         {/* Desktop nav (inline) — overflow-hidden + min-w-0 prevents
@@ -129,34 +142,38 @@ export function Header() {
           <GlobalSearch />
         </div>
 
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-              aria-label="Change language"
-            >
-              <LanguageFlag />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-48 p-1">
-            <LanguagePicker />
-          </PopoverContent>
-        </Popover>
+        {/* Icon-button cluster — all 30×30, rounded-[7px], gap-1.5 */}
+        <div className="hidden md:flex items-center gap-1.5 ml-1">
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                aria-label="Change language"
+              >
+                <GlobeAltIcon className="h-[18px] w-[18px]" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-48 p-1">
+              <LanguagePicker />
+            </PopoverContent>
+          </Popover>
 
-        <ThemeToggle />
+          <ThemeToggle />
 
-        {/* User avatar → dropdown */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              className="flex items-center gap-2 rounded-full p-0.5 hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-              aria-label="User menu"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500 text-xs font-semibold text-white">
-                {initials}
-              </div>
-            </button>
-          </PopoverTrigger>
+          <NotificationsBell />
+
+          {/* User avatar → dropdown */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                aria-label="User menu"
+              >
+                <div className="flex h-[26px] w-[26px] items-center justify-center rounded-md bg-indigo-100 text-[11px] font-bold text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                  {initials}
+                </div>
+              </button>
+            </PopoverTrigger>
           <PopoverContent align="end" className="w-60 p-1">
             <div className="px-3 py-2 border-b border-border">
               <p className="text-sm font-semibold text-foreground truncate">
@@ -170,14 +187,22 @@ export function Header() {
               )}
             </div>
             <button
-              onClick={handleLogout}
+              onClick={() => navigate('/profile')}
               className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 mt-1 text-sm text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+            >
+              <UserCircleIcon className="h-4 w-4 text-muted-foreground" />
+              My profile
+            </button>
+            <button
+              onClick={handleLogout}
+              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
             >
               <ArrowRightStartOnRectangleIcon className="h-4 w-4 text-muted-foreground" />
               {t('common.logout')}
             </button>
           </PopoverContent>
-        </Popover>
+          </Popover>
+        </div>{/* end icon-button cluster */}
 
         {/* Mobile hamburger */}
         <button
@@ -229,15 +254,22 @@ export function Header() {
 
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
+  // Two-mode toggle: light ↔ dark. Icon hints at the *next* mode so the
+  // affordance reads as "click to advance."
+  const next = resolvedTheme === 'light' ? 'dark' : 'light';
+  const label = next === 'dark' ? 'Switch to dark mode' : 'Switch to light mode';
   return (
     <button
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      onClick={() => setTheme(next)}
+      className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+      aria-label={label}
+      title={label}
     >
-      {isDark ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+      {resolvedTheme === 'light' ? (
+        <MoonIcon className="h-[18px] w-[18px]" />
+      ) : (
+        <SunIcon className="h-[18px] w-[18px]" />
+      )}
     </button>
   );
 }

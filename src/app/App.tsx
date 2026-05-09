@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from 'next-themes';
 import { Toaster } from './components/ui/sonner';
 import { ConfirmProvider } from './hooks/use-confirm';
+import { useDensity } from './hooks/use-t';
 import { router } from './routes';
 
 const queryClient = new QueryClient({
@@ -17,14 +19,29 @@ const queryClient = new QueryClient({
 
 function ThemedToaster() {
   const { resolvedTheme } = useTheme();
-  return <Toaster position="top-right" theme={resolvedTheme === 'dark' ? 'dark' : 'light'} />;
+  const sonnerTheme = resolvedTheme === 'light' ? 'light' : 'dark';
+  return <Toaster position="top-right" theme={sonnerTheme} />;
+}
+
+// Mirrors `density` preference onto <html> as `density-comfortable` so global
+// CSS rules in theme.css can bump small body copy by one step. Compact (default)
+// removes the class entirely so existing tokens stand.
+function DensityClass() {
+  const [density] = useDensity();
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('density-comfortable', density === 'comfortable');
+    return () => { root.classList.remove('density-comfortable'); };
+  }, [density]);
+  return null;
 }
 
 export default function App() {
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} themes={['light', 'dark']}>
       <QueryClientProvider client={queryClient}>
         <ConfirmProvider>
+          <DensityClass />
           <RouterProvider router={router} />
           <ThemedToaster />
         </ConfirmProvider>

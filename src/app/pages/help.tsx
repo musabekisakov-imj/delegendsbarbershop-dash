@@ -223,7 +223,7 @@ export function HelpPage() {
 
       {/* ─── Footer version ──────────────────────────── */}
       <p className="text-center text-[11px] text-muted-foreground/70 tabular-nums pt-2">
-        BarberPro Dashboard · v2.0 · April 2026
+        DeLegends Barbershop · v2.0 · April 2026
       </p>
     </div>
   );

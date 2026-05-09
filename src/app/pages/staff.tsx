@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router';
 import {
   PlusIcon, UsersIcon, EnvelopeIcon, PhoneIcon,
   MagnifyingGlassIcon, CalendarDaysIcon,
@@ -86,6 +87,37 @@ export function StaffPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [search, setSearch] = useState('');
+
+  // ─── Deep-link focus (from /calendar's "Jump to shift" links) ────
+  // When the URL carries ?focus={staffId}, we widen the filter to "all" so
+  // the target is guaranteed visible, scroll its card into view, and apply
+  // a transient ring so the operator can see *which* card just landed.
+  // Auto-clears after 2.4 s — enough to register, not so long it lingers.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusId = searchParams.get('focus');
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusId) return;
+    setFilter('all');
+    setSearch('');
+    // 60 ms gives React a paint cycle so the data-attribute exists when we query.
+    const renderHandle = setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-staff-id="${focusId}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedId(focusId);
+    }, 60);
+    const fadeHandle = setTimeout(() => {
+      setHighlightedId(null);
+      // Drop the query param so a later page-back doesn't replay the highlight.
+      setSearchParams((sp) => {
+        const next = new URLSearchParams(sp);
+        next.delete('focus');
+        return next;
+      }, { replace: true });
+    }, 2400);
+    return () => { clearTimeout(renderHandle); clearTimeout(fadeHandle); };
+  }, [focusId, setSearchParams]);
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: '', phone: '',
     role: 'barber' as StaffRole, isActive: true,
@@ -502,10 +534,17 @@ export function StaffPage() {
                 return (
                   <div
                     key={member.id}
+                    data-staff-id={member.id}
                     className={cn(
-                      'group relative flex flex-col rounded-xl border border-border bg-card p-5 transition-all',
+                      'group relative flex flex-col rounded-xl border bg-card p-5',
+                      // Two transitions stacked so the deep-link highlight ring
+                      // can fade out smoothly while hover effects stay snappy.
+                      'transition-[box-shadow,border-color,transform] duration-300',
                       'hover:border-foreground/20 hover:shadow-sm',
                       !member.isActive && 'opacity-60',
+                      highlightedId === member.id
+                        ? 'border-foreground/60 ring-2 ring-foreground/30 ring-offset-2 ring-offset-background shadow-md'
+                        : 'border-border',
                     )}
                   >
                     {/* Identity — avatar + eyebrow row + name. The status pill

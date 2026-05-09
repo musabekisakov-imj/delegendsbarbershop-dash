@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
+import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from 'motion/react';
 import {
   appointmentsApi, clientsApi, staffApi, servicesApi, shiftsApi, breaksApi,
 } from '../lib/api';
@@ -10,7 +11,7 @@ import { findConflicts } from '../lib/booking-validation';
 import { computeAvailableSlots } from '../lib/availability';
 import { useT, useTimeFormat } from '../hooks/use-t';
 import { formatTime } from '../lib/time';
-import { AVATAR_GRADIENTS, hashToIndex } from '../lib/tokens';
+import { AVATAR_GRADIENTS, hashToIndex, MOTION_EASE, MOTION_DUR } from '../lib/tokens';
 import type { Appointment } from '../types';
 
 import { SectionHeading } from '../components/shared/section-heading';
@@ -257,13 +258,15 @@ export function NewBookingPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       {/* ─── Editorial hero ──────────────────────────
-          Matches the family pattern used across the
-          dashboard. Eyebrow carries office context +
-          step count; current step name is the title. */}
+          Single confident H1 — "New booking" is the
+          *purpose*, not the active step. The step rail
+          below carries the per-step label so we don't
+          duplicate it as a giant title. The right side
+          shows a numeric step counter chip. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            <span>New booking</span>
+            <span>Bookings</span>
             {currentOffice && (
               <>
                 <span className="text-muted-foreground/40">·</span>
@@ -274,17 +277,22 @@ export function NewBookingPage() {
               </>
             )}
             <span className="text-muted-foreground/40">·</span>
-            <span className="normal-case tracking-normal tabular-nums">
-              Step {step + 1} of {STEPS.length}
-            </span>
+            <span className="normal-case tracking-normal">{format(new Date(), 'EEE, MMM d')}</span>
           </div>
           <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none">
-            {STEPS[step].label}
+            New booking
           </h1>
+        </div>
+        <div className="shrink-0 inline-flex items-baseline gap-1.5 self-start sm:self-end">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Step</span>
+          <span className="text-2xl font-bold text-foreground tabular-nums leading-none">
+            {(step + 1).toString().padStart(2, '0')}
+          </span>
+          <span className="text-sm text-muted-foreground/60 tabular-nums">/ {STEPS.length.toString().padStart(2, '0')}</span>
         </div>
       </div>
 
-      {/* Stepper */}
+      {/* Step rail */}
       <Stepper step={step} onJump={(i) => i < step && setStep(i)} />
 
       {/* Two-column layout: form (2/3) + live summary (1/3) */}
@@ -406,7 +414,7 @@ export function NewBookingPage() {
                         className={cn(
                           'flex items-center gap-3 rounded-xl border p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
                           active
-                            ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                            ? 'border-foreground bg-foreground/[0.03] shadow-[inset_3px_0_0_0_var(--foreground)]'
                             : 'border-border bg-card hover:border-foreground/20 hover:bg-accent/30',
                         )}
                       >
@@ -447,7 +455,7 @@ export function NewBookingPage() {
                       className={cn(
                         'flex items-start justify-between gap-3 rounded-xl border p-4 text-left transition-all',
                         active
-                          ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                          ? 'border-foreground bg-foreground/[0.03] shadow-[inset_3px_0_0_0_var(--foreground)]'
                           : 'border-border bg-card hover:border-foreground/20 hover:bg-accent/30',
                       )}
                     >
@@ -495,7 +503,7 @@ export function NewBookingPage() {
                         className={cn(
                           'flex items-center gap-3 rounded-xl border p-4 text-left transition-all',
                           active
-                            ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                            ? 'border-foreground bg-foreground/[0.03] shadow-[inset_3px_0_0_0_var(--foreground)]'
                             : 'border-border bg-card hover:border-foreground/20 hover:bg-accent/30',
                         )}
                       >
@@ -682,14 +690,21 @@ export function NewBookingPage() {
             </StepCard>
           )}
 
-          {/* Nav — sticky at the bottom of the viewport on long steps (time-slot grid)
-              so the user never scrolls back up to hit Continue. Sits inside the form column
-              so the summary sidebar isn't covered. */}
-          <div className="sticky bottom-0 z-10 -mx-4 md:mx-0 mt-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t border-border md:rounded-xl md:border md:shadow-sm">
-            <div className="flex items-center justify-between gap-3 px-4 py-3 md:px-5">
-              <Button variant="outline" onClick={() => navigate('/bookings')}>Cancel</Button>
+          {/* Footer rail — single hairline, no card frame. Sticky on long
+              step bodies (time-slot grid) so Continue is always reachable
+              without scrolling. Sits inside the form column so it doesn't
+              cover the summary panel. */}
+          <div className="sticky bottom-0 z-10 -mx-4 md:mx-0 mt-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t border-border">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 md:px-2">
+              <button
+                type="button"
+                onClick={() => navigate('/bookings')}
+                className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground transition-colors px-1"
+              >
+                Cancel
+              </button>
               <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={handleBack} disabled={step === 0}>
+                <Button variant="ghost" onClick={handleBack} disabled={step === 0}>
                   <ArrowLeftIcon className="h-4 w-4 mr-1.5" />
                   Back
                 </Button>
@@ -701,7 +716,7 @@ export function NewBookingPage() {
                 ) : (
                   <Button onClick={handleSubmit} loading={createMut.isPending}>
                     <CheckCircleIcon className="h-4 w-4 mr-1.5" />
-                    Create Booking
+                    Create booking
                   </Button>
                 )}
               </div>
@@ -709,21 +724,25 @@ export function NewBookingPage() {
           </div>
         </div>
 
-        {/* Sticky summary — editorial card without drop shadow */}
+        {/* Ticket summary — keeps a card frame because it's the one element
+            that should feel "carried" between steps; everything else is
+            canvas. Hairline-divided rows, big tabular total. */}
         <aside className="lg:sticky lg:top-6 lg:self-start">
-          <div className="rounded-xl border border-border bg-card p-5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Your booking
-            </p>
-            <h3 className="mt-1 text-base font-bold text-foreground tracking-tight">{currentOffice?.name ?? 'Shop'}</h3>
-            {currentOffice?.address && (
-              <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <MapPinIcon className="h-3 w-3" />
-                {currentOffice.address}
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="px-5 pt-4 pb-3 border-b border-border">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Your booking
               </p>
-            )}
+              <h3 className="mt-1 text-base font-bold text-foreground tracking-tight">{currentOffice?.name ?? 'Shop'}</h3>
+              {currentOffice?.address && (
+                <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                  <MapPinIcon className="h-3 w-3" />
+                  {currentOffice.address}
+                </p>
+              )}
+            </div>
 
-            <div className="mt-5 space-y-3 border-t border-border pt-4 text-sm">
+            <div className="px-5 py-1">
               <SummaryRow label="Client" value={
                 selectedClient ? `${selectedClient.firstName} ${selectedClient.lastName}` : null
               }/>
@@ -740,15 +759,36 @@ export function NewBookingPage() {
               />
             </div>
 
-            {selectedService && (
-              <div className="mt-5 flex items-baseline justify-between border-t border-border pt-4">
-                <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  <CurrencyEuroIcon className="h-3.5 w-3.5" />
-                  Total
-                </span>
-                <span className="text-2xl font-bold tabular-nums text-foreground tracking-tight leading-none">€{selectedService.price}</span>
-              </div>
-            )}
+            <div className="px-5 py-4 border-t border-border bg-muted/20 flex items-baseline justify-between">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <CurrencyEuroIcon className="h-3.5 w-3.5" />
+                Total
+              </span>
+              <AnimatePresence mode="wait" initial={false}>
+                {selectedService ? (
+                  <motion.span
+                    key={selectedService.id}
+                    initial={{ opacity: 0, y: -3 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 3 }}
+                    transition={{ duration: MOTION_DUR.fast, ease: MOTION_EASE }}
+                    className="text-3xl font-bold tabular-nums text-foreground tracking-tight leading-none"
+                  >
+                    €{selectedService.price}
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="placeholder"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="text-3xl font-bold tabular-nums text-muted-foreground/30 tracking-tight leading-none"
+                  >
+                    €—
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </aside>
       </div>
@@ -791,79 +831,126 @@ export function NewBookingPage() {
 
 // ─── Local primitives ─────────────────────────────────
 
+// StepCard — no rounded card frame anymore. The whole booking surface is
+// one canvas; each step body is separated by hairlines and editorial spacing.
+// Rationale: 5 floating bordered boxes (hero/stepper/step-body/footer/summary)
+// reads as "form widgets," whereas one canvas reads as "a ticket being filled in."
 function StepCard({
   title, subtitle, children,
 }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-border bg-card">
-      <div className="p-6">
-        <SectionHeading title={title} subtitle={subtitle} />
-        {children}
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
+      className="px-1 sm:px-2"
+    >
+      <div className="mb-5">
+        <h2 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight leading-snug">
+          {title}
+        </h2>
+        {subtitle && (
+          <p className="mt-1 text-sm text-muted-foreground/90">{subtitle}</p>
+        )}
       </div>
-    </div>
+      {children}
+    </motion.div>
   );
 }
 
+// ─── Stepper — STUDIO TICKET rail ───────────────
+// Replaces numbered circles + thin progress bar with an editorial rail of
+// uppercase pill labels. Past steps stay click-back; future steps disabled.
+// The active label carries a sliding `motion.span layoutId="step-rail-underline"`
+// so transitioning between steps feels like one continuous mark.
 function Stepper({ step, onJump }: { step: number; onJump: (i: number) => void }) {
-  const progressPct = (step / (STEPS.length - 1)) * 100;
   return (
-    <nav aria-label="Booking steps" className="relative">
-      {/* Track + filled progress — one continuous line behind the dots */}
-      <div className="absolute left-0 right-0 top-[0.6875rem] -z-0 flex px-[calc(100%/10)]">
-        <div className="h-px w-full bg-border" />
-      </div>
-      <div
-        className="absolute left-0 top-[0.6875rem] -z-0 h-px bg-primary transition-[width] duration-300 ease-out"
-        style={{ width: `calc(${progressPct}% - ${progressPct > 0 ? '0px' : '0px'})`, marginLeft: `calc(100%/${STEPS.length * 2})` }}
-        aria-hidden
-      />
-      <ol className="relative z-10 flex items-start justify-between">
-        {STEPS.map((s, i) => {
-          const done = i < step;
-          const active = i === step;
-          const reachable = i < step;
-          return (
-            <li key={s.key} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => reachable && onJump(i)}
-                disabled={!reachable}
-                aria-current={active ? 'step' : undefined}
-                className={cn(
-                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
-                  done
-                    ? 'bg-primary text-primary-foreground hover:opacity-90 cursor-pointer'
-                    : active
-                      ? 'bg-primary text-primary-foreground ring-4 ring-primary/15'
-                      : 'bg-card text-muted-foreground ring-1 ring-border',
-                )}
-              >
-                {done ? <CheckCircleIcon className="h-4 w-4" /> : i + 1}
-              </button>
-              <span className={cn(
-                'text-[11px] font-medium truncate max-w-full',
-                active ? 'text-foreground' : 'text-muted-foreground',
-              )}>
-                {s.label}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
+    <LayoutGroup id="step-rail">
+      <nav aria-label="Booking steps" className="border-y border-border">
+        <ol className="flex items-stretch overflow-x-auto">
+          {STEPS.map((s, i) => {
+            const done = i < step;
+            const active = i === step;
+            const reachable = i < step;
+            const Icon = s.icon;
+            return (
+              <li key={s.key} className="relative flex-1 min-w-[100px]">
+                <button
+                  type="button"
+                  onClick={() => reachable && onJump(i)}
+                  disabled={!reachable}
+                  aria-current={active ? 'step' : undefined}
+                  className={cn(
+                    'group relative flex w-full items-center justify-center gap-2 px-3 py-3 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors',
+                    active && 'text-foreground',
+                    !active && reachable && 'text-muted-foreground hover:text-foreground cursor-pointer',
+                    !active && !reachable && 'text-muted-foreground/40',
+                  )}
+                >
+                  {done ? (
+                    <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                  ) : (
+                    <span className={cn(
+                      'inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] tabular-nums shrink-0',
+                      active
+                        ? 'bg-foreground text-background'
+                        : 'ring-1 ring-border text-muted-foreground/70',
+                    )}>
+                      {i + 1}
+                    </span>
+                  )}
+                  <span className="hidden sm:inline truncate">{s.label}</span>
+                  <Icon className="sm:hidden h-3.5 w-3.5" />
+                  {active && (
+                    <motion.span
+                      layoutId="step-rail-underline"
+                      className="absolute inset-x-3 -bottom-px h-0.5 bg-foreground"
+                      transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
+                    />
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+    </LayoutGroup>
   );
 }
 
+// Ticket-style summary row. When unset, renders a hairline placeholder
+// rather than a wordy "Not set" — keeps the panel calm. When set, the value
+// fades+slides in via AnimatePresence so the user feels the ticket filling.
 function SummaryRow({ label, value }: { label: string; value: React.ReactNode | null }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
+    <div className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-0 py-2.5 border-b border-border last:border-b-0">
       <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
-      <span className={cn(
-        'text-sm text-right truncate',
-        value ? 'font-semibold text-foreground' : 'text-muted-foreground/50',
-      )}>
-        {value ?? 'Not set'}
-      </span>
+      <div className="text-right min-w-0">
+        <AnimatePresence mode="wait" initial={false}>
+          {value ? (
+            <motion.span
+              key="set"
+              initial={{ opacity: 0, y: -2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 2 }}
+              transition={{ duration: MOTION_DUR.fast, ease: MOTION_EASE }}
+              className="block text-sm font-semibold text-foreground truncate"
+            >
+              {value}
+            </motion.span>
+          ) : (
+            <motion.span
+              key="unset"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: MOTION_DUR.fast }}
+              className="block ml-auto h-px w-12 bg-muted-foreground/20"
+              aria-label="Not set yet"
+            />
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
