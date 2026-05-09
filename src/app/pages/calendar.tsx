@@ -7684,7 +7684,7 @@ export function CalendarPage() {
                               {t('calendar.endsAfterLabel')}
                             </Label>
                             <div className="flex items-center gap-2.5">
-                              <Stepper value={recurrenceCount} onChange={setRecurrenceCount} min={1} max={52} ariaLabel={t('calendar.endsAfterLabel')} />
+                              <Stepper value={recurrenceCount} onChange={setRecurrenceCount} min={1} max={104} ariaLabel={t('calendar.endsAfterLabel')} />
                               <span className="text-sm text-muted-foreground tabular-nums">{timeUnit}</span>
                             </div>
                           </div>
