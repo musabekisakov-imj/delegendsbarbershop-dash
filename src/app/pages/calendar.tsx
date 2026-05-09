@@ -7699,7 +7699,7 @@ export function CalendarPage() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.16, duration: 0.32, ease: MOTION_EASE }}
                           >
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80 mb-2.5">
+                            <p className="text-[11px] font-semibold text-muted-foreground/80 mb-2.5 tracking-wide">
                               Schedule
                             </p>
                             <div className="relative pt-2 pb-7">
