@@ -7702,11 +7702,13 @@ export function CalendarPage() {
                             <p className="text-[11px] font-semibold text-muted-foreground/80 mb-2.5 tracking-wide">
                               Schedule
                             </p>
-                            <div className="relative pt-2 pb-7">
-                              {/* Hairline connector */}
+                            {/* overflow-visible so edge labels aren't clipped; pb-8 keeps
+                                space for the absolute date labels below each dot. */}
+                            <div className="relative pt-2 pb-8 overflow-visible">
+                              {/* Hairline connector — inset px-3 so it doesn't kiss the edge dots */}
                               <div className="absolute left-3 right-3 top-3 h-px bg-border" aria-hidden />
-                              {/* Dots */}
-                              <div className="relative flex items-center justify-between">
+                              {/* Dots row — px-3 aligns first/last dot center with line endpoints */}
+                              <div className="relative flex items-center justify-between px-3">
                                 {visibleDots.map((d, i) => {
                                   if (d === null) {
                                     return (
@@ -7731,9 +7733,15 @@ export function CalendarPage() {
                                             ? 'bg-foreground ring-foreground/20'
                                             : 'bg-card ring-foreground/30',
                                       )} aria-hidden />
+                                      {/* Center label under dot; first/last align to edges
+                                          so they don't go out of bounds. */}
                                       <span className={cn(
                                         'absolute top-5 text-[10px] tabular-nums whitespace-nowrap',
-                                        isFirst ? 'font-bold text-foreground' : isLast ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                                        isFirst
+                                          ? 'font-bold text-foreground left-0'
+                                          : isLast
+                                            ? 'font-semibold text-foreground right-0'
+                                            : 'text-muted-foreground left-1/2 -translate-x-1/2',
                                       )}>
                                         {format(d, 'd MMM', { locale: dateLocale })}
                                       </span>
