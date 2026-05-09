@@ -549,6 +549,67 @@ export const en = {
   'overview.noStaff': 'No staff members yet',
   'overview.revenue': 'Revenue',
 
+  // Overview — additional keys
+  'overview.bookedToday': 'Booked today',
+  'overview.yourRevenueToday': 'Your revenue today',
+  'overview.earned': 'earned',
+  'overview.pending': 'pending',
+  'overview.bookings': 'Bookings',
+  'overview.pendingCount': 'pending',
+  'overview.uniqueClients': 'Unique clients',
+  'overview.yourClients': 'Your clients',
+  'overview.lifetime': 'lifetime',
+  'overview.staffOn': 'Staff on',
+  'overview.active': 'active',
+  'overview.todaysSchedule': "Today's schedule",
+  'overview.viewAll': 'View all',
+  'overview.yourDayIsClear': 'Your day is clear',
+  'overview.noAppointmentsMsg': 'No appointments today — enjoy the quiet or add a booking',
+  'overview.newBooking': 'New booking',
+  'overview.nextUp': 'Next up',
+  'overview.noMoreAppointments': 'No more appointments today',
+  'overview.thisWeek': 'This week',
+  'overview.newClients': 'new clients',
+  'overview.completedOnly': 'Completed bookings only',
+  'overview.appointmentsThisWeek': 'Appointments this week',
+  'overview.completedPerDay': 'Completed per day',
+  'overview.topPerformer': 'Top performer',
+  'overview.bookingsCount': 'bookings',
+  'overview.greetingStillUp': 'Late night',
+  'overview.greetingMorning': 'Good morning',
+  'overview.greetingAfternoon': 'Good afternoon',
+  'overview.greetingEvening': 'Good evening',
+  'overview.greetingLateShift': 'Late shift',
+
+  // Overview — summary block
+  'overview.summary.vsTypical': 'vs typical',
+  'overview.summary.noHistory': 'Not enough history yet',
+  'overview.summary.avgTicket': 'Avg ticket',
+
+  // Overview — next up panel
+  'overview.nextUp.viewAll': 'View all',
+  'overview.nextUp.imminent': 'Soon',
+
+  // Overview — quick actions
+  'overview.actions.newBooking': 'New booking',
+  'overview.actions.blockTime': 'Block time',
+  'overview.actions.openCalendar': 'Calendar',
+  'overview.actions.findClient': 'Find client',
+
+  // Overview — schedule slots empty state
+  'overview.schedule.closedToday': 'Closed today',
+  'overview.schedule.closedMsg': 'No appointments expected — shop is closed',
+  'overview.schedule.helpText': 'Click a slot to add a booking',
+  'overview.schedule.takenSlot': 'Taken',
+
+  // Shop status pill
+  'shop_status.open': 'Open until',
+  'shop_status.closed': 'Closed',
+  'shop_status.opensAt': 'Opens at',
+
+  // Nav — additional keys
+  'nav.myProfile': 'My profile',
+
   // Bookings
   'bookings.title': 'Bookings',
   'bookings.description': 'Manage all appointments and bookings',
@@ -702,6 +763,77 @@ export const en = {
   'help.aSet3': 'Open the Staff page, press “Add staff” for new members, or toggle active status on an existing card.',
   'help.qSet4': 'How do I add services?',
   'help.aSet4': 'Open Services, press “Add service”, pick a category and fill in price/duration.',
+  // Overview date navigation
+  'overview.nav.prevDay': 'Previous day',
+  'overview.nav.nextDay': 'Next day',
+  'overview.nav.pickDate': 'Pick a date',
+  'overview.nav.today': 'Today',
+  'overview.nav.badgeToday': 'Today',
+  'overview.nav.badgeArchive': 'Archive',
+  'overview.nav.badgeUpcoming': 'Upcoming',
+  'overview.yourDay': 'Your day',
+  'overview.yourScheduleToday': 'Your schedule today',
+  'overview.inSession': 'In session',
+  'overview.inSessionNow': 'In session now',
+  'overview.completed': 'completed',
+  'overview.appointmentsTooltip': 'Appointments',
+
+  // ─── Date range presets ───────────────────────────────────
+  'dateRange.last7d': 'Last 7 days',
+  'dateRange.last30d': 'Last 30 days',
+  'dateRange.last90d': 'Last 90 days',
+  'dateRange.thisMonth': 'This month',
+  'dateRange.custom': 'Custom',
+
+  // ─── Analytics page ───────────────────────────────────────
+  'analytics.eyebrow': 'Analytics',
+  'analytics.heroTitle': 'Performance & revenue',
+  'analytics.revenueLabel': 'Revenue',
+  'analytics.vsPrev': 'vs previous period',
+  'analytics.upcomingRevenue': 'potential from upcoming bookings',
+
+  'analytics.ticker.bookings': 'Bookings',
+  'analytics.ticker.avgTicket': 'Avg ticket',
+  'analytics.ticker.completed': 'Completed',
+  'analytics.ticker.cancelRate': 'Cancel rate',
+  'analytics.ticker.noShowRate': 'No-show rate',
+  'analytics.ticker.retention': 'Retention 60d',
+  'analytics.ticker.busiest': 'Busiest',
+  'analytics.ticker.perVisit': 'per visit',
+  'analytics.ticker.ofAll': '% of all',
+  'analytics.ticker.aboveHealthy': 'above healthy',
+  'analytics.ticker.withinHealthy': 'within healthy range',
+  'analytics.ticker.reviewClients': 'review clients',
+  'analytics.ticker.underControl': 'under control',
+  'analytics.ticker.clientsTotal': 'clients',
+
+  'analytics.dailyRevenue': 'Daily revenue',
+  'analytics.completedOnly': 'Completed appointments only',
+  'analytics.statusMix': 'Status mix',
+  'analytics.allAppointments': 'All appointments',
+  'analytics.revenueTrend': 'Revenue trend · Last 6 months',
+  'analytics.monthlyTotal': 'Monthly total',
+  'analytics.topServices': 'Top services by revenue',
+  'analytics.servicesAvailable': 'services available',
+  'analytics.noCompleted': 'No completed appointments yet',
+  'analytics.visit': 'visit',
+  'analytics.visits': 'visits',
+
+  'analytics.staffPerformance': 'Staff performance',
+  'analytics.staffSubtitle': 'Revenue and bookings per staff member',
+  'analytics.thisMonth': 'This month',
+  'analytics.noStaffData': 'No staff data yet',
+  'analytics.lead': 'lead',
+  'analytics.col.staff': 'Staff',
+  'analytics.col.bookings': 'Bookings',
+  'analytics.col.revenue': 'Revenue',
+  'analytics.col.share': 'Share',
+
+  'analytics.status.completed': 'Completed',
+  'analytics.status.confirmed': 'Confirmed',
+  'analytics.status.scheduled': 'Scheduled',
+  'analytics.status.noShow': 'No-show',
+  'analytics.status.cancelled': 'Cancelled',
 } as const;
 
 export type TranslationKey = keyof typeof en;

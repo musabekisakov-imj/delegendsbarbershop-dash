@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { appointmentsApi, clientsApi, staffApi, servicesApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
@@ -6,16 +6,52 @@ import { SectionHeading } from '../components/shared/section-heading';
 import { ArrowTrendingUpIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell,
+  LineChart, Line, PieChart, Pie, Cell, ReferenceLine,
 } from 'recharts';
 import {
   format, parseISO, startOfMonth, subMonths, eachDayOfInterval, startOfDay, endOfDay,
   subDays, differenceInDays,
 } from 'date-fns';
 import { cn } from '../components/ui/utils';
+import { useT, useLanguage } from '../hooks/use-t';
+import { formatPrice } from '../lib/format';
+import { DateRangeSelector } from '../components/analytics/date-range-selector';
+import { getPresetRange, getPreviousRange } from '../lib/date-range';
+import type { RangePreset } from '../lib/date-range';
+import type { TranslationKey } from '../i18n';
+
+// Resolved CSS colours aligned with the STATUS_DOT semantic palette in tokens.ts.
+// Recharts Cell.fill requires a real colour value, not a Tailwind class — so we
+// maintain this small map rather than trying to read CSS variables at runtime.
+const STATUS_COLOR: Record<string, string> = {
+  completed: '#10b981', // emerald-500 — revenue-generating
+  confirmed:  '#3b82f6', // blue-500 — upcoming confirmed
+  scheduled:  '#94a3b8', // slate-400 — neutral pending
+  no_show:    '#f59e0b', // amber-500 — attention needed
+  cancelled:  '#f43f5e', // rose-500 — problem
+};
+
+const STATUS_LABEL_KEY: Record<string, TranslationKey> = {
+  completed: 'analytics.status.completed',
+  confirmed:  'analytics.status.confirmed',
+  scheduled:  'analytics.status.scheduled',
+  no_show:    'analytics.status.noShow',
+  cancelled:  'analytics.status.cancelled',
+};
+
+const PRESET_KEY: Record<RangePreset, TranslationKey> = {
+  '7d':         'dateRange.last7d',
+  '30d':        'dateRange.last30d',
+  '90d':        'dateRange.last90d',
+  'this-month': 'dateRange.thisMonth',
+};
 
 export function AnalyticsPage() {
+  const t = useT();
+  const [language] = useLanguage();
   const officeId = useOfficeStore(s => s.currentOfficeId);
+
+  const [preset, setPreset] = useState<RangePreset>('30d');
 
   const { data: appointments = [] } = useQuery({
     queryKey: ['appointments', officeId],
@@ -34,67 +70,71 @@ export function AnalyticsPage() {
     queryFn: () => servicesApi.getAll(officeId),
   });
 
-  // ── Revenue & core metrics ──
-  // `totalRevenue` covers all time; `revenueLast30` + `revenuePrev30` power
-  // the hero delta arrow. Cancel and no-show rates are split on purpose —
-  // they mean different things (client cancelled vs didn't show up).
-  const metrics = useMemo(() => {
-    const completed = appointments.filter(a => a.status === 'completed');
-    const cancelled = appointments.filter(a => a.status === 'cancelled');
-    const noShow = appointments.filter(a => a.status === 'no_show');
-    const totalRevenue = completed.reduce((sum, a) => sum + (a.service?.price ?? 0), 0);
-    const avgTicket = completed.length > 0 ? totalRevenue / completed.length : 0;
+  // ── Date range derivation ──
+  const { rangeStart, rangeEnd, compStart } = useMemo(() => {
+    const range = getPresetRange(preset);
+    const prev = getPreviousRange(range);
+    return { rangeStart: range.start, rangeEnd: range.end, compStart: prev.start };
+  }, [preset]);
 
-    const now = Date.now();
-    const day = 86_400_000;
-    const last30Start = now - 30 * day;
-    const prev30Start = now - 60 * day;
-    const revenueLast30 = completed
-      .filter(a => parseISO(a.startTime).getTime() >= last30Start)
-      .reduce((s, a) => s + (a.service?.price ?? 0), 0);
-    const revenuePrev30 = completed
-      .filter(a => {
-        const t = parseISO(a.startTime).getTime();
-        return t >= prev30Start && t < last30Start;
-      })
-      .reduce((s, a) => s + (a.service?.price ?? 0), 0);
-    const delta30Pct = revenuePrev30 > 0
-      ? ((revenueLast30 - revenuePrev30) / revenuePrev30) * 100
-      : revenueLast30 > 0 ? 100 : 0;
+  // ── Revenue & core metrics — scoped to selected range ──
+  const metrics = useMemo(() => {
+    const rs = rangeStart.getTime();
+    const re = rangeEnd.getTime();
+    const cs = compStart.getTime();
+
+    const rangeApts = appointments.filter(a => {
+      const t = parseISO(a.startTime).getTime();
+      return t >= rs && t <= re;
+    });
+    const prevApts = appointments.filter(a => {
+      const t = parseISO(a.startTime).getTime();
+      return t >= cs && t < rs;
+    });
+
+    const completed = rangeApts.filter(a => a.status === 'completed');
+    const prevCompleted = prevApts.filter(a => a.status === 'completed');
+
+    const revenueCurrent = completed.reduce((s, a) => s + (a.service?.price ?? 0), 0);
+    const revenuePrev = prevCompleted.reduce((s, a) => s + (a.service?.price ?? 0), 0);
+    const deltaPct = revenuePrev > 0
+      ? ((revenueCurrent - revenuePrev) / revenuePrev) * 100
+      : revenueCurrent > 0 ? 100 : 0;
+
+    const total = rangeApts.length || 1;
+    const cancelRate = (rangeApts.filter(a => a.status === 'cancelled').length / total) * 100;
+    const noShowRate = (rangeApts.filter(a => a.status === 'no_show').length / total) * 100;
+    const avgTicket = completed.length > 0 ? revenueCurrent / completed.length : 0;
 
     return {
-      totalRevenue,
-      avgTicket,
+      revenueCurrent,
+      revenuePrev,
+      deltaPct,
+      deltaPositive: deltaPct >= 0,
+      deltaAbs: Math.abs(deltaPct),
       completed: completed.length,
-      cancelRate: appointments.length > 0 ? (cancelled.length / appointments.length) * 100 : 0,
-      noShowRate: appointments.length > 0 ? (noShow.length / appointments.length) * 100 : 0,
-      totalBookings: appointments.length,
-      revenueLast30,
-      revenuePrev30,
-      delta30Pct,
+      totalBookings: rangeApts.length,
+      cancelRate,
+      noShowRate,
+      avgTicket,
     };
-  }, [appointments]);
+  }, [appointments, rangeStart, rangeEnd, compStart]);
 
-  // ── Daily revenue — last 30 days ──
+  // ── Daily revenue — every day in the selected range ──
   const dailyRevenue = useMemo(() => {
-    const end = endOfDay(new Date());
-    const start = startOfDay(subDays(end, 29));
-    const days = eachDayOfInterval({ start, end });
+    const days = eachDayOfInterval({ start: rangeStart, end: rangeEnd });
     return days.map(day => {
       const key = format(day, 'yyyy-MM-dd');
-      const dayRevenue = appointments
+      const revenue = appointments
         .filter(a => a.status === 'completed' && format(parseISO(a.startTime), 'yyyy-MM-dd') === key)
         .reduce((sum, a) => sum + (a.service?.price ?? 0), 0);
-      return { date: format(day, 'MMM d'), revenue: dayRevenue };
+      return { date: format(day, 'MMM d'), revenue };
     });
-  }, [appointments]);
+  }, [appointments, rangeStart, rangeEnd]);
 
-  // ── Monthly revenue — last 6 months ──
+  // ── Monthly revenue — always last 6 months (trend, not range-scoped) ──
   const monthlyRevenue = useMemo(() => {
-    const months = Array.from({ length: 6 }, (_, i) => {
-      const d = startOfMonth(subMonths(new Date(), 5 - i));
-      return d;
-    });
+    const months = Array.from({ length: 6 }, (_, i) => startOfMonth(subMonths(new Date(), 5 - i)));
     return months.map(m => {
       const ym = format(m, 'yyyy-MM');
       const sum = appointments
@@ -104,32 +144,30 @@ export function AnalyticsPage() {
     });
   }, [appointments]);
 
-  // ── Top services by revenue ──
+  // ── Top services by revenue — range-scoped ──
   const topServices = useMemo(() => {
+    const rs = rangeStart.getTime();
+    const re = rangeEnd.getTime();
     const byService = new Map<string, { name: string; revenue: number; count: number }>();
     appointments
-      .filter(a => a.status === 'completed')
+      .filter(a => a.status === 'completed' && parseISO(a.startTime).getTime() >= rs && parseISO(a.startTime).getTime() <= re)
       .forEach(a => {
-        const existing = byService.get(a.serviceId) ?? {
-          name: a.service?.name ?? 'Unknown',
-          revenue: 0,
-          count: 0,
-        };
+        const existing = byService.get(a.serviceId) ?? { name: a.service?.name ?? 'Unknown', revenue: 0, count: 0 };
         existing.revenue += a.service?.price ?? 0;
         existing.count += 1;
         byService.set(a.serviceId, existing);
       });
-    return Array.from(byService.values())
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
-  }, [appointments]);
+    return Array.from(byService.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+  }, [appointments, rangeStart, rangeEnd]);
 
-  // ── Revenue by staff ──
+  // ── Revenue by staff — range-scoped ──
   const byStaff = useMemo(() => {
-    const m = new Map<string, { name: string; revenue: number; bookings: number }>();
-    staff.forEach(s => m.set(s.id, { name: `${s.firstName} ${s.lastName}`, revenue: 0, bookings: 0 }));
+    const rs = rangeStart.getTime();
+    const re = rangeEnd.getTime();
+    const m = new Map<string, { id: string; name: string; revenue: number; bookings: number }>();
+    staff.forEach(s => m.set(s.id, { id: s.id, name: `${s.firstName} ${s.lastName}`, revenue: 0, bookings: 0 }));
     appointments
-      .filter(a => a.status === 'completed')
+      .filter(a => a.status === 'completed' && parseISO(a.startTime).getTime() >= rs && parseISO(a.startTime).getTime() <= re)
       .forEach(a => {
         const entry = m.get(a.staffId);
         if (!entry) return;
@@ -137,9 +175,9 @@ export function AnalyticsPage() {
         entry.bookings += 1;
       });
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue);
-  }, [appointments, staff]);
+  }, [appointments, staff, rangeStart, rangeEnd]);
 
-  // ── Retention — % of clients returning within 60 days ──
+  // ── Retention — % of clients returning within 60 days (all-time) ──
   const retentionRate = useMemo(() => {
     if (clients.length === 0) return 0;
     const returning = clients.filter(c => {
@@ -149,22 +187,34 @@ export function AnalyticsPage() {
     return (returning / clients.length) * 100;
   }, [clients]);
 
-  // ── Status distribution — rendered as a horizontal stacked bar ──
-  // Colors match the rest of the app (bookings STATUS_DOT palette).
+  // ── Status distribution — range-scoped ──
   const statusDistribution = useMemo(() => {
+    const rs = rangeStart.getTime();
+    const re = rangeEnd.getTime();
+    const rangeApts = appointments.filter(a => {
+      const t = parseISO(a.startTime).getTime();
+      return t >= rs && t <= re;
+    });
     const counts = { scheduled: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
-    appointments.forEach(a => { counts[a.status]++; });
-    const total = appointments.length || 1;
+    rangeApts.forEach(a => { counts[a.status as keyof typeof counts]++; });
+    const total = rangeApts.length || 1;
     return [
-      { name: 'Completed', value: counts.completed, color: 'bg-emerald-500',         raw: '#10b981' },
-      { name: 'Confirmed', value: counts.confirmed, color: 'bg-blue-500',            raw: '#3b82f6' },
-      { name: 'Scheduled', value: counts.scheduled, color: 'bg-blue-500/40',         raw: '#3b82f666' },
-      { name: 'No-show',   value: counts.no_show,   color: 'bg-amber-500',           raw: '#f59e0b' },
-      { name: 'Cancelled', value: counts.cancelled, color: 'bg-muted-foreground/30', raw: '#9ca3af' },
+      { key: 'completed', value: counts.completed },
+      { key: 'confirmed',  value: counts.confirmed },
+      { key: 'scheduled',  value: counts.scheduled },
+      { key: 'no_show',    value: counts.no_show },
+      { key: 'cancelled',  value: counts.cancelled },
     ].map(d => ({ ...d, pct: (d.value / total) * 100 })).filter(d => d.value > 0);
-  }, [appointments]);
+  }, [appointments, rangeStart, rangeEnd]);
 
-  // ── Forecast — upcoming bookings × avg ticket ──
+  // Adds translated names for Recharts Tooltip and legend (separate memo so
+  // language switches trigger a re-render without re-aggregating data).
+  const statusDisplayData = useMemo(
+    () => statusDistribution.map(d => ({ ...d, name: t(STATUS_LABEL_KEY[d.key]) })),
+    [statusDistribution, t],
+  );
+
+  // ── Forecast — upcoming bookings × service price ──
   const forecast = useMemo(() => {
     const upcoming = appointments.filter(a =>
       (a.status === 'scheduled' || a.status === 'confirmed') &&
@@ -174,68 +224,57 @@ export function AnalyticsPage() {
     return { count: upcoming.length, potential };
   }, [appointments]);
 
-  // ── Three operational insights the shop owner actually asks about ──
-  // Busiest hour: which hour-of-day has the most bookings → staffing decisions.
-  // Top barber: which staff member generated the most revenue this month → bonuses.
-  // Repeat-client rate: share of bookings from returning clients → retention health.
+  // ── Operational insights — range-scoped busiest hour, this-month top barber ──
   const insights = useMemo(() => {
-    const completed = appointments.filter(a => a.status === 'completed');
-
-    // Busiest hour
-    const hourCounts = new Array(24).fill(0) as number[];
-    appointments.forEach(a => {
-      if (a.status === 'cancelled') return;
-      hourCounts[parseISO(a.startTime).getHours()]++;
+    const rs = rangeStart.getTime();
+    const re = rangeEnd.getTime();
+    const rangeApts = appointments.filter(a => {
+      const t = parseISO(a.startTime).getTime();
+      return t >= rs && t <= re && a.status !== 'cancelled';
     });
+
+    const hourCounts = new Array(24).fill(0) as number[];
+    rangeApts.forEach(a => { hourCounts[parseISO(a.startTime).getHours()]++; });
     let busiestHour = 0;
     let busiestCount = 0;
     for (let h = 0; h < 24; h++) {
       if (hourCounts[h] > busiestCount) { busiestCount = hourCounts[h]; busiestHour = h; }
     }
 
-    // Top barber — this month
     const monthStart = startOfMonth(new Date()).getTime();
-    const monthCompleted = completed.filter(a => parseISO(a.startTime).getTime() >= monthStart);
-    const byStaff = new Map<string, { name: string; revenue: number }>();
+    const monthCompleted = appointments.filter(a => a.status === 'completed' && parseISO(a.startTime).getTime() >= monthStart);
+    const byStaffMap = new Map<string, { name: string; revenue: number }>();
     monthCompleted.forEach(a => {
       const key = a.staffId;
       const name = `${a.staff?.firstName ?? ''} ${a.staff?.lastName ?? ''}`.trim() || '—';
-      const prev = byStaff.get(key) ?? { name, revenue: 0 };
+      const prev = byStaffMap.get(key) ?? { name, revenue: 0 };
       prev.revenue += a.service?.price ?? 0;
-      byStaff.set(key, prev);
+      byStaffMap.set(key, prev);
     });
-    const topBarber = [...byStaff.values()].sort((a, b) => b.revenue - a.revenue)[0] ?? null;
-
-    // Repeat-client rate
-    const clientAppointmentCounts = new Map<string, number>();
-    completed.forEach(a => {
-      clientAppointmentCounts.set(a.clientId, (clientAppointmentCounts.get(a.clientId) ?? 0) + 1);
-    });
-    const repeatBookings = completed.filter(a => (clientAppointmentCounts.get(a.clientId) ?? 0) > 1).length;
-    const repeatRate = completed.length > 0 ? (repeatBookings / completed.length) * 100 : 0;
+    const topBarber = [...byStaffMap.values()].sort((a, b) => b.revenue - a.revenue)[0] ?? null;
 
     return {
       busiestHour: busiestCount > 0 ? `${String(busiestHour).padStart(2, '0')}:00` : '—',
       busiestCount,
       topBarberName: topBarber?.name ?? '—',
       topBarberRevenue: topBarber?.revenue ?? 0,
-      repeatRate,
     };
-  }, [appointments]);
+  }, [appointments, rangeStart, rangeEnd]);
 
   const offices = useOfficeStore(s => s.offices);
   const currentOffice = offices.find(o => o.id === officeId);
 
-  const deltaPositive = metrics.delta30Pct >= 0;
-  const deltaAbs = Math.abs(metrics.delta30Pct);
+  const rangeLabel = t(PRESET_KEY[preset]);
+  const todayLabel = format(new Date(), 'MMM d');
 
   return (
     <div className="space-y-6 max-w-[1600px]">
-      {/* ─── Editorial hero — office eyebrow + display number + delta ── */}
+
+      {/* ─── Eyebrow + h1 + range selector ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            <span>Analytics</span>
+            <span>{t('analytics.eyebrow')}</span>
             {currentOffice && (
               <>
                 <span className="text-muted-foreground/40">·</span>
@@ -245,66 +284,65 @@ export function AnalyticsPage() {
                 </span>
               </>
             )}
-            <span className="text-muted-foreground/40">·</span>
-            <span className="normal-case tracking-normal">Last 30 days</span>
           </div>
           <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none">
-            Performance &amp; revenue
+            {t('analytics.heroTitle')}
           </h1>
         </div>
+        <DateRangeSelector value={preset} onChange={setPreset} />
       </div>
 
-      {/* ─── Hero financial figure + 30-day sparkline ──
-          Bloomberg-style: one display number answers "how much" with a
-          delta arrow for "vs before" and the sparkline shows the shape
-          of the period. Everything else on the page is footnotes. */}
+      {/* ─── Hero financial figure + sparkline ──
+          One display number anchors the page: revenue for the chosen
+          period. Sparkline shows the daily shape. Delta badge compares
+          to the preceding equal-length window. */}
       <div className="rounded-2xl border border-border bg-card p-6 sm:p-7">
         <div className="grid gap-6 lg:grid-cols-5 lg:items-end">
           <div className="lg:col-span-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Revenue · last 30 days
+              {t('analytics.revenueLabel')} · {rangeLabel}
             </p>
             <div className="mt-1 flex items-baseline gap-3 flex-wrap">
               <p className="text-5xl sm:text-6xl font-bold text-foreground tabular-nums leading-none tracking-tight">
-                €{metrics.revenueLast30.toLocaleString()}
+                {formatPrice(metrics.revenueCurrent, language)}
               </p>
-              {metrics.revenuePrev30 > 0 && (
+              {metrics.revenuePrev > 0 && (
                 <span className={cn(
                   'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
-                  deltaPositive
+                  metrics.deltaPositive
                     ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                     : 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
                 )}>
-                  {deltaPositive ? <ArrowTrendingUpIcon className="h-3 w-3" /> : <ArrowTrendingUpIcon className="h-3 w-3 rotate-180" />}
-                  {deltaAbs.toFixed(1)}%
+                  <ArrowTrendingUpIcon className={cn('h-3 w-3', !metrics.deltaPositive && 'rotate-180')} />
+                  {metrics.deltaAbs.toFixed(1)}%
                 </span>
               )}
             </div>
             <p className="mt-2 text-xs text-muted-foreground tabular-nums">
-              vs €{metrics.revenuePrev30.toLocaleString()} in the previous 30 days
+              {t('analytics.vsPrev')} {formatPrice(metrics.revenuePrev, language)}
             </p>
             {forecast.count > 0 && (
               <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                + €{forecast.potential.toLocaleString()} potential from {forecast.count} upcoming booking{forecast.count === 1 ? '' : 's'}
+                + {formatPrice(forecast.potential, language)} {t('analytics.upcomingRevenue')} ({forecast.count})
               </p>
             )}
           </div>
 
-          {/* Sparkline (3/5 on lg) */}
+          {/* Sparkline — 30-day shape. --chart-1 avoids the near-black --primary. */}
           <div className="lg:col-span-3">
             <ResponsiveContainer width="100%" height={80}>
               <LineChart data={dailyRevenue} margin={{ top: 6, right: 0, left: 0, bottom: 0 }}>
                 <Line
                   type="monotone"
                   dataKey="revenue"
-                  stroke="var(--primary)"
+                  stroke="var(--chart-1)"
                   strokeWidth={1.75}
                   dot={false}
-                  activeDot={{ r: 3, fill: 'var(--primary)' }}
+                  activeDot={{ r: 3, fill: 'var(--chart-1)' }}
                 />
                 <Tooltip
                   contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }}
-                  formatter={(v: number) => [`€${v}`, 'Revenue']}
+                  formatter={(v: number) => [formatPrice(v, language), t('analytics.revenueLabel')]}
                   cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
                 />
               </LineChart>
@@ -318,47 +356,89 @@ export function AnalyticsPage() {
           no tone colors — just the data, tabular, uppercase labels. */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 divide-x divide-y divide-border sm:divide-y-0">
-          <TickerStat label="Bookings" value={metrics.totalBookings.toString()} sub="all time" />
-          <TickerStat label="Avg ticket" value={`€${Math.round(metrics.avgTicket)}`} sub="per visit" />
-          <TickerStat label="Completed" value={metrics.completed.toString()} sub={`${metrics.totalBookings > 0 ? Math.round((metrics.completed / metrics.totalBookings) * 100) : 0}% of all`} />
-          <TickerStat label="Cancel rate" value={`${metrics.cancelRate.toFixed(1)}%`} sub={metrics.cancelRate > 10 ? 'above healthy' : 'within healthy range'} tone={metrics.cancelRate > 10 ? 'warn' : undefined} />
-          <TickerStat label="No-show rate" value={`${metrics.noShowRate.toFixed(1)}%`} sub={metrics.noShowRate > 8 ? 'review clients' : 'under control'} tone={metrics.noShowRate > 8 ? 'warn' : undefined} />
-          <TickerStat label="Retention 60d" value={`${Math.round(retentionRate)}%`} sub={`${clients.length} clients`} />
-          <TickerStat label="Busiest" value={insights.busiestHour} sub={insights.busiestCount > 0 ? `${insights.busiestCount} bookings` : '—'} />
+          <TickerStat label={t('analytics.ticker.bookings')} value={metrics.totalBookings.toString()} sub={rangeLabel} />
+          <TickerStat
+            label={t('analytics.ticker.avgTicket')}
+            value={formatPrice(Math.round(metrics.avgTicket), language)}
+            sub={t('analytics.ticker.perVisit')}
+          />
+          <TickerStat
+            label={t('analytics.ticker.completed')}
+            value={metrics.completed.toString()}
+            sub={`${metrics.totalBookings > 0 ? Math.round((metrics.completed / metrics.totalBookings) * 100) : 0}${t('analytics.ticker.ofAll')}`}
+          />
+          <TickerStat
+            label={t('analytics.ticker.cancelRate')}
+            value={`${metrics.cancelRate.toFixed(1)}%`}
+            sub={metrics.cancelRate > 10 ? t('analytics.ticker.aboveHealthy') : t('analytics.ticker.withinHealthy')}
+            tone={metrics.cancelRate > 10 ? 'warn' : undefined}
+          />
+          <TickerStat
+            label={t('analytics.ticker.noShowRate')}
+            value={`${metrics.noShowRate.toFixed(1)}%`}
+            sub={metrics.noShowRate > 8 ? t('analytics.ticker.reviewClients') : t('analytics.ticker.underControl')}
+            tone={metrics.noShowRate > 8 ? 'warn' : undefined}
+          />
+          <TickerStat
+            label={t('analytics.ticker.retention')}
+            value={`${Math.round(retentionRate)}%`}
+            sub={`${clients.length} ${t('analytics.ticker.clientsTotal')}`}
+          />
+          <TickerStat
+            label={t('analytics.ticker.busiest')}
+            value={insights.busiestHour}
+            sub={insights.busiestCount > 0 ? `${insights.busiestCount} ${t('analytics.ticker.bookings').toLowerCase()}` : '—'}
+          />
         </div>
       </div>
 
       {/* ─── Revenue chart row ─── */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Daily revenue chart — 30 days */}
+        {/* Daily revenue bars — today is marked with a reference line so the
+            user sees at a glance where the current period ends. */}
         <div className="lg:col-span-2 rounded-xl border border-border bg-card p-5">
-          <SectionHeading size="sm" title="Daily revenue · Last 30 days" subtitle="Completed appointments only" />
+          <SectionHeading size="sm" title={`${t('analytics.dailyRevenue')} · ${rangeLabel}`} subtitle={t('analytics.completedOnly')} />
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={dailyRevenue} margin={{ top: 4, right: 0, left: -8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="date" stroke="var(--muted-foreground)" fontSize={10} interval={4} tickLine={false} axisLine={false} />
-              <YAxis stroke="var(--muted-foreground)" fontSize={10} tickFormatter={v => `€${v}`} tickLine={false} axisLine={false} />
+              <XAxis
+                dataKey="date"
+                stroke="var(--muted-foreground)"
+                fontSize={10}
+                interval={Math.max(0, Math.ceil(dailyRevenue.length / 8) - 1)}
+                tickLine={false}
+                axisLine={false}
+              />
+              <YAxis stroke="var(--muted-foreground)" fontSize={10} tickFormatter={v => formatPrice(v, language)} tickLine={false} axisLine={false} />
               <Tooltip
                 contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                formatter={(v: number) => [`€${v}`, 'Revenue']}
+                formatter={(v: number) => [formatPrice(v, language), t('analytics.revenueLabel')]}
                 cursor={{ fill: 'var(--accent)', opacity: 0.4 }}
               />
-              <Bar dataKey="revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="revenue" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
+              {dailyRevenue.some(d => d.date === todayLabel) && (
+                <ReferenceLine
+                  x={todayLabel}
+                  stroke="var(--primary)"
+                  strokeWidth={1}
+                  strokeDasharray="3 3"
+                  opacity={0.4}
+                />
+              )}
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Status mix — donut with center total + mini-table legend.
-            Donut (not full pie) so the thin ring reads as a ratio, not
-            a territory. Center caption is the total booking count so
-            the chart tells you "how many" at a glance. */}
+        {/* Status mix donut — shows the health of bookings in the range.
+            Ring (innerRadius > 0) reads as "proportion of a whole" more
+            clearly than a filled pie. */}
         <div className="rounded-xl border border-border bg-card p-5">
-          <SectionHeading size="sm" title="Status mix" subtitle="All appointments" />
+          <SectionHeading size="sm" title={t('analytics.statusMix')} subtitle={t('analytics.allAppointments')} />
           <div className="relative mt-2" style={{ height: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={statusDistribution}
+                  data={statusDisplayData}
                   dataKey="value"
                   innerRadius={62}
                   outerRadius={88}
@@ -366,8 +446,8 @@ export function AnalyticsPage() {
                   stroke="var(--card)"
                   strokeWidth={2}
                 >
-                  {statusDistribution.map((entry, i) => (
-                    <Cell key={i} fill={entry.raw} />
+                  {statusDisplayData.map((entry, i) => (
+                    <Cell key={i} fill={STATUS_COLOR[entry.key] ?? '#94a3b8'} />
                   ))}
                 </Pie>
                 <Tooltip
@@ -379,28 +459,22 @@ export function AnalyticsPage() {
                 />
               </PieChart>
             </ResponsiveContainer>
-            {/* Center label — total bookings. pointer-events-none so the
-                donut remains hoverable through it. */}
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
               <p className="text-2xl font-bold tabular-nums text-foreground leading-none">
                 {metrics.totalBookings}
               </p>
               <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Bookings
+                {t('analytics.ticker.bookings')}
               </p>
             </div>
           </div>
           <ul className="mt-3 divide-y divide-border">
-            {statusDistribution.map(d => (
-              <li key={d.name} className="flex items-center gap-3 py-2 text-xs">
-                <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: d.raw }} />
+            {statusDisplayData.map(d => (
+              <li key={d.key} className="flex items-center gap-3 py-2 text-xs">
+                <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLOR[d.key] ?? '#94a3b8' }} />
                 <span className="flex-1 text-muted-foreground">{d.name}</span>
-                <span className="tabular-nums text-muted-foreground w-10 text-right">
-                  {d.pct.toFixed(1)}%
-                </span>
-                <span className="font-semibold tabular-nums text-foreground w-8 text-right">
-                  {d.value}
-                </span>
+                <span className="tabular-nums text-muted-foreground w-10 text-right">{d.pct.toFixed(1)}%</span>
+                <span className="font-semibold tabular-nums text-foreground w-8 text-right">{d.value}</span>
               </li>
             ))}
           </ul>
@@ -410,23 +484,23 @@ export function AnalyticsPage() {
       {/* ─── Monthly trend + top services ─── */}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-5">
-          <SectionHeading size="sm" title="Revenue trend · Last 6 months" subtitle="Monthly total" />
+          <SectionHeading size="sm" title={t('analytics.revenueTrend')} subtitle={t('analytics.monthlyTotal')} />
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={monthlyRevenue} margin={{ top: 4, right: 0, left: -8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="month" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="var(--muted-foreground)" fontSize={11} tickFormatter={v => `€${v}`} tickLine={false} axisLine={false} />
+              <YAxis stroke="var(--muted-foreground)" fontSize={11} tickFormatter={v => formatPrice(v, language)} tickLine={false} axisLine={false} />
               <Tooltip
                 contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                formatter={(v: number) => [`€${v}`, 'Revenue']}
+                formatter={(v: number) => [formatPrice(v, language), t('analytics.revenueLabel')]}
                 cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
               />
               <Line
                 type="monotone"
                 dataKey="revenue"
-                stroke="#10b981"
+                stroke="var(--chart-2)"
                 strokeWidth={2}
-                dot={{ fill: '#10b981', r: 3 }}
+                dot={{ fill: 'var(--chart-2)', r: 3 }}
                 activeDot={{ r: 5 }}
               />
             </LineChart>
@@ -434,10 +508,10 @@ export function AnalyticsPage() {
         </div>
 
         <div className="rounded-xl border border-border bg-card p-5">
-          <SectionHeading size="sm" title="Top services by revenue" subtitle={`${services.length} services available`} />
+          <SectionHeading size="sm" title={t('analytics.topServices')} subtitle={`${services.length} ${t('analytics.servicesAvailable')}`} />
           {topServices.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
-              No completed appointments yet
+              {t('analytics.noCompleted')}
             </div>
           ) : (
             <ul className="space-y-2.5">
@@ -452,18 +526,15 @@ export function AnalyticsPage() {
                         {s.name}
                       </span>
                       <span className="text-sm font-semibold tabular-nums text-foreground">
-                        €{s.revenue.toLocaleString()}
+                        {formatPrice(s.revenue, language)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className="h-full bg-primary"
-                          style={{ width: `${pct}%` }}
-                        />
+                        <div className="h-full bg-emerald-500/80" style={{ width: `${pct}%` }} />
                       </div>
-                      <span className="text-[11px] tabular-nums text-muted-foreground w-12 text-right">
-                        {s.count} {s.count === 1 ? 'visit' : 'visits'}
+                      <span className="text-[11px] tabular-nums text-muted-foreground w-16 text-right">
+                        {s.count} {s.count === 1 ? t('analytics.visit') : t('analytics.visits')}
                       </span>
                     </div>
                   </li>
@@ -478,25 +549,25 @@ export function AnalyticsPage() {
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
           <div>
-            <h2 className="text-sm font-bold text-foreground">Staff performance</h2>
-            <p className="text-xs text-muted-foreground">Revenue and bookings per staff member</p>
+            <h2 className="text-sm font-bold text-foreground">{t('analytics.staffPerformance')}</h2>
+            <p className="text-xs text-muted-foreground">{t('analytics.staffSubtitle')} · {rangeLabel}</p>
           </div>
           {insights.topBarberRevenue > 0 && (
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              This month: <span className="text-foreground normal-case tracking-normal">{insights.topBarberName}</span> · €{insights.topBarberRevenue.toLocaleString()}
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden sm:block">
+              {t('analytics.thisMonth')}: <span className="text-foreground normal-case tracking-normal">{insights.topBarberName}</span> · {formatPrice(insights.topBarberRevenue, language)}
             </span>
           )}
         </div>
         {byStaff.length === 0 ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">No staff data yet</div>
+          <div className="py-10 text-center text-sm text-muted-foreground">{t('analytics.noStaffData')}</div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-muted/40 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border">
-                <th className="text-left px-5 py-2.5">Staff</th>
-                <th className="text-right px-5 py-2.5">Bookings</th>
-                <th className="text-right px-5 py-2.5">Revenue</th>
-                <th className="text-left px-5 py-2.5 w-56">Share</th>
+                <th className="text-left px-5 py-2.5">{t('analytics.col.staff')}</th>
+                <th className="text-right px-5 py-2.5">{t('analytics.col.bookings')}</th>
+                <th className="text-right px-5 py-2.5">{t('analytics.col.revenue')}</th>
+                <th className="text-left px-5 py-2.5 w-56">{t('analytics.col.share')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -505,26 +576,26 @@ export function AnalyticsPage() {
                 const share = (s.revenue / total) * 100;
                 const isLead = i === 0 && s.revenue > 0;
                 return (
-                  <tr key={s.name} className="hover:bg-accent/30 transition-colors">
+                  <tr key={s.id} className="hover:bg-accent/30 transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] font-semibold tabular-nums text-muted-foreground w-4">#{i + 1}</span>
                         <span className="font-medium text-foreground">{s.name}</span>
                         {isLead && (
                           <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                            lead
+                            {t('analytics.lead')}
                           </span>
                         )}
                       </div>
                     </td>
                     <td className="px-5 py-3 text-right tabular-nums text-foreground">{s.bookings}</td>
                     <td className="px-5 py-3 text-right tabular-nums font-semibold text-foreground">
-                      €{s.revenue.toLocaleString()}
+                      {formatPrice(s.revenue, language)}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                          <div className={cn('h-full', isLead ? 'bg-emerald-500' : 'bg-primary/60')} style={{ width: `${share}%` }} />
+                          <div className={cn('h-full', isLead ? 'bg-emerald-500' : 'bg-blue-500/40')} style={{ width: `${share}%` }} />
                         </div>
                         <span className="text-[11px] tabular-nums text-muted-foreground w-10 text-right">
                           {share.toFixed(0)}%
@@ -566,4 +637,3 @@ function TickerStat({
     </div>
   );
 }
-

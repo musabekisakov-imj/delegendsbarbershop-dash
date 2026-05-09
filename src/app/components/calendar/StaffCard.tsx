@@ -77,7 +77,9 @@ export function StaffCard(props: StaffCardProps) {
     );
   }
 
-  // variant === 'week'
+  // variant === 'week' — portrait avatar card (avatar centered + name below)
+  // Active state: colored top-accent line + staff-tinted background ring.
+  // Inactive: ghost card, hover lifts to accent.
   const { active } = props;
   return (
     <button
@@ -86,49 +88,57 @@ export function StaffCard(props: StaffCardProps) {
       title={title ?? `${staff.firstName} ${staff.lastName}`}
       style={style}
       className={cn(
-        'group relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 w-full transition-colors text-left overflow-hidden',
+        'group relative flex flex-col items-center gap-1.5 rounded-xl px-3 pt-3 pb-2.5 w-full transition-all duration-150 overflow-hidden',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
         active
-          ? 'bg-foreground'
+          ? 'bg-accent/60 border border-border shadow-sm'
           : cn(
-              'bg-card border border-border',
+              'bg-transparent border border-transparent',
               isClickable
-                ? 'hover:bg-accent/50 cursor-pointer'
+                ? 'hover:bg-accent/30 hover:border-border/60 cursor-pointer'
                 : 'cursor-default',
             ),
         className,
       )}
     >
-      <Avatar className="h-7 w-7 shrink-0">
-        {staff.avatarUrl && <AvatarImage src={staff.avatarUrl} alt={`${staff.firstName} ${staff.lastName}`} />}
-        <AvatarFallback className={cn(
-          'text-[10px] font-bold',
-          active
-            ? 'bg-white/15 text-white'
-            : cn(color.light, color.label),
-        )}>
-          {initials}
-        </AvatarFallback>
-      </Avatar>
-      <span
-        className={cn(
-          'text-[12px] font-semibold truncate flex-1 leading-tight',
-          active ? 'text-white' : 'text-foreground',
-        )}
-      >
+      {/* Colored top-accent stripe — visible only when active */}
+      {active && (
+        <span
+          className={cn('absolute inset-x-0 top-0 h-[3px] rounded-t-xl', color.dot)}
+          aria-hidden
+        />
+      )}
+
+      {/* Avatar — ring when active, tinted with staff color */}
+      <span className={cn(
+        'relative flex items-center justify-center rounded-full transition-all duration-150',
+        active
+          ? cn('ring-2 ring-offset-1 ring-offset-accent/60', color.dot.replace('bg-', 'ring-'))
+          : 'ring-0',
+      )}>
+        <Avatar className="h-9 w-9 shrink-0">
+          {staff.avatarUrl && <AvatarImage src={staff.avatarUrl} alt={`${staff.firstName} ${staff.lastName}`} />}
+          <AvatarFallback className={cn('text-xs font-bold', color.light, color.label)}>
+            {initials}
+          </AvatarFallback>
+        </Avatar>
+      </span>
+
+      {/* Name */}
+      <span className={cn(
+        'text-[11px] font-semibold truncate w-full text-center leading-tight tracking-tight',
+        active ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground',
+      )}>
         {staff.firstName}
       </span>
+
+      {/* Appointment count badge */}
       <span className={cn(
-        'shrink-0 text-[11px] tabular-nums font-medium',
-        active ? 'text-white/60' : 'text-muted-foreground',
+        'text-[10px] tabular-nums font-medium leading-none',
+        active ? 'text-muted-foreground' : 'text-muted-foreground/60',
       )}>
         {count}
       </span>
-      {/* Color-coded bottom accent */}
-      <span
-        className={cn('absolute inset-x-0 bottom-0 h-[3px]', color.dot)}
-        aria-hidden
-      />
     </button>
   );
 }

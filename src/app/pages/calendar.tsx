@@ -6353,8 +6353,8 @@ export function CalendarPage() {
               `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`),
             );
             return (
-              <div className="relative pb-1 border-b border-border">
-                <div className="flex gap-2 overflow-x-auto scrollbar-none">
+              <div className="relative py-2 border-b border-border">
+                <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
                   {sortedForBar.map(m => {
                     const colorIdx = staffColorMap.get(m.id) ?? 0;
                     const c = getStaffColor(colorIdx);
@@ -6367,7 +6367,7 @@ export function CalendarPage() {
                         color={{ dot: c.dot, light: c.light, label: c.label }}
                         active={weekViewStaffId === m.id}
                         onClick={sortedForBar.length > 1 ? () => setWeekViewStaffId(m.id) : undefined}
-                        className="min-w-[130px] max-w-[200px] flex-1"
+                        className="min-w-[72px] max-w-[100px] flex-1"
                       />
                     );
                   })}

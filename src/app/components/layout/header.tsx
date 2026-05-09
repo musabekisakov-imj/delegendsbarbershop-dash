@@ -84,8 +84,8 @@ export function Header() {
             logotype element (not translated) — same way "Apple Inc." stays
             English across locales. */}
         <NavLink to="/overview" className="flex items-center gap-2.5 shrink-0">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <ScissorsIcon className="h-5 w-5 text-primary-foreground" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600">
+            <ScissorsIcon className="h-5 w-5 text-white" />
           </div>
           <div className="hidden sm:flex flex-col leading-none">
             <span className="text-[18px] font-bold tracking-tight text-foreground">

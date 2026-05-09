@@ -16,9 +16,8 @@
   --canvas: #FAFAFA;                /* zinc-50 */
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  /* Primary = near-black so CTAs and active states match the Vercel/Linear
-     aesthetic. Ring + sidebar stay blue to keep them visually distinct from
-     primary buttons; the button-blue era is over. */
+  /* Primary = near-black for CTAs and active nav (Vercel/Linear aesthetic).
+     Logo uses explicit bg-blue-600 — decoupled from this token. */
   --primary: oklch(0.145 0 0);              /* zinc-900 near-black */
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0.0058 264.53);
@@ -53,7 +52,7 @@
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.145 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
@@ -61,32 +60,30 @@
 }
 
 .dark {
-  /* Deep Navy surface tiers — slate-family blue undertone (chroma 0.018-0.022,
-     hue 254) matching #0f172a / Stripe / Linear dark palette.
-     background < canvas < card < popover for clear elevation in low light. */
-  --background: oklch(0.168 0.022 254);   /* #0f172a  slate-900  */
-  --foreground: oklch(0.97 0.006 254);    /* #f1f5f9  slate-100  */
-  --card: oklch(0.21 0.02 254);           /* #1e293b  slate-800  */
-  --canvas: oklch(0.188 0.021 254);       /* between bg and card */
+  /* Surface tiers: background < canvas < card < popover for clear elevation */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.185 0 0);
+  --canvas: oklch(0.165 0 0);
   --break-hatch-alpha: 0.05;
-  --card-foreground: oklch(0.97 0.006 254);
-  --popover: oklch(0.235 0.018 254);      /* #273344  one step above card */
-  --popover-foreground: oklch(0.97 0.006 254);
-  --primary: oklch(0.97 0.006 254);       /* near-white on navy  */
-  --primary-foreground: oklch(0.168 0.022 254);
-  --secondary: oklch(0.268 0.016 254);
-  --secondary-foreground: oklch(0.97 0.006 254);
-  --muted: oklch(0.245 0.016 254);
-  --muted-foreground: oklch(0.72 0.012 254);
-  --accent: oklch(0.275 0.016 254);
-  --accent-foreground: oklch(0.97 0.006 254);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.259 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.235 0 0);
+  --muted-foreground: oklch(0.74 0 0);
+  --accent: oklch(0.265 0 0);
+  --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.65 0.22 25);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 0.08);
-  --input: oklch(0.268 0.016 254);
-  --input-background: oklch(0.228 0.018 254);
-  --switch-background: oklch(0.36 0.014 254);
-  --ring: oklch(0.55 0.01 254);
+  --border: oklch(1 0 0 / 0.09);
+  --input: oklch(0.259 0 0);
+  --input-background: oklch(0.22 0 0);
+  --switch-background: oklch(0.35 0 0);
+  --ring: oklch(0.55 0 0);
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --chart-1: oklch(0.488 0.243 264.376);

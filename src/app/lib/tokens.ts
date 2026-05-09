@@ -71,7 +71,7 @@ export const CATEGORY_DOTS = [
 // Amber is reserved for "attention needed" states (no_show = client didn't
 // show, owner needs to take action). Rose stays for actively cancelled.
 export const STATUS_DOT = {
-  scheduled: 'bg-blue-500',
+  scheduled: 'bg-zinc-400',
   confirmed: 'bg-emerald-500',
   completed: 'bg-muted-foreground/50',
   cancelled: 'bg-rose-500',
@@ -79,7 +79,7 @@ export const STATUS_DOT = {
 } as const;
 
 export const STATUS_STRIPE = {
-  scheduled: 'bg-blue-500',
+  scheduled: 'bg-zinc-400',
   confirmed: 'bg-emerald-500',
   completed: 'bg-muted-foreground/40',
   cancelled: 'bg-rose-500',

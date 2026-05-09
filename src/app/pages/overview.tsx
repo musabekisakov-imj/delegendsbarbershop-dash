@@ -1,29 +1,99 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { appointmentsApi, clientsApi, staffApi, accountsApi } from '../lib/api';
+import { appointmentsApi, clientsApi, staffApi, accountsApi, tenantApi } from '../lib/api';
+import { TodaySummary } from '../components/overview/today-summary';
+import { EmptyScheduleSlots } from '../components/overview/empty-schedule-slots';
+import { NextUp } from '../components/overview/next-up';
+import { QuickActions } from '../components/overview/quick-actions';
+import { ShopStatus } from '../components/shared/shop-status';
+import { getShopStatus } from '../lib/overview';
 import { useOfficeStore } from '../store/office-store';
 import { useAuthStore } from '../store/auth-store';
 import { SectionHeading } from '../components/shared/section-heading';
 import { Button } from '../components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { DatePickerPopover } from '../components/shared/DatePickerPopover';
 import {
-  CalendarIcon,
-  CheckCircleIcon,
+  CalendarDaysIcon,
   ScissorsIcon,
   PlusIcon,
   ArrowRightIcon,
   MapPinIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
-import { format, startOfWeek, endOfWeek, isWithinInterval, parseISO, startOfDay, endOfDay, isToday, differenceInMinutes } from 'date-fns';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { format, startOfWeek, endOfWeek, isWithinInterval, parseISO, startOfDay, endOfDay, isToday, differenceInMinutes, addDays, isSameDay } from 'date-fns';
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, ReferenceLine } from 'recharts';
+import { formatPrice } from '../lib/format';
 import { useNavigate } from 'react-router';
 import { cn } from '../components/ui/utils';
 import { gradientFor, STATUS_DOT, STATUS_PILL, STATUS_LABEL } from '../lib/tokens';
+import { useT, useLanguage } from '../hooks/use-t';
+
+// ─── Date utilities (Overview-local) ──────────────────────
+// Intl-based formatter: shows weekday + month + day; adds year only if ≠ current.
+function formatLongDate(date: Date, locale: string): string {
+  const isCurrentYear = date.getFullYear() === new Date().getFullYear();
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    ...(isCurrentYear ? {} : { year: 'numeric' }),
+  }).format(date);
+}
+
+type DateContext = 'today' | 'past' | 'future';
+function getDateContext(date: Date): DateContext {
+  const tod = new Date(); tod.setHours(0, 0, 0, 0);
+  const tgt = new Date(date); tgt.setHours(0, 0, 0, 0);
+  if (tgt.getTime() === tod.getTime()) return 'today';
+  if (tgt.getTime() < tod.getTime()) return 'past';
+  return 'future';
+}
+
+const LOCALE_MAP: Record<string, string> = { en: 'en-US', ru: 'ru-RU', lt: 'lt-LT' };
 
 export function OverviewPage() {
   const navigate = useNavigate();
   const officeId = useOfficeStore(s => s.currentOfficeId);
   const user = useAuthStore(s => s.user);
   const isBarber = user?.role === 'barber';
+  const t = useT();
+  const [language] = useLanguage();
+  const intlLocale = LOCALE_MAP[language] ?? 'en-US';
+
+  const [viewDateStr, setViewDateStr] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const viewDate = useMemo(() => {
+    const d = new Date(viewDateStr + 'T12:00:00');
+    return d;
+  }, [viewDateStr]);
+  const isViewToday = isSameDay(viewDate, new Date());
+  const dateCtx = getDateContext(viewDate);
+
+  const goPrevDay = () => setViewDateStr(format(addDays(viewDate, -1), 'yyyy-MM-dd'));
+  const goNextDay = () => setViewDateStr(format(addDays(viewDate, 1), 'yyyy-MM-dd'));
+  const goToToday = () => setViewDateStr(format(new Date(), 'yyyy-MM-dd'));
+
+  // Allow up to 365 days forward on Overview (operators plan ahead)
+  const MAX_FORWARD = 365;
+  const daysFromToday = Math.round((viewDate.getTime() - new Date().setHours(12, 0, 0, 0)) / 86_400_000);
+  const canGoForward = daysFromToday < MAX_FORWARD;
+
+  // Keyboard shortcuts: ← → for prev/next day, T for today
+  // Guard: disabled when user is typing in an input / textarea
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goPrevDay(); }
+      else if (e.key === 'ArrowRight' && canGoForward) { e.preventDefault(); goNextDay(); }
+      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); goToToday(); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewDateStr, canGoForward]);
 
   // Barber-scoped view: resolve the Account for this user so we know which
   // staff record owns their schedule. Only fetched when user is a barber.
@@ -55,18 +125,21 @@ export function OverviewPage() {
     queryFn: () => staffApi.getAll(officeId)
   });
 
+  const { data: tenant } = useQuery({
+    queryKey: ['tenant'],
+    queryFn: () => tenantApi.get(),
+  });
+  const workingHours = tenant?.workingHours ?? {};
+
   // Calculate stats
-  const today = new Date();
+  const today = viewDate;
+  const now = new Date();
   const todayStart = startOfDay(today);
   const todayEnd = endOfDay(today);
   
   const todayAppointments = appointments.filter(apt => 
     isWithinInterval(parseISO(apt.startTime), { start: todayStart, end: todayEnd })
   );
-
-  const completedToday = todayAppointments.filter(apt => apt.status === 'completed');
-  const pendingToday = todayAppointments.filter(apt => apt.status === 'scheduled' || apt.status === 'confirmed');
-  const noShowToday = todayAppointments.filter(apt => apt.status === 'no_show');
 
   const weekStart = startOfWeek(today, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
@@ -77,11 +150,15 @@ export function OverviewPage() {
   );
 
   const weeklyRevenue = weekAppointments.reduce((sum, apt) => sum + apt.service.price, 0);
-  const todayRevenue = completedToday.reduce((sum, apt) => sum + apt.service.price, 0);
 
   const activeStaff = staff.filter(s => s.isActive).length;
-  const newClientsThisWeek = clients.filter(c => 
+  const newClientsThisWeek = clients.filter(c =>
     isWithinInterval(parseISO(c.createdAt), { start: weekStart, end: weekEnd })
+  ).length;
+  const prevWeekStart = addDays(weekStart, -7);
+  const prevWeekEnd = addDays(weekEnd, -7);
+  const newClientsLastWeek = clients.filter(c =>
+    isWithinInterval(parseISO(c.createdAt), { start: prevWeekStart, end: prevWeekEnd })
   ).length;
 
   // Today's appointments sorted by time
@@ -107,7 +184,8 @@ export function OverviewPage() {
     const revenue = dayAppointments.reduce((sum, apt) => sum + apt.service.price, 0);
     const count = dayAppointments.length;
     
-    return { day, revenue, appointments: count, isToday: isToday(dayDate) };
+    const isFutureDay = startOfDay(dayDate) > startOfDay(now);
+    return { day, revenue, appointments: count, isToday: isToday(dayDate), isFuture: isFutureDay };
   });
 
   // STATUS_PILL / STATUS_LABEL imported from `lib/tokens` — same palette
@@ -117,26 +195,13 @@ export function OverviewPage() {
   const offices = useOfficeStore(s => s.offices);
   const currentOffice = offices.find(o => o.id === officeId);
 
-  // "Next up" — the imminent appointment(s) today that haven't started yet.
-  const nextUp = todayAppointments
-    .filter(a => parseISO(a.startTime).getTime() > today.getTime() && a.status !== 'cancelled' && a.status !== 'completed')
-    .sort((a, b) => parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime())[0];
-  const minutesUntilNext = nextUp ? Math.max(0, Math.ceil((parseISO(nextUp.startTime).getTime() - today.getTime()) / 60_000)) : null;
-
   // Current-in-session appointment (right now is between start and end).
   const currentApt = todayAppointments.find(a => {
     const start = parseISO(a.startTime).getTime();
     const end = parseISO(a.endTime).getTime();
-    return today.getTime() >= start && today.getTime() < end
+    return now.getTime() >= start && now.getTime() < end
       && a.status !== 'cancelled' && a.status !== 'no_show';
   });
-
-  // Day booked total (all non-cancelled, non-no-show). The "potential" of the
-  // day, regardless of what's actually been completed yet.
-  const dayBooked = todayAppointments
-    .filter(a => a.status !== 'cancelled' && a.status !== 'no_show')
-    .reduce((sum, a) => sum + a.service.price, 0);
-  const dayPending = dayBooked - todayRevenue;
 
   // Top performer today (owner/manager view only). Who earned the most by now.
   const topByStaff = useMemo(() => {
@@ -153,12 +218,12 @@ export function OverviewPage() {
   }, [todayAppointments, isBarber]);
 
   // Time-of-day greeting for the hero.
-  const hour = today.getHours();
-  const greeting = hour < 5 ? 'Still up'
-    : hour < 12 ? 'Good morning'
-    : hour < 17 ? 'Good afternoon'
-    : hour < 22 ? 'Good evening'
-    : 'Late shift';
+  const hour = now.getHours();
+  const greeting = hour < 5 ? t('overview.greetingStillUp')
+    : hour < 12 ? t('overview.greetingMorning')
+    : hour < 17 ? t('overview.greetingAfternoon')
+    : hour < 22 ? t('overview.greetingEvening')
+    : t('overview.greetingLateShift');
 
   return (
     <div className="space-y-6 max-w-[1600px]">
@@ -169,7 +234,7 @@ export function OverviewPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            <span>{isBarber ? 'Your day' : 'Today'}</span>
+            <span>{isBarber ? t('overview.yourDay') : ({ today: t('overview.nav.badgeToday'), past: t('overview.nav.badgeArchive'), future: t('overview.nav.badgeUpcoming') }[dateCtx])}</span>
             {currentOffice && (
               <>
                 <span className="text-muted-foreground/40">·</span>
@@ -181,109 +246,114 @@ export function OverviewPage() {
             )}
             <span className="text-muted-foreground/40">·</span>
             <span className="normal-case tracking-normal">{greeting}</span>
-          </div>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums">
-            {format(today, 'EEEE, MMMM d')}
-          </h1>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm" onClick={() => navigate('/calendar')}>
-            <CalendarIcon className="mr-1.5 h-4 w-4" />
-            Calendar
-          </Button>
-          <Button size="sm" onClick={() => navigate('/bookings/new')}>
-            <PlusIcon className="mr-1 h-4 w-4" />
-            New booking
-          </Button>
-        </div>
-      </div>
-
-      {/* ─── Hero stat + day rail ──────────────────────────
-          ONE number at display size ("booked today") + the breakdown
-          (earned, pending) quiet beside it + a horizontal day-rail
-          showing every slot colored by status. This single block
-          answers "how's today going?" in a glance. */}
-      <div className="rounded-2xl border border-border bg-card p-6 sm:p-7">
-        <div className="grid gap-6 lg:grid-cols-5">
-          {/* Hero number + rail (3/5 on lg) */}
-          <div className="lg:col-span-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              {isBarber ? 'Your revenue today' : 'Booked today'}
-            </p>
-            <div className="mt-1 flex items-baseline gap-4 flex-wrap">
-              <p className="text-5xl sm:text-6xl font-bold text-foreground tabular-nums leading-none tracking-tight">
-                €{(isBarber ? todayRevenue : dayBooked).toLocaleString()}
-              </p>
-              {!isBarber && (
-                <div className="flex items-baseline gap-3 text-sm">
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                    €{todayRevenue.toLocaleString()} earned
-                  </span>
-                  {dayPending > 0 && (
-                    <span className="text-muted-foreground tabular-nums">
-                      · €{dayPending.toLocaleString()} pending
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Day rail — each slot proportional to service duration */}
-            {todaysScheduleAll.length > 0 ? (
-              <div className="mt-5">
-                <div className="flex gap-0.5 h-2 rounded-full overflow-hidden bg-muted">
-                  {todaysScheduleAll.map(apt => {
-                    const minutes = differenceInMinutes(parseISO(apt.endTime), parseISO(apt.startTime));
-                    const color =
-                      apt.status === 'completed' ? 'bg-emerald-500'
-                      : apt.status === 'cancelled' ? 'bg-muted-foreground/25'
-                      : apt.status === 'no_show' ? 'bg-amber-500'
-                      : apt.status === 'confirmed' ? 'bg-primary'
-                      : 'bg-primary/40';
-                    return (
-                      <div
-                        key={apt.id}
-                        className={cn('transition-colors', color)}
-                        style={{ flex: minutes }}
-                        title={`${format(parseISO(apt.startTime), 'HH:mm')} · ${apt.client.firstName} ${apt.client.lastName} · ${STATUS_LABEL[apt.status]}`}
-                      />
-                    );
-                  })}
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground tabular-nums">
-                  <RailLegend color="bg-emerald-500" label="Completed" count={completedToday.length} />
-                  <RailLegend color="bg-primary" label="Confirmed" count={todayAppointments.filter(a => a.status === 'confirmed').length} />
-                  <RailLegend color="bg-primary/40" label="Scheduled" count={todayAppointments.filter(a => a.status === 'scheduled').length} />
-                  {noShowToday.length > 0 && <RailLegend color="bg-amber-500" label="No-show" count={noShowToday.length} />}
-                </div>
-              </div>
-            ) : (
-              <p className="mt-5 text-sm text-muted-foreground">No bookings today — your schedule is clear.</p>
+            {dateCtx === 'today' && Object.keys(workingHours).length > 0 && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <ShopStatus {...getShopStatus(workingHours, now)} />
+              </>
             )}
           </div>
+          {/* ── Date navigation row ─────────────────────────────
+              [<]  Sunday, May 10 📅  ● Today  [>]  [Today]
+              Arrow buttons have explicit bg+border (not ghost) so
+              non-technical users see immediately they're clickable.
+              Status badge gives instant orientation. [Today] pill
+              appears only when viewing a non-today date. */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {/* Prev day */}
+            <button
+              type="button"
+              onClick={goPrevDay}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-sm hover:bg-accent active:scale-[0.97] transition-all duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer"
+              aria-label={t('overview.nav.prevDay')}
+            >
+              <ChevronLeftIcon className="h-3.5 w-3.5" />
+            </button>
 
-          {/* Supporting stats (2/5 on lg, divider on lg+) */}
-          <div className="grid grid-cols-3 gap-4 lg:col-span-2 lg:grid-cols-1 lg:gap-3 lg:pl-7 lg:border-l lg:border-border lg:justify-self-stretch">
-            <HeroStat
-              label="Bookings"
-              value={todayAppointments.length}
-              sub={pendingToday.length > 0 ? `${pendingToday.length} pending` : undefined}
-            />
-            <HeroStat
-              label={isBarber ? 'Your clients' : 'Unique clients'}
-              value={isBarber
-                ? new Set(appointments.map(a => a.clientId)).size
-                : new Set(todayAppointments.map(a => a.clientId)).size}
-              sub={isBarber ? 'lifetime' : 'today'}
-            />
-            <HeroStat
-              label={isBarber ? 'This week' : 'Staff on'}
-              value={isBarber ? weekAppointments.length : activeStaff}
-              sub={isBarber ? 'completed' : `of ${staff.length}`}
-            />
+            {/* Date trigger → opens calendar popover */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="group inline-flex items-center gap-2 rounded-lg px-2 py-1 -ml-1 hover:bg-accent transition-colors duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer"
+                  aria-label={t('overview.nav.pickDate')}
+                >
+                  <h1 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none capitalize">
+                    {formatLongDate(today, intlLocale)}
+                  </h1>
+                  <CalendarDaysIcon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" sideOffset={6} className="p-3 w-auto">
+                <DatePickerPopover
+                  value={viewDate}
+                  onChange={(d) => setViewDateStr(format(d, 'yyyy-MM-dd'))}
+                  locale={intlLocale}
+                />
+              </PopoverContent>
+            </Popover>
+
+            {/* Status badge: Today / Archive / Upcoming */}
+            <span className={cn(
+              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap',
+              dateCtx === 'today'   && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+              dateCtx === 'past'    && 'bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-400',
+              dateCtx === 'future'  && 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
+            )}>
+              <span className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                dateCtx === 'today'  && 'bg-emerald-500',
+                dateCtx === 'past'   && 'bg-slate-400',
+                dateCtx === 'future' && 'bg-blue-500',
+              )} aria-hidden />
+              {{ today: t('overview.nav.badgeToday'), past: t('overview.nav.badgeArchive'), future: t('overview.nav.badgeUpcoming') }[dateCtx]}
+            </span>
+
+            {/* Next day */}
+            <button
+              type="button"
+              onClick={goNextDay}
+              disabled={!canGoForward}
+              title={!canGoForward ? t('overview.nav.nextDay') : undefined}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-sm hover:bg-accent active:scale-[0.97] transition-all duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
+              aria-label={t('overview.nav.nextDay')}
+            >
+              <ChevronRightIcon className="h-3.5 w-3.5" />
+            </button>
+
+            {/* Today shortcut — visible only when not viewing today */}
+            {!isViewToday && (
+              <button
+                type="button"
+                onClick={goToToday}
+                className="inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-foreground shadow-sm hover:bg-accent active:scale-[0.97] transition-all duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer"
+              >
+                {t('overview.nav.today')}
+              </button>
+            )}
           </div>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button size="sm" onClick={() => navigate('/bookings/new')}>
+            <PlusIcon className="mr-1 h-4 w-4" />
+            {t('overview.newBooking')}
+          </Button>
+        </div>
       </div>
+
+      <TodaySummary
+        todayAppointments={todayAppointments}
+        allAppointments={appointments}
+        viewDate={viewDate}
+        language={language}
+        isBarber={isBarber}
+        activeStaff={activeStaff}
+        totalStaff={staff.length}
+        weekApptCount={weekAppointments.length}
+      />
+
+      {/* Quick-action launch pad — only on today/future dates */}
+      {dateCtx !== 'past' && <QuickActions />}
 
       {/* ─── Schedule + sidebar (12-col grid on lg) ──
           Left 8/12: Today's Schedule with temporal styling (past dimmed,
@@ -295,7 +365,7 @@ export function OverviewPage() {
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
             <div>
               <h2 className="text-sm font-bold text-foreground">
-                {isBarber ? 'Your schedule today' : "Today's schedule"}
+                {isBarber ? t('overview.yourScheduleToday') : t('overview.todaysSchedule')}
               </h2>
               <p className="text-xs text-muted-foreground tabular-nums">
                 {todaysScheduleAll.length > todaysSchedule.length
@@ -304,32 +374,26 @@ export function OverviewPage() {
               </p>
             </div>
             <Button size="sm" variant="outline" onClick={() => navigate('/bookings')}>
-              View all
+              {t('overview.viewAll')}
               <ArrowRightIcon className="ml-1 h-3.5 w-3.5" />
             </Button>
           </div>
 
           {todaysSchedule.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
-                <CalendarIcon className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium text-foreground">Your day is clear</p>
-              <p className="text-xs text-muted-foreground mt-0.5 mb-4">No appointments today — enjoy the quiet or add a booking.</p>
-              <Button size="sm" onClick={() => navigate('/bookings/new')}>
-                <PlusIcon className="mr-1 h-4 w-4" />
-                New booking
-              </Button>
-            </div>
+            <EmptyScheduleSlots
+              workingHours={workingHours}
+              viewDate={viewDate}
+              existingAppointments={todayAppointments}
+            />
           ) : (
             <ul className="divide-y divide-border">
               {todaysSchedule.map(apt => {
                 const start = parseISO(apt.startTime);
                 const end = parseISO(apt.endTime);
-                const now = today.getTime();
-                const isCurrent = now >= start.getTime() && now < end.getTime()
+                const nowMs = now.getTime();
+                const isCurrent = nowMs >= start.getTime() && nowMs < end.getTime()
                   && apt.status !== 'cancelled' && apt.status !== 'no_show';
-                const isPast = end.getTime() < now;
+                const isPast = end.getTime() < nowMs;
                 return (
                   <li
                     key={apt.id}
@@ -376,7 +440,7 @@ export function OverviewPage() {
                         {apt.client.firstName} {apt.client.lastName}
                         {isCurrent && (
                           <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-primary">
-                            in session
+                            {t('overview.inSession')}
                           </span>
                         )}
                       </p>
@@ -386,7 +450,8 @@ export function OverviewPage() {
                         {!isBarber && (
                           <>
                             <span className="text-muted-foreground/40 shrink-0">·</span>
-                            <span className="truncate">with {apt.staff.firstName}</span>
+                            <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', staffDot(apt.staffId))} />
+                            <span className="truncate">{apt.staff.firstName}</span>
                           </>
                         )}
                       </div>
@@ -394,7 +459,7 @@ export function OverviewPage() {
 
                     {!isBarber && (
                       <span className="hidden sm:inline text-sm font-semibold tabular-nums text-foreground shrink-0">
-                        €{apt.service.price}
+                        {formatPrice(apt.service.price, language)}
                       </span>
                     )}
 
@@ -414,66 +479,19 @@ export function OverviewPage() {
 
         {/* Sidebar — Next up + Top today + mini weekly */}
         <aside className="lg:col-span-4 space-y-4">
-          {/* Next Up card */}
-          <div className={cn(
-            'rounded-2xl border bg-card p-5 transition-colors',
-            nextUp && minutesUntilNext !== null && minutesUntilNext <= 10
-              ? 'border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20'
-              : 'border-border',
-          )}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              {currentApt ? 'In session now' : 'Next up'}
-            </p>
-            {currentApt ? (
-              <div className="mt-2">
-                <p className="text-2xl font-bold tabular-nums text-foreground">
-                  {format(parseISO(currentApt.startTime), 'HH:mm')}
-                  <span className="ml-1 text-sm font-normal text-muted-foreground">
-                    → {format(parseISO(currentApt.endTime), 'HH:mm')}
-                  </span>
-                </p>
-                <p className="mt-1 text-sm font-semibold text-foreground truncate">
-                  {currentApt.client.firstName} {currentApt.client.lastName}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {currentApt.service.name} · with {currentApt.staff.firstName}
-                </p>
-              </div>
-            ) : nextUp && minutesUntilNext !== null ? (
-              <div className="mt-2">
-                <p className={cn(
-                  'text-3xl font-bold tabular-nums leading-none',
-                  minutesUntilNext <= 10 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground',
-                )}>
-                  {minutesUntilNext === 0 ? 'now' : `${minutesUntilNext} min`}
-                </p>
-                <p className="mt-2 text-sm font-semibold text-foreground truncate">
-                  {format(parseISO(nextUp.startTime), 'HH:mm')} · {nextUp.client.firstName} {nextUp.client.lastName}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {nextUp.service.name} · with {nextUp.staff.firstName}
-                </p>
-                {minutesUntilNext <= 10 && (
-                  <button
-                    type="button"
-                    onClick={() => navigate('/bookings')}
-                    className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline"
-                  >
-                    Open booking
-                    <ArrowRightIcon className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-muted-foreground">No more appointments today.</p>
-            )}
-          </div>
+          <NextUp
+            todayAppointments={todayAppointments}
+            currentApt={currentApt}
+            now={now}
+            language={language}
+            isBarber={isBarber}
+          />
 
           {/* Top performer (non-barber only) */}
           {!isBarber && topByStaff && (
             <div className="rounded-2xl border border-border bg-card p-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Top performer today
+                {t('overview.topPerformer')}
               </p>
               <div className="mt-3 flex items-center gap-3">
                 <div className={cn(
@@ -487,7 +505,7 @@ export function OverviewPage() {
                     {topByStaff.staff.firstName} {topByStaff.staff.lastName}
                   </p>
                   <p className="text-xs text-muted-foreground tabular-nums">
-                    {topByStaff.bookings} {topByStaff.bookings === 1 ? 'booking' : 'bookings'} · €{topByStaff.revenue.toLocaleString()}
+                    {topByStaff.bookings} {t('overview.bookingsCount')} · {formatPrice(topByStaff.revenue, language)}
                   </p>
                 </div>
               </div>
@@ -498,28 +516,56 @@ export function OverviewPage() {
           <div className="rounded-2xl border border-border bg-card p-5">
             <div className="flex items-baseline justify-between">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                This week
+                {t('overview.thisWeek')}
               </p>
               <p className="text-xs text-muted-foreground tabular-nums">
-                €{weeklyRevenue.toLocaleString()}
+                {formatPrice(weeklyRevenue, language)}
                 {!isBarber && newClientsThisWeek > 0 && (
-                  <span className="ml-1.5">· +{newClientsThisWeek} new {newClientsThisWeek === 1 ? 'client' : 'clients'}</span>
+                  <span className="ml-1.5">
+                    · +{newClientsThisWeek} {t('overview.newClients')}
+                    {newClientsLastWeek > 0 && (
+                      <span className={cn(
+                        'ml-1',
+                        newClientsThisWeek >= newClientsLastWeek ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500',
+                      )}>
+                        {newClientsThisWeek >= newClientsLastWeek ? '↑' : '↓'} {t('overview.vsLastWeek')}
+                      </span>
+                    )}
+                  </span>
                 )}
               </p>
             </div>
             <ResponsiveContainer width="100%" height={60}>
-              <LineChart data={chartData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
+              <LineChart
+                data={chartData.map(d => ({
+                  ...d,
+                  revenueActual: !d.isFuture ? d.revenue : null,
+                  revenueFuture: d.isFuture || d.isToday ? d.revenue : null,
+                }))}
+                margin={{ top: 8, right: 0, left: 0, bottom: 0 }}
+              >
                 <Line
                   type="monotone"
-                  dataKey="revenue"
-                  stroke="var(--primary)"
+                  dataKey="revenueActual"
+                  stroke="#16a34a"
                   strokeWidth={1.75}
                   dot={false}
-                  activeDot={{ r: 3, fill: 'var(--primary)' }}
+                  activeDot={{ r: 3, fill: '#16a34a' }}
+                  connectNulls={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="revenueFuture"
+                  stroke="#94a3b8"
+                  strokeWidth={1}
+                  strokeDasharray="4 3"
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
                 />
                 <Tooltip
                   contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }}
-                  formatter={(v: number) => [`€${v}`, 'Revenue']}
+                  formatter={(v: number, name: string) => [formatPrice(v, language), name === 'revenueActual' ? t('overview.revenue') : t('overview.vsLastWeek')]}
                   labelFormatter={(l) => l}
                   cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
                 />
@@ -537,7 +583,7 @@ export function OverviewPage() {
           you stare at 5× a day. */}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-5">
-          <SectionHeading title="Weekly revenue" subtitle="Completed bookings only" />
+          <SectionHeading title={t('overview.weeklyRevenue')} subtitle={t('overview.completedOnly')} />
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={chartData} margin={{ top: 4, right: 0, left: -8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -551,27 +597,42 @@ export function OverviewPage() {
                   color: 'var(--popover-foreground)',
                   fontSize: '12px',
                 }}
-                formatter={(value: number) => [`€${value}`, 'Revenue']}
+                formatter={(value: number) => [formatPrice(value, language), t('overview.revenue')]}
                 cursor={{ fill: 'var(--accent)', opacity: 0.4 }}
               />
-              <Bar dataKey="revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
+                {chartData.map((entry, i) => (
+                  <Cell
+                    key={i}
+                    fill={entry.isFuture ? 'var(--muted)' : '#16a34a'}
+                    fillOpacity={entry.isToday ? 0.65 : 1}
+                  />
+                ))}
+              </Bar>
+              {chartData.find(d => d.isToday) && (
+                <ReferenceLine
+                  x={chartData.find(d => d.isToday)!.day}
+                  stroke="var(--primary)"
+                  strokeDasharray="3 3"
+                  opacity={0.4}
+                />
+              )}
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-5">
           <SectionHeading
-            title="Appointments this week"
-            subtitle="Completed per day"
+            title={t('overview.appointmentsThisWeek')}
+            subtitle={t('overview.completedPerDay')}
             action={
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                <CheckCircleIcon className="h-3 w-3" />
-                {weekAppointments.length}
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {weekAppointments.length} {t('overview.completed')}
               </span>
             }
           />
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={chartData} margin={{ top: 4, right: 0, left: -8, bottom: 0 }}>
+            <LineChart data={chartData.filter(d => !d.isFuture)} margin={{ top: 4, right: 0, left: -8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
               <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
@@ -583,7 +644,7 @@ export function OverviewPage() {
                   color: 'var(--popover-foreground)',
                   fontSize: '12px',
                 }}
-                formatter={(value: number) => [value, 'Appointments']}
+                formatter={(value: number) => [value, t('overview.appointmentsTooltip')]}
                 cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
               />
               <Line
@@ -594,6 +655,14 @@ export function OverviewPage() {
                 dot={{ fill: '#10b981', r: 3 }}
                 activeDot={{ r: 5, fill: '#10b981' }}
               />
+              {chartData.find(d => d.isToday) && (
+                <ReferenceLine
+                  x={chartData.find(d => d.isToday)!.day}
+                  stroke="var(--primary)"
+                  strokeDasharray="3 3"
+                  opacity={0.4}
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -603,24 +672,11 @@ export function OverviewPage() {
   );
 }
 
-// ─── Hero stat (quiet, uppercase label + big tabular number + optional sub) ──
-function HeroStat({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
-  return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-foreground leading-none">{value}</p>
-      {sub && <p className="mt-1 text-[11px] text-muted-foreground tabular-nums truncate">{sub}</p>}
-    </div>
-  );
+// Deterministic staff dot color — matches STAFF_COLORS order in calendar.tsx
+const STAFF_DOTS = ['bg-blue-500', 'bg-violet-500', 'bg-amber-500', 'bg-emerald-500', 'bg-rose-500', 'bg-cyan-500', 'bg-orange-500'];
+function staffDot(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return STAFF_DOTS[h % STAFF_DOTS.length];
 }
 
-// Legend item under the day-progress rail.
-function RailLegend({ color, label, count }: { color: string; label: string; count: number }) {
-  if (count === 0) return null;
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={`h-1.5 w-1.5 rounded-full ${color}`} />
-      <span>{label} <span className="text-foreground font-semibold">{count}</span></span>
-    </span>
-  );
-}
