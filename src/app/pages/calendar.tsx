@@ -69,7 +69,7 @@ import {
   PlusCircleIcon,
   XMarkIcon,
   EnvelopeIcon,
-  KeyIcon,
+  LockClosedIcon,
   ExclamationTriangleIcon,
   ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
@@ -1231,6 +1231,7 @@ function BlockDialog({
   staffList,
   isOwner,
   defaultDow,
+  appointments = [],
 }: {
   state: NonNullable<{
     mode: 'create'; staffId?: string; dayOfWeek?: DayOfWeek;
@@ -1243,6 +1244,8 @@ function BlockDialog({
    *  the record under the cursor. */
   onSwitchToBooking?: (carry: { staffId?: string }) => void;
   staffList: { id: string; firstName: string; lastName: string; isActive: boolean; avatarUrl?: string }[];
+  /** Pass allAppointments so the dialog can warn about scheduling conflicts. */
+  appointments?: Appointment[];
   isOwner: boolean;
   defaultDow: DayOfWeek;
 }) {
@@ -1450,6 +1453,28 @@ function BlockDialog({
   const breakInvalid = kind === 'break' && endMin <= startMin;
   const busy = upsertMut.isPending || removeMut.isPending;
 
+  // Conflict check: find appointments for the selected staff member whose time
+  // overlaps with this block. Only meaningful for 'never' (one specific date)
+  // and 'weekly' on the selected day-of-week(s). Returns conflicting counts.
+  const conflictingApts = useMemo(() => {
+    if (kind !== 'break' || appointments.length === 0) return [];
+    const checkStaffIds = staffId === 'all'
+      ? staffList.filter(s => s.isActive).map(s => s.id)
+      : [staffId];
+    return appointments.filter(apt => {
+      if (!checkStaffIds.includes(apt.staffId)) return false;
+      const aptStart = parseISO(apt.startTime);
+      // Only check the relevant day-of-week
+      const aptDow = format(aptStart, 'EEEE').toLowerCase() as DayOfWeek;
+      if (!targetDays.includes(aptDow)) return false;
+      // Time overlap check (HH:mm strings)
+      const aptStartMin = aptStart.getHours() * 60 + aptStart.getMinutes();
+      const aptEnd = parseISO(apt.endTime);
+      const aptEndMin = aptEnd.getHours() * 60 + aptEnd.getMinutes();
+      return aptStartMin < endMin && aptEndMin > startMin;
+    });
+  }, [appointments, staffId, staffList, kind, targetDays, startMin, endMin]);
+
   const allTypes: BlockType[] = ['lunch', 'dinner', 'rest', 'custom', 'day-off', 'vacation', 'sick', 'training'];
   const visibleTypes = allTypes.filter(tp => isOwner || !OWNER_ONLY_TYPES.includes(tp));
 
@@ -1538,7 +1563,12 @@ function BlockDialog({
                   <Icon className="h-3.5 w-3.5" />
                   {t(BLOCK_TKEY[tp])}
                   {owner && !active && (
-                    <KeyIcon className="ml-0.5 h-3 w-3 text-amber-500/70" aria-label="Owner only" />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <LockClosedIcon className="ml-0.5 h-3 w-3 text-amber-500/70" aria-label="Manager only" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Manager only</TooltipContent>
+                    </Tooltip>
                   )}
                 </button>
               );
@@ -1891,6 +1921,18 @@ function BlockDialog({
             })()}
           </p>
         </div>
+
+        {/* Conflict warning — shown when this block time overlaps with scheduled
+            appointments for the selected staff on the selected day(s). */}
+        {conflictingApts.length > 0 && (
+          <div className="mx-7 mb-4 flex items-start gap-2.5 rounded-lg border border-amber-300/60 bg-amber-50/80 dark:bg-amber-950/25 dark:border-amber-500/30 px-3.5 py-2.5">
+            <ExclamationTriangleIcon className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-px shrink-0" />
+            <p className="text-[12.5px] text-amber-800 dark:text-amber-300">
+              <span className="font-semibold">{conflictingApts.length} appointment{conflictingApts.length > 1 ? 's' : ''}</span>
+              {' '}already scheduled during this time. The block will be saved but the appointments remain.
+            </p>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="px-7 py-5 flex items-center gap-3 border-t border-border">
@@ -2451,8 +2493,17 @@ function TimePickerField({
     const newMin = ((totalMin % 60) + 60) % 60;
     onChange(`${String(newHr).padStart(2, '0')}:${String(newMin).padStart(2, '0')}`);
   };
-  const snapTopOfHour = () => {
-    onChange(`${String(hour24).padStart(2, '0')}:00`);
+  // Snap to the next granularity-aligned slot strictly after the current clock
+  // time — useful when the operator opens the picker mid-schedule and wants the
+  // first available future slot without doing the arithmetic manually.
+  const snapNextSlot = () => {
+    const now = new Date();
+    const step = Math.max(granularity, 5);
+    const totalNowMin = now.getHours() * 60 + now.getMinutes();
+    const nextMin = Math.ceil((totalNowMin + 1) / step) * step;
+    const newHr = Math.floor(nextMin / 60) % 24;
+    const newMm = nextMin % 60;
+    onChange(`${String(newHr).padStart(2, '0')}:${String(newMm).padStart(2, '0')}`);
   };
 
   const shortcuts = [
@@ -2460,7 +2511,7 @@ function TimePickerField({
     { key: 'p15', label: '+15', aria: 'Add 15 minutes', onClick: () => bumpBy(15) },
     { key: 'p30', label: '+30', aria: 'Add 30 minutes', onClick: () => bumpBy(30) },
     { key: 'p60', label: '+1h', aria: 'Add 1 hour', onClick: () => bumpBy(60) },
-    { key: 'top', label: ':00', aria: 'Snap to top of hour', onClick: snapTopOfHour },
+    { key: 'next', label: 'Next', aria: 'Next available slot', onClick: snapNextSlot },
   ];
 
   // Hero digit button — keeps AnimatePresence flip on value change but
@@ -3342,8 +3393,16 @@ function ServicePickerSheet({
   t: (key: TranslationKey) => string;
 }) {
   const [search, setSearch] = useState('');
-  // Reset search every time the sheet opens — operators expect a clean state.
-  useEffect(() => { if (open) setSearch(''); }, [open]);
+  // pendingIds tracks services staged for addition in this picker session.
+  // Initialized from selectedIds so already-added items render as committed.
+  const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set(selectedIds));
+  // Reset search + pending on every open so operators start clean.
+  useEffect(() => {
+    if (open) {
+      setSearch('');
+      setPendingIds(new Set(selectedIds));
+    }
+  }, [open, selectedIds]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -3483,11 +3542,12 @@ function ServicePickerSheet({
                   {/* Hairline-divided rows with stagger entrance */}
                   <div className="border-y border-border divide-y divide-border">
                     {items.map(svc => {
-                      const selected = selectedIds.includes(svc.id);
+                      // committed = already added to booking (from parent selectedIds)
+                      // pending = staged in this picker session (not yet confirmed)
+                      const committed = selectedIds.includes(svc.id);
+                      const pending = pendingIds.has(svc.id) && !committed;
                       const i = rowIdx++;
                       const delay = Math.min(i * 0.025, 0.4);
-                      // Service initial for the thumbnail-tile fallback. Display
-                      // up to 2 chars (Hi-Color → "HC", Beard Trim → "BT").
                       const initials = svc.name
                         .split(/\s+/)
                         .slice(0, 2)
@@ -3498,23 +3558,30 @@ function ServicePickerSheet({
                         <motion.button
                           key={svc.id}
                           type="button"
-                          onClick={() => { if (!selected) { onSelect(svc.id); onClose(); } }}
-                          disabled={selected}
+                          onClick={() => {
+                            if (committed) return;
+                            setPendingIds(prev => {
+                              const next = new Set(prev);
+                              if (next.has(svc.id)) next.delete(svc.id); else next.add(svc.id);
+                              return next;
+                            });
+                          }}
+                          disabled={committed}
                           initial={{ opacity: 0, y: 6 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay, duration: 0.28, ease: MOTION_EASE }}
-                          whileHover={selected ? undefined : { scale: 1.005 }}
-                          whileTap={selected ? undefined : { scale: 0.997 }}
+                          whileHover={committed ? undefined : { scale: 1.005 }}
+                          whileTap={committed ? undefined : { scale: 0.997 }}
                           className={cn(
                             'group w-full flex items-center gap-4 px-7 py-4 text-left transition-colors',
-                            selected
+                            committed
                               ? 'cursor-not-allowed bg-emerald-50/40 dark:bg-emerald-950/20'
-                              : 'hover:bg-accent/40 hover:shadow-[0_2px_8px_-4px_rgba(0,0,0,0.08)] focus-visible:outline-none focus-visible:bg-accent/40',
+                              : pending
+                                ? 'bg-foreground/[0.03] hover:bg-foreground/[0.05] focus-visible:outline-none'
+                                : 'hover:bg-accent/40 hover:shadow-[0_2px_8px_-4px_rgba(0,0,0,0.08)] focus-visible:outline-none focus-visible:bg-accent/40',
                           )}
                         >
-                          {/* Service thumbnail — image if available, else
-                              category-gradient tile with initials. Square 40px
-                              with rounded corners. Visual anchor on the left. */}
+                          {/* Service thumbnail */}
                           {svc.imageUrl ? (
                             <div className="h-10 w-10 shrink-0 rounded-md overflow-hidden bg-muted">
                               <img src={svc.imageUrl} alt="" className="h-full w-full object-cover" />
@@ -3527,28 +3594,28 @@ function ServicePickerSheet({
                               {initials}
                             </div>
                           )}
-                          {/* Name + description — bigger hierarchy than v1 */}
+                          {/* Name + description */}
                           <div className="min-w-0 flex-1">
                             <p className={cn(
                               'text-[15px] font-semibold tracking-tight truncate transition-transform duration-200',
-                              selected ? 'text-muted-foreground' : 'text-foreground group-hover:translate-x-0.5',
+                              committed ? 'text-muted-foreground' : 'text-foreground group-hover:translate-x-0.5',
                             )}>
                               {svc.name}
                             </p>
                             {svc.description && svc.description.trim() && (
                               <p className={cn(
                                 'mt-0.5 text-[12.5px] truncate',
-                                selected ? 'text-muted-foreground/60' : 'text-muted-foreground/85',
+                                committed ? 'text-muted-foreground/60' : 'text-muted-foreground/85',
                               )}>
                                 {svc.description}
                               </p>
                             )}
                           </div>
-                          {/* Price + duration — stacked vertically, tabular */}
+                          {/* Price + duration */}
                           <div className="shrink-0 text-right tabular-nums">
                             <p className={cn(
                               'text-[15px] font-bold leading-none',
-                              selected ? 'text-muted-foreground' : 'text-foreground',
+                              committed ? 'text-muted-foreground' : 'text-foreground',
                             )}>
                               €{svc.price}
                             </p>
@@ -3556,9 +3623,8 @@ function ServicePickerSheet({
                               {svc.duration} min
                             </p>
                           </div>
-                          {/* Right indicator — radio default, "Added" pill on
-                              selected, dark circle with arrow on hover. */}
-                          {selected ? (
+                          {/* Right indicator — checkbox square (not radio circle) */}
+                          {committed ? (
                             <motion.span
                               initial={{ scale: 0.6, opacity: 0 }}
                               animate={{ scale: 1, opacity: 1 }}
@@ -3569,12 +3635,14 @@ function ServicePickerSheet({
                               Added
                             </motion.span>
                           ) : (
-                            <>
-                              <span className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full border-[1.5px] border-muted-foreground/25 group-hover:hidden transition-all" aria-hidden />
-                              <span className="hidden shrink-0 group-hover:inline-flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background shadow-sm">
-                                <ArrowRightIcon className="h-3 w-3" strokeWidth={2.5} />
-                              </span>
-                            </>
+                            <span className={cn(
+                              'shrink-0 inline-flex h-5 w-5 items-center justify-center rounded-[4px] border-[1.5px] transition-all',
+                              pending
+                                ? 'border-foreground bg-foreground text-background'
+                                : 'border-muted-foreground/30 bg-transparent group-hover:border-foreground/50',
+                            )} aria-hidden>
+                              {pending && <CheckIcon className="h-3 w-3" strokeWidth={3} />}
+                            </span>
                           )}
                         </motion.button>
                       );
@@ -3588,27 +3656,52 @@ function ServicePickerSheet({
           <div className="h-5" />
         </div>
 
-        {/* ── FOOTER ── ledger summary: services count + total time. Operators
-            planning a sequence appointment see the sum of available service
-            durations on the current filter. Cancel is a quiet text-link. */}
-        {grouped.length > 0 && (
-          <div className="flex items-center justify-between gap-3 px-7 py-3.5 border-t border-border bg-card/50">
-            <p className="text-[12px] tabular-nums text-muted-foreground">
-              <span className="font-bold text-foreground">{totalCount}</span>
-              <span className="mx-1">{totalCount === 1 ? 'service' : 'services'}</span>
-              <span className="text-muted-foreground/40">·</span>
-              <span className="ml-1 font-bold text-foreground">{totalMin}m</span>
-              <span className="ml-1">total</span>
-            </p>
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {t('common.cancel')}
-            </button>
-          </div>
-        )}
+        {/* ── FOOTER ── "Add (N)" confirm + Cancel. The Add button stays disabled
+            until at least one new service is staged so operators can't
+            accidentally commit nothing. Pending count badge is the visual cue. */}
+        <div className="flex items-center gap-3 px-7 py-3.5 border-t border-border bg-card/50">
+          {(() => {
+            const newlyStaged = [...pendingIds].filter(id => !selectedIds.includes(id));
+            const n = newlyStaged.length;
+            return (
+              <>
+                <p className="text-[12px] tabular-nums text-muted-foreground mr-auto">
+                  {grouped.length > 0 && (
+                    <>
+                      <span className="font-bold text-foreground">{totalCount}</span>
+                      <span className="mx-1">{totalCount === 1 ? 'service' : 'services'}</span>
+                      <span className="text-muted-foreground/40">·</span>
+                      <span className="ml-1 font-bold text-foreground">{totalMin}m</span>
+                    </>
+                  )}
+                </p>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  type="button"
+                  disabled={n === 0}
+                  onClick={() => {
+                    newlyStaged.forEach(id => onSelect(id));
+                    onClose();
+                  }}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md px-3 h-8 text-[13px] font-semibold transition-colors',
+                    n > 0
+                      ? 'bg-foreground text-background hover:bg-foreground/90'
+                      : 'bg-muted text-muted-foreground cursor-not-allowed',
+                  )}
+                >
+                  Add{n > 0 && <span className="inline-flex items-center justify-center h-4 min-w-[1rem] rounded-full bg-background/20 px-1 text-[11px] tabular-nums font-bold">{n}</span>}
+                </button>
+              </>
+            );
+          })()}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -4367,6 +4460,21 @@ export function CalendarPage() {
     setRecurrenceWeeks(1);
     setRecurrenceCount(4);
   }, []);
+
+  // Opens the New Appointment modal from the header/FAB (no slot context).
+  // Seeds date = today, time = next granularity-aligned slot from now so
+  // the operator never sees 12:00 AM as the default.
+  const openCreateFromHeader = useCallback(() => {
+    closeCreate();
+    const now = new Date();
+    const step = 15;
+    const mm = Math.ceil(now.getMinutes() / step) * step;
+    const carryHr = mm >= 60 ? (now.getHours() + 1) % 24 : now.getHours();
+    const adjMm = mm >= 60 ? 0 : mm;
+    setCreateDate(format(now, 'yyyy-MM-dd'));
+    setCreateTime(`${String(carryHr).padStart(2, '0')}:${String(adjMm).padStart(2, '0')}`);
+    setIsCreateOpen(true);
+  }, [closeCreate]);
 
   const openSlot = (hour: number, minute: number, staffId: string) => {
     // Rebook intercept — if the user previously hit "Rebook" on an existing
@@ -5849,7 +5957,7 @@ export function CalendarPage() {
             visible at sm+; Walk-in + Block ride along inside the dropdown so
             the operator bar isn't cluttered at iPad widths. */}
         <div className="flex items-center gap-2 shrink-0">
-          <Button size="sm" onClick={() => { closeCreate(); setIsCreateOpen(true); }} className="hidden sm:inline-flex">
+          <Button size="sm" onClick={openCreateFromHeader} className="hidden sm:inline-flex">
             <PlusIcon className="mr-1 h-4 w-4" />
             {t('calendar.newAppointment')}
           </Button>
@@ -5864,7 +5972,7 @@ export function CalendarPage() {
               <PopoverContent align="end" className="w-[260px] p-1.5">
                 <button
                   type="button"
-                  onClick={() => { closeCreate(); setIsCreateOpen(true); }}
+                  onClick={openCreateFromHeader}
                   className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors sm:hidden"
                 >
                   <CalendarDaysIcon className="h-4 w-4 text-muted-foreground" />
@@ -6279,7 +6387,7 @@ export function CalendarPage() {
               staffColors={STAFF_COLORS}
               statusMap={statusMap}
               onSelect={setDetailApt}
-              onCreate={() => { closeCreate(); setIsCreateOpen(true); }}
+              onCreate={openCreateFromHeader}
               onQuickAction={(aptId, action) => {
                 const status = action === 'complete' ? 'completed' : action === 'no_show' ? 'no_show' : 'cancelled';
                 updateStatusMutation.mutate({ id: aptId, status });
@@ -7126,6 +7234,7 @@ export function CalendarPage() {
           staffList={allStaff}
           isOwner={isOwner}
           defaultDow={currentDow}
+          appointments={allAppointments}
         />
       )}
 
@@ -7214,7 +7323,7 @@ export function CalendarPage() {
                           cells, and "Now" shortcut. Honors the operator's
                           time-format and granularity settings. */}
             <div>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="mb-2 text-[11px] font-semibold text-muted-foreground tracking-wide">
                 {t('calendar.sectionWhen')}
               </p>
               <div className="grid grid-cols-2 gap-3">
@@ -7251,11 +7360,14 @@ export function CalendarPage() {
                   ariaLabel={t('calendar.sectionWhen')}
                 />
               </div>
+              <p className="mt-1.5 text-[10px] text-muted-foreground/50">
+                {Intl.DateTimeFormat().resolvedOptions().timeZone}
+              </p>
             </div>
 
             {/* ─── WHO section ───────────────────────────── */}
             <div className="border-t border-border pt-5">
-              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.sectionWho')}</p>
+              <p className="mb-3 text-[11px] font-semibold text-muted-foreground tracking-wide">{t('calendar.sectionWho')}</p>
 
               <ClientAutocomplete
                 t={t}
@@ -7304,7 +7416,7 @@ export function CalendarPage() {
               {/* Barber as a horizontal avatar chip strip — visual, fast to
                   scan, replaces the cramped dropdown. Wraps on narrow widths. */}
               <div className="mt-4">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">{t('calendar.barber')}</p>
+                <p className="mb-2 text-[11px] font-semibold text-muted-foreground/70 tracking-wide">{t('calendar.barber')}</p>
                 <div className="flex flex-wrap gap-2">
                   {activeStaff.map((m, i) => {
                     const c = getStaffColor(i);
@@ -7660,8 +7772,8 @@ export function CalendarPage() {
 
             {/* ─── NOTES — optional ─────────────────────── */}
             <div className="border-t border-border pt-5">
-              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                {t('calendar.sectionNotes')} <span className="text-muted-foreground/50 normal-case tracking-normal">· {t('calendar.notesOptional')}</span>
+              <p className="mb-3 text-[11px] font-semibold text-muted-foreground tracking-wide">
+                {t('calendar.sectionNotes')} <span className="text-muted-foreground/50 font-normal">· {t('calendar.notesOptional')}</span>
               </p>
               <Textarea
                 value={formData.notes}
@@ -7915,7 +8027,7 @@ export function CalendarPage() {
           <motion.button
             key="fab-new-booking"
             type="button"
-            onClick={() => { closeCreate(); setIsCreateOpen(true); }}
+            onClick={openCreateFromHeader}
             initial={reduceMotion ? false : { opacity: 0, scale: 0.6, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.6, y: 12 }}

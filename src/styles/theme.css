@@ -16,9 +16,10 @@
   --canvas: #FAFAFA;                /* zinc-50 */
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  /* Primary = brand blue so active nav, focus rings, CTAs actually read as accent.
-     Previously #030213 (near-black) which made light mode feel like a greyscale print. */
-  --primary: oklch(0.58 0.22 260);           /* ~ tailwind blue-600 */
+  /* Primary = near-black so CTAs and active states match the Vercel/Linear
+     aesthetic. Ring + sidebar stay blue to keep them visually distinct from
+     primary buttons; the button-blue era is over. */
+  --primary: oklch(0.145 0 0);              /* zinc-900 near-black */
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0.0058 264.53);
   --secondary-foreground: oklch(0.145 0 0);
@@ -42,7 +43,7 @@
   --switch-background: #cbced4;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.58 0.22 260);
+  --ring: oklch(0.145 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -51,7 +52,7 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.58 0.22 260);
+  --sidebar-primary: oklch(0.145 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
