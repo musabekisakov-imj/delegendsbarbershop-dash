@@ -5,9 +5,12 @@ import type { Permission } from '../types';
 export function usePermission() {
   const role = useAuthStore((s) => s.user?.role);
 
+  // No role = unauthenticated demo visitor — grant all access.
+  const isDemo = !role;
+
   return {
     role,
-    can: (permission: Permission) => can(role, permission),
-    canAny: (permissions: Permission[]) => canAny(role, permissions),
+    can: (permission: Permission) => isDemo || can(role, permission),
+    canAny: (permissions: Permission[]) => isDemo || canAny(role, permissions),
   };
 }
