@@ -86,6 +86,7 @@ export function NewBookingPage() {
   const [customTime, setCustomTime] = useState('');
 
   const [conflict, setConflict] = useState<{ conflicts: ReturnType<typeof findConflicts>; pending: Omit<Appointment, 'id' | 'createdAt'> } | null>(null);
+  const [confirmed, setConfirmed] = useState<{ clientName: string; serviceName: string; staffName: string; startTime: Date } | null>(null);
 
   // Book-again URL params pre-select first 3 steps → jump to date/time
   useEffect(() => {
@@ -121,7 +122,10 @@ export function NewBookingPage() {
     enabled: !!form.staffId,
   });
 
-  const activeStaff = useMemo(() => staff.filter(s => s.isActive), [staff]);
+  const activeStaff = useMemo(
+    () => staff.filter(s => s.isActive && (s.role === 'barber' || s.role === 'owner')),
+    [staff],
+  );
   const selectedClient = clients.find(c => c.id === form.clientId);
   const selectedService = services.find(s => s.id === form.serviceId);
   const selectedStaff = staff.find(s => s.id === form.staffId);
@@ -156,8 +160,13 @@ export function NewBookingPage() {
       appointmentsApi.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['appointments'] });
-      toast.success(t('toast.bookingCreated'));
-      navigate('/bookings');
+      const start = resolveStart();
+      setConfirmed({
+        clientName: selectedClient ? `${selectedClient.firstName} ${selectedClient.lastName}` : '',
+        serviceName: selectedService?.name ?? '',
+        staffName: selectedStaff ? `${selectedStaff.firstName} ${selectedStaff.lastName}` : '',
+        startTime: start ?? new Date(),
+      });
     },
     onError: (err: Error & { code?: string }) => {
       if (err.code === 'BOOKING_CONFLICT') toast.error(t('toast.bookingConflict'));
@@ -255,6 +264,53 @@ export function NewBookingPage() {
   }, [clients, clientSearch]);
 
   // ─── Render ─────────────────────────────────
+  if (confirmed) {
+    return (
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: MOTION_EASE }}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-background px-6"
+        >
+          <motion.div
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 22, delay: 0.1 }}
+            className="flex h-24 w-24 items-center justify-center rounded-full bg-emerald-500/10"
+          >
+            <CheckCircleIcon className="h-14 w-14 text-emerald-500" />
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: MOTION_EASE, delay: 0.22 }}
+            className="text-center space-y-2"
+          >
+            <h1 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">Booking confirmed!</h1>
+            <p className="text-muted-foreground text-sm">
+              {confirmed.serviceName} with {confirmed.staffName} · {format(confirmed.startTime, 'EEE, MMM d · HH:mm')}
+            </p>
+            <p className="text-muted-foreground/70 text-xs">Client: {confirmed.clientName}</p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: MOTION_EASE, delay: 0.38 }}
+            className="flex gap-3"
+          >
+            <Button variant="outline" onClick={() => { setConfirmed(null); navigate('/bookings/new'); }}>
+              + New booking
+            </Button>
+            <Button onClick={() => navigate('/bookings')}>
+              View bookings
+            </Button>
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       {/* ─── Editorial hero ──────────────────────────
@@ -334,46 +390,7 @@ export function NewBookingPage() {
                 </Button>
               </div>
 
-              {isCreatingClient ? (
-                <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-primary">Adding new client</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <Label className="text-xs font-medium text-muted-foreground">First name *</Label>
-                      <Input className="mt-1" value={newClient.firstName} onChange={(e) => setNewClient({ ...newClient, firstName: e.target.value })} />
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium text-muted-foreground">Last name</Label>
-                      <Input className="mt-1" value={newClient.lastName} onChange={(e) => setNewClient({ ...newClient, lastName: e.target.value })} />
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium text-muted-foreground">Phone *</Label>
-                      <Input className="mt-1" value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} placeholder="+370 600 12345" />
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium text-muted-foreground">Email</Label>
-                      <Input type="email" className="mt-1" value={newClient.email} onChange={(e) => setNewClient({ ...newClient, email: e.target.value })} />
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-2 pt-1">
-                    <Button variant="ghost" onClick={() => setIsCreatingClient(false)}>Cancel</Button>
-                    <Button
-                      loading={createClientMut.isPending}
-                      disabled={!newClient.firstName.trim() || !newClient.phone.trim()}
-                      onClick={() => createClientMut.mutate({
-                        firstName: newClient.firstName.trim(),
-                        lastName:  newClient.lastName.trim(),
-                        phone:     newClient.phone.trim(),
-                        email:     newClient.email.trim(),
-                        notes:     '',
-                        officeIds: [officeId],
-                      })}
-                    >
-                      Create & continue
-                    </Button>
-                  </div>
-                </div>
-              ) : clientsFiltered.length === 0 ? (
+              {clientsFiltered.length === 0 && !isCreatingClient ? (
                 <EmptyState
                   variant="plain"
                   icon={UserIcon}
@@ -792,6 +809,51 @@ export function NewBookingPage() {
           </div>
         </aside>
       </div>
+
+      {/* New client dialog */}
+      <Dialog open={isCreatingClient} onOpenChange={(o) => !o && setIsCreatingClient(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add new client</DialogTitle>
+            <DialogDescription>Fill in the details — we'll save them for future bookings.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground">First name *</Label>
+              <Input className="mt-1" value={newClient.firstName} onChange={(e) => setNewClient({ ...newClient, firstName: e.target.value })} autoFocus />
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground">Last name</Label>
+              <Input className="mt-1" value={newClient.lastName} onChange={(e) => setNewClient({ ...newClient, lastName: e.target.value })} />
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground">Phone *</Label>
+              <Input className="mt-1" value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} placeholder="+370 600 12345" />
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground">Email</Label>
+              <Input type="email" className="mt-1" value={newClient.email} onChange={(e) => setNewClient({ ...newClient, email: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsCreatingClient(false)}>Cancel</Button>
+            <Button
+              loading={createClientMut.isPending}
+              disabled={!newClient.firstName.trim() || !newClient.phone.trim()}
+              onClick={() => createClientMut.mutate({
+                firstName: newClient.firstName.trim(),
+                lastName:  newClient.lastName.trim(),
+                phone:     newClient.phone.trim(),
+                email:     newClient.email.trim(),
+                notes:     '',
+                officeIds: [officeId],
+              })}
+            >
+              Create & continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Conflict dialog */}
       <Dialog open={!!conflict} onOpenChange={(open) => !open && setConflict(null)}>
