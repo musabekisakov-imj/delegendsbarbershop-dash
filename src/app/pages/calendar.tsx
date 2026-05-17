@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from 'motion/react';
 import { useNavigate } from 'react-router';
-import { appointmentsApi, clientsApi, staffApi, servicesApi, shiftsApi, breaksApi, absencesApi, shiftOverridesApi, categoriesApi, accountsApi } from '../lib/api';
+import { appointmentsApi, clientsApi, staffApi, servicesApi, shiftsApi, breaksApi, absencesApi, shiftOverridesApi, categoriesApi, accountsApi, tenantApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
 import { useAuthStore } from '../store/auth-store';
 import { findConflicts, findBreakConflicts, type BreakConflict } from '../lib/booking-validation';
@@ -72,6 +72,8 @@ import {
   LockClosedIcon,
   ExclamationTriangleIcon,
   ExclamationCircleIcon,
+  SparklesIcon,
+  SunIcon,
 } from '@heroicons/react/24/outline';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 import { MOTION_EASE, MOTION_DUR } from '../lib/tokens';
@@ -82,10 +84,12 @@ import { assignLanes } from '../lib/calendar-lanes';
 import { MiniCalendar } from '../components/calendar/mini-calendar';
 import { DayAgenda } from '../components/calendar/day-agenda';
 import { WeekView } from '../components/calendar/week-view';
+import { AppointmentWarningPin } from '../components/calendar/appointment-warning-pin';
+import { getAppointmentWarning } from '../lib/appointment-warning';
 import { StaffCard } from '../components/calendar/StaffCard';
 import type { Appointment, AppointmentStatus, AppointmentWithDetails, Service, Category, Shift, ShiftOverride, Break, Absence, AbsenceReason, DayOfWeek, Client, Language } from '../types';
 import type { TranslationKey } from '../i18n';
-import { AVATAR_GRADIENTS, ELEVATION, hashToIndex, ROLE_CHIP, ROLE_DOT, ROLE_LABEL, STATUS_DOT, STATUS_LABEL, STATUS_PILL, STATUS_STRIPE } from '../lib/tokens';
+import { AVATAR_GRADIENTS, ELEVATION, hashToIndex, ROLE_CHIP, ROLE_DOT, ROLE_LABEL, STATUS_DOT, STATUS_LABEL, STATUS_PILL, STATUS_STRIPE, STAFF_COLORS, getStaffColor, CLIENT_AVATAR_COLORS, getClientAvatarColor } from '../lib/tokens';
 
 // ─── Grid constants ─────────────────────────────────────
 // MINUTES_PER_SLOT is the minutes represented by SLOT_HEIGHT pixels —
@@ -159,26 +163,7 @@ function pluralKey(lang: Language, n: number): 'One' | 'Few' | 'Many' {
   return n === 1 ? 'One' : 'Many';
 }
 
-// ─── Per-staff accent colors ─────────────────────────────
-// Tile backgrounds collapse to neutral `bg-card`; the staff signature lives
-// in the 4 px left rail (`border`) + accent dot. Avatar fallback (`light` +
-// `label`) and ring-halo (`ring`) keep their tinted variants because those
-// surfaces already read as "this is the staff member's chip".
-//
-// Light-theme stripes use the -600 shades (saturated, deep) so they actually
-// read against #FFFFFF cards. -500 was too bright/desaturated for light bg.
-// Dark theme keeps -500 — on dark canvas, -600 is too muddy.
-const STAFF_COLORS = [
-  { bg: 'bg-card',  border: 'border-l-blue-600 dark:border-l-blue-500',     text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-blue-500',    light: 'bg-blue-100 dark:bg-blue-900/70',       label: 'text-blue-700 dark:text-blue-200',       ring: 'ring-blue-400'    },
-  { bg: 'bg-card',  border: 'border-l-violet-600 dark:border-l-violet-500', text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-violet-500',  light: 'bg-violet-100 dark:bg-violet-900/70',   label: 'text-violet-700 dark:text-violet-200',   ring: 'ring-violet-400'  },
-  { bg: 'bg-card',  border: 'border-l-amber-600 dark:border-l-amber-500',   text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-amber-500',   light: 'bg-amber-100 dark:bg-amber-900/70',     label: 'text-amber-700 dark:text-amber-200',     ring: 'ring-amber-400'   },
-  { bg: 'bg-card',  border: 'border-l-green-600 dark:border-l-emerald-500', text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-emerald-500', light: 'bg-emerald-100 dark:bg-emerald-900/70', label: 'text-emerald-700 dark:text-emerald-200', ring: 'ring-emerald-400' },
-  { bg: 'bg-card',  border: 'border-l-rose-600 dark:border-l-rose-500',     text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-rose-500',    light: 'bg-rose-100 dark:bg-rose-900/70',       label: 'text-rose-700 dark:text-rose-200',       ring: 'ring-rose-400'    },
-  { bg: 'bg-card',  border: 'border-l-cyan-600 dark:border-l-cyan-500',     text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-cyan-500',    light: 'bg-cyan-100 dark:bg-cyan-900/70',       label: 'text-cyan-700 dark:text-cyan-200',       ring: 'ring-cyan-400'    },
-  { bg: 'bg-card',  border: 'border-l-orange-600 dark:border-l-orange-500', text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-orange-500',  light: 'bg-orange-100 dark:bg-orange-900/70',   label: 'text-orange-700 dark:text-orange-200',   ring: 'ring-orange-400'  },
-];
-
-const getStaffColor = (idx: number) => STAFF_COLORS[idx % STAFF_COLORS.length];
+// STAFF_COLORS, getStaffColor, CLIENT_AVATAR_COLORS promoted to lib/tokens.ts
 
 // ─── Helpers ────────────────────────────────────────────
 function parseTimeToMinutes(time: string): number {
@@ -234,11 +219,11 @@ function ForkKnifeIcon({ className }: { className?: string }) {
 const BLOCK_ICON: Record<BlockType, typeof CakeIcon> = {
   lunch:    ForkKnifeIcon as unknown as typeof CakeIcon,
   dinner:   MoonIcon,
-  rest:     HeartIcon,
-  custom:   PencilSquareIcon,
+  rest:     SparklesIcon,
+  custom:   PlusIcon,
   'day-off': NoSymbolIcon,
-  vacation: PaperAirplaneIcon,
-  sick:     XCircleIcon,
+  vacation: SunIcon,
+  sick:     HeartIcon,
   training: AcademicCapIcon,
 };
 
@@ -286,6 +271,7 @@ function AppointmentDetailModal({
   canEditFully,
   staffList,
   serviceList,
+  categories,
   isUpdating,
   isDeleting,
   creatorName,
@@ -303,8 +289,9 @@ function AppointmentDetailModal({
   onCreatePending: (clientId: string, slots: PendingSlot[]) => Promise<void>;
   onRebook: (apt: AppointmentWithDetails) => void;
   canEditFully: boolean;
-  staffList: { id: string; firstName: string; lastName: string; isActive: boolean }[];
-  serviceList: { id: string; name: string; price: number; duration: number }[];
+  staffList: { id: string; firstName: string; lastName: string; isActive: boolean; avatarUrl?: string }[];
+  serviceList: Service[];
+  categories: Category[];
   isUpdating: boolean;
   isDeleting: boolean;
   /** Resolved display name of the operator who created this booking. Threaded
@@ -364,6 +351,9 @@ function AppointmentDetailModal({
   // sees a dedicated "Are you sure?" dialog with the appointment context
   // and a destructive Confirm button. Mirrors the competitor's pattern.
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [servicePickerOpen, setServicePickerOpen] = useState(false);
+  // null = closed; tempId string = that slot's picker is open
+  const [slotPickerTempId, setSlotPickerTempId] = useState<string | null>(null);
 
   // Compute "next slot" defaults from the end of the most recent block —
   // either the last pending slot, or the primary appointment.
@@ -512,8 +502,8 @@ function AppointmentDetailModal({
   const selectedStaff = staffList.find(s => s.id === form.staffId);
   const heroPrice = selectedService?.price ?? apt.service.price;
 
-  // Avatar — gradient + initials for the client (matches column header style).
-  const clientGradient = AVATAR_GRADIENTS[hashToIndex(apt.clientId, AVATAR_GRADIENTS.length)];
+  // Avatar — semantic palette for the client (separate from staff colors).
+  const clientAvatarColor = getClientAvatarColor(apt.clientId);
   const clientInitials = `${apt.client.firstName[0] ?? ''}${apt.client.lastName[0] ?? ''}`.toUpperCase();
 
   // Stagger entrance — sections fade up sequentially. Reduced motion bypasses.
@@ -531,16 +521,12 @@ function AppointmentDetailModal({
     visible: { opacity: 1, y: 0, transition: { duration: 0.32, ease: MOTION_EASE } },
   };
 
-  // Status-colored "spine" — runs full height on the LEFT edge of the modal
-  // as a 4px accent bar. Same hue as STATUS_DOT but at full saturation. The
-  // dark hero stays solid bg-foreground; the spine only shows on the light
-  // body below the hero (where it reads as a vertical highlight).
-  const spineCls =
-    apt.status === 'confirmed' ? 'bg-emerald-500'
-      : apt.status === 'completed' ? 'bg-foreground'
-      : apt.status === 'cancelled' ? 'bg-rose-500'
-      : apt.status === 'no-show' ? 'bg-amber-500'
-      : 'bg-blue-500';
+  // Staff-colored "spine" — runs full height on the LEFT edge of the modal
+  // as a 4px accent bar. Uses the assigned staff member's color for instant
+  // identity at a glance.
+  const staffColorIdx = staffColorMap.get(apt.staffId) ?? 0;
+  const staffColor = getStaffColor(staffColorIdx);
+  const spineCls = staffColor.dot;
 
   return (
     <Dialog open onOpenChange={() => onClose()}>
@@ -564,15 +550,39 @@ function AppointmentDetailModal({
               dark/white split that previously read as two stitched-together
               cards. */}
           <motion.div variants={itemVariants} className="relative bg-card text-foreground pl-7 pr-5 pt-6 pb-5 border-b border-border">
-            {/* Custom close — theme-aware contrast */}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="absolute top-3 right-3 inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-            >
-              <XMarkIcon className="h-4 w-4" />
-            </button>
+            {/* Header buttons — close + "..." (rebook) */}
+            <div className="absolute top-3 right-3 flex items-center gap-1">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="More actions"
+                    className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                  >
+                    <EllipsisHorizontalIcon className="h-4 w-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-40 p-1">
+                  <button
+                    type="button"
+                    onClick={() => onRebook(apt)}
+                    disabled={busy}
+                    className="w-full inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                  >
+                    <ArrowPathIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                    {t('calendar.rebook')}
+                  </button>
+                </PopoverContent>
+              </Popover>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
 
             <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground pr-10">
               {apt.client.firstName} {apt.client.lastName}
@@ -607,7 +617,7 @@ function AppointmentDetailModal({
                 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]',
                 paymentStatus === 'paid' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                   : paymentStatus === 'voided' ? 'bg-muted text-muted-foreground'
-                  : 'bg-rose-500/15 text-rose-700 dark:text-rose-300',
+                  : 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300',
               )}>
                 {paymentLabel}
                 <span className="tabular-nums font-bold opacity-90">€{heroPrice}</span>
@@ -615,67 +625,59 @@ function AppointmentDetailModal({
             </div>
           </motion.div>
 
-          {/* ACTION TOOLBAR — single horizontal row, icon + label per action.
-              Soft scroll on overflow so a Russian/Lithuanian translation
-              (longer words) stays usable on narrower screens. */}
+          {/* ACTION TOOLBAR — Reschedule + Confirm/Completed state machine. */}
           <motion.div variants={itemVariants} className="px-5 pt-3 pb-3 border-b border-border bg-background">
-            {/* Wrap to multiple rows on narrow widths instead of horizontal
-                scroll — long Russian/Lithuanian labels could push the modal
-                past the viewport otherwise. The toolbar grows vertically as
-                needed; each button keeps `whitespace-nowrap` per-label. */}
-            <div className="flex items-center gap-x-0.5 gap-y-1 flex-wrap">
-              <button
-                type="button"
-                onClick={focusNotes}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
-              >
-                <PencilSquareIcon className="h-3.5 w-3.5 shrink-0" />
-                {t('calendar.addNote')}
-              </button>
+            <div className="flex items-center gap-x-1 gap-y-1 flex-wrap">
               <button
                 type="button"
                 onClick={focusTime}
                 disabled={busy || !canEditFully || apt.status === 'cancelled' || apt.status === 'completed'}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
               >
                 <CalendarDaysIcon className="h-3.5 w-3.5 shrink-0" />
                 {t('calendar.reschedule')}
               </button>
-              <span className="mx-0.5 h-4 w-px bg-border/70 shrink-0" aria-hidden />
-              {apt.status === 'scheduled' && (
-                <button
-                  type="button"
-                  onClick={() => onChangeStatus(apt.id, 'confirmed')}
-                  disabled={busy}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400 transition-colors hover:bg-emerald-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
-                >
-                  <CheckCircleIcon className="h-3.5 w-3.5 shrink-0" />
-                  {t('common.confirm')}
-                </button>
-              )}
-              {(apt.status === 'scheduled' || apt.status === 'confirmed') && (
-                <button
-                  type="button"
-                  onClick={() => onChangeStatus(apt.id, 'completed')}
-                  disabled={busy}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
-                >
-                  <CheckBadgeIcon className="h-3.5 w-3.5 shrink-0" />
-                  {t('status.completed')}
-                </button>
-              )}
-              {(apt.status !== 'cancelled' && apt.status !== 'completed') && (
-                <button
-                  type="button"
-                  onClick={() => setCancelConfirmOpen(true)}
-                  disabled={busy}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-semibold text-rose-600 dark:text-rose-400 transition-colors hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent whitespace-nowrap"
-                >
-                  <XCircleIcon className="h-3.5 w-3.5 shrink-0" />
-                  {t('calendar.cancelAppointment')}
-                </button>
-              )}
+              <span className="h-4 w-px bg-border/60 shrink-0" aria-hidden />
+              {/* Confirm — filled emerald pill when this is the active step */}
+              <button
+                type="button"
+                onClick={() => apt.status === 'scheduled' ? onChangeStatus(apt.id, 'confirmed') : undefined}
+                disabled={busy || apt.status !== 'scheduled'}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors whitespace-nowrap',
+                  apt.status === 'scheduled'
+                    ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm'
+                    : apt.status === 'confirmed' || apt.status === 'completed'
+                      ? 'text-emerald-600 dark:text-emerald-400 cursor-default'
+                      : 'text-muted-foreground/40 cursor-not-allowed',
+                )}
+              >
+                {apt.status === 'confirmed' || apt.status === 'completed'
+                  ? <CheckIcon className="h-3.5 w-3.5 shrink-0" />
+                  : <CheckCircleIcon className="h-3.5 w-3.5 shrink-0" />
+                }
+                {t('common.confirm')}
+              </button>
+              {/* Completed — filled emerald pill when this is the active step */}
+              <button
+                type="button"
+                onClick={() => apt.status === 'confirmed' ? onChangeStatus(apt.id, 'completed') : undefined}
+                disabled={busy || apt.status !== 'confirmed'}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors whitespace-nowrap',
+                  apt.status === 'confirmed'
+                    ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm'
+                    : apt.status === 'completed'
+                      ? 'text-emerald-600 dark:text-emerald-400 cursor-default'
+                      : 'text-muted-foreground/40 cursor-not-allowed',
+                )}
+              >
+                {apt.status === 'completed'
+                  ? <CheckIcon className="h-3.5 w-3.5 shrink-0" />
+                  : <CheckBadgeIcon className="h-3.5 w-3.5 shrink-0" />
+                }
+                {t('status.completed')}
+              </button>
               {apt.status === 'cancelled' && (
                 <button
                   type="button"
@@ -696,8 +698,9 @@ function AppointmentDetailModal({
           <motion.div variants={itemVariants} className="px-7 py-4 border-b border-border">
             <div className="flex items-center gap-3">
               <div className={cn(
-                'flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br text-[12px] font-semibold text-white shrink-0 ring-2 ring-background shadow-sm',
-                clientGradient,
+                'flex h-11 w-11 items-center justify-center rounded-full text-[12px] font-semibold shrink-0 ring-2 ring-background shadow-sm',
+                clientAvatarColor.bg,
+                clientAvatarColor.text,
               )}>
                 {clientInitials || <UserIcon className="h-5 w-5" />}
               </div>
@@ -734,34 +737,23 @@ function AppointmentDetailModal({
               <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 {t('calendar.service')}
               </Label>
-              <Select
-                value={form.serviceId}
-                onValueChange={(v) => {
-                  const svc = serviceList.find(s => s.id === v);
-                  setForm(f => ({
-                    ...f,
-                    serviceId: v,
-                    durationMin: svc?.duration ?? f.durationMin,
-                  }));
-                }}
+              <button
+                type="button"
+                onClick={() => canEditFully && setServicePickerOpen(true)}
                 disabled={!canEditFully}
+                className="mt-1.5 w-full inline-flex items-center justify-between h-10 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground hover:bg-accent/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               >
-                <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {serviceList.map(s => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} — €{s.price} · {s.duration}m
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <span className="truncate">
+                  {selectedService
+                    ? `${selectedService.name} — €${selectedService.price} · ${selectedService.duration}m`
+                    : t('calendar.selectService')}
+                </span>
+                <ChevronDownIcon className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
+              </button>
             </div>
 
-            {/* 2x2 stack on mobile, 4-column with proportional widths on sm+.
-                `min-w-0` on each grid item allows children (CompactDateField,
-                Select trigger) to truncate via their own `truncate` rule
-                instead of forcing the grid (and modal) to grow. */}
-            <div className="grid grid-cols-2 sm:grid-cols-[1.1fr_1fr_70px_1.3fr] gap-3">
+            {/* DATE + TIME row */}
+            <div className="grid grid-cols-2 gap-3">
               <div className="min-w-0">
                 <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.date')}</Label>
                 <div className="mt-1.5">
@@ -789,33 +781,71 @@ function AppointmentDetailModal({
                   />
                 </div>
               </div>
-              <div className="min-w-0">
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.duration')}</Label>
-                <Input
-                  type="number"
-                  min={5}
-                  max={480}
-                  step={5}
-                  value={form.durationMin}
-                  onChange={(e) => setForm(f => ({ ...f, durationMin: parseInt(e.target.value) || 0 }))}
-                  disabled={!canEditFully}
-                  className="mt-1.5 h-10 tabular-nums"
-                />
+            </div>
+
+            {/* BARBER — avatar chip picker */}
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {staffList.filter(s => s.isActive).map(s => {
+                  const sColorIdx = staffColorMap.get(s.id) ?? 0;
+                  const sColor = getStaffColor(sColorIdx);
+                  const active = form.staffId === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => canEditFully && setForm(f => ({ ...f, staffId: s.id }))}
+                      disabled={!canEditFully}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full border pl-1 pr-3 py-1 text-[12px] font-medium transition-colors',
+                        active
+                          ? 'border-foreground bg-foreground text-background'
+                          : 'border-border bg-card text-foreground hover:bg-accent/40',
+                        !canEditFully && 'opacity-50 cursor-not-allowed',
+                      )}
+                    >
+                      <div className={cn('rounded-full p-[1.5px]', active ? 'bg-background/20' : sColor.dot)}>
+                        <Avatar className="h-5 w-5 block">
+                          {s.avatarUrl && <AvatarImage src={s.avatarUrl} alt={s.firstName} />}
+                          <AvatarFallback className={cn('text-[9px] font-bold', active ? 'bg-background/30 text-foreground' : cn(sColor.light, sColor.label))}>
+                            {s.firstName[0]}{s.lastName[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
+                      {s.firstName}
+                    </button>
+                  );
+                })}
               </div>
-              <div className="min-w-0">
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
-                <Select
-                  value={form.staffId}
-                  onValueChange={(v) => setForm(f => ({ ...f, staffId: v }))}
-                  disabled={!canEditFully}
-                >
-                  <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {staffList.filter(s => s.isActive).map(s => (
-                      <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            </div>
+
+            {/* DURATION — preset chips */}
+            <div>
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.duration')}</Label>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {[15, 30, 45, 60, 90, 120].map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => canEditFully && setForm(f => ({ ...f, durationMin: d }))}
+                    disabled={!canEditFully}
+                    className={cn(
+                      'inline-flex items-center justify-center h-9 min-w-[48px] px-2.5 rounded-md border text-[12px] font-semibold tabular-nums transition-colors',
+                      form.durationMin === d
+                        ? 'border-foreground bg-foreground text-background'
+                        : 'border-border bg-card text-foreground hover:bg-accent/40',
+                      !canEditFully && 'opacity-50 cursor-not-allowed',
+                    )}
+                  >
+                    {d}m
+                  </button>
+                ))}
+                {![15, 30, 45, 60, 90, 120].includes(form.durationMin) && (
+                  <span className="inline-flex items-center justify-center h-9 min-w-[48px] px-2.5 rounded-md border border-foreground bg-foreground text-background text-[12px] font-semibold tabular-nums">
+                    {form.durationMin}m
+                  </span>
+                )}
               </div>
             </div>
 
@@ -898,30 +928,26 @@ function AppointmentDetailModal({
                       <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         {t('calendar.service')}
                       </Label>
-                      <Select
-                        value={slot.serviceId}
-                        onValueChange={(v) => {
-                          const svc = serviceList.find((s) => s.id === v);
-                          updatePendingSlot(slot.tempId, {
-                            serviceId: v,
-                            durationMin: svc?.duration ?? slot.durationMin,
-                          });
-                        }}
+                      {/* Service trigger → opens ServicePickerSheet */}
+                      <button
+                        type="button"
+                        onClick={() => setSlotPickerTempId(slot.tempId)}
+                        className={cn(
+                          'mt-1.5 w-full inline-flex items-center justify-between h-10 rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                          !slot.serviceId && 'text-muted-foreground',
+                        )}
                       >
-                        <SelectTrigger className={cn('mt-1.5 h-10', !slot.serviceId && 'text-muted-foreground')}>
-                          <SelectValue placeholder={t('calendar.selectService')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {serviceList.map((s) => (
-                            <SelectItem key={s.id} value={s.id}>
-                              {s.name} — €{s.price} · {s.duration}m
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        <span className="truncate">
+                          {slot.serviceId
+                            ? (() => { const s = serviceList.find(sv => sv.id === slot.serviceId); return s ? `${s.name} — €${s.price} · ${s.duration}m` : t('calendar.selectService'); })()
+                            : t('calendar.selectService')}
+                        </span>
+                        <ChevronDownIcon className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
+                      </button>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-[1.1fr_1fr_72px_1.4fr] gap-3">
+                    {/* DATE + TIME */}
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.date')}</Label>
                         <div className="mt-1.5">
@@ -945,31 +971,67 @@ function AppointmentDetailModal({
                           />
                         </div>
                       </div>
-                      <div>
-                        <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.duration')}</Label>
-                        <Input
-                          type="number"
-                          min={5}
-                          max={480}
-                          step={5}
-                          value={slot.durationMin}
-                          onChange={(e) => updatePendingSlot(slot.tempId, { durationMin: parseInt(e.target.value) || 0 })}
-                          className="mt-1.5 h-10 tabular-nums"
-                        />
+                    </div>
+
+                    {/* BARBER — avatar chips */}
+                    <div>
+                      <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {staffList.filter(s => s.isActive).map(s => {
+                          const sColorIdx = staffColorMap.get(s.id) ?? 0;
+                          const sColor = getStaffColor(sColorIdx);
+                          const active = slot.staffId === s.id;
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => updatePendingSlot(slot.tempId, { staffId: s.id })}
+                              className={cn(
+                                'inline-flex items-center gap-1.5 rounded-full border pl-1 pr-3 py-1 text-[12px] font-medium transition-colors',
+                                active
+                                  ? 'border-foreground bg-foreground text-background'
+                                  : 'border-border bg-card text-foreground hover:bg-accent/40',
+                              )}
+                            >
+                              <div className={cn('rounded-full p-[1.5px]', active ? 'bg-background/20' : sColor.dot)}>
+                                <Avatar className="h-5 w-5 block">
+                                  {s.avatarUrl && <AvatarImage src={s.avatarUrl} alt={s.firstName} />}
+                                  <AvatarFallback className={cn('text-[9px] font-bold', active ? 'bg-background/30 text-foreground' : cn(sColor.light, sColor.label))}>
+                                    {s.firstName[0]}{s.lastName[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </div>
+                              {s.firstName}
+                            </button>
+                          );
+                        })}
                       </div>
-                      <div>
-                        <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
-                        <Select
-                          value={slot.staffId}
-                          onValueChange={(v) => updatePendingSlot(slot.tempId, { staffId: v })}
-                        >
-                          <SelectTrigger className="mt-1.5 h-10"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {staffList.filter((s) => s.isActive).map((s) => (
-                              <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                    </div>
+
+                    {/* DURATION — preset chips */}
+                    <div>
+                      <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.duration')}</Label>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {[15, 30, 45, 60, 90, 120].map(d => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => updatePendingSlot(slot.tempId, { durationMin: d })}
+                            className={cn(
+                              'inline-flex items-center justify-center h-9 min-w-[48px] px-2.5 rounded-md border text-[12px] font-semibold tabular-nums transition-colors',
+                              slot.durationMin === d
+                                ? 'border-foreground bg-foreground text-background'
+                                : 'border-border bg-card text-foreground hover:bg-accent/40',
+                            )}
+                          >
+                            {d}m
+                          </button>
+                        ))}
+                        {![15, 30, 45, 60, 90, 120].includes(slot.durationMin) && (
+                          <span className="inline-flex items-center justify-center h-9 min-w-[48px] px-2.5 rounded-md border border-foreground bg-foreground text-background text-[12px] font-semibold tabular-nums">
+                            {slot.durationMin}m
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -982,10 +1044,8 @@ function AppointmentDetailModal({
             })}
           </AnimatePresence>
 
-          {/* Follow-up actions — "Add next service" appends a slot inline
-              (no redirect), "Rebook" still opens the create flow with
-              prefilled context for a future date. */}
-          <motion.div variants={itemVariants} className="px-7 py-3 border-t border-border grid grid-cols-2 gap-2">
+          {/* Add next service — appends a slot inline (no redirect). */}
+          <motion.div variants={itemVariants} className="px-7 py-3 border-t border-border">
             <button
               type="button"
               onClick={addPendingSlot}
@@ -995,34 +1055,32 @@ function AppointmentDetailModal({
               <PlusCircleIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
               {t('calendar.addNextService')}
             </button>
-            <button
-              type="button"
-              onClick={() => onRebook(apt)}
-              disabled={busy || savingPending}
-              className="group inline-flex items-center justify-center gap-2 h-10 rounded-md border border-border bg-card/50 px-3 text-[13px] font-semibold text-foreground transition-colors hover:bg-card hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ArrowPathIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-              {t('calendar.rebook')}
-            </button>
           </motion.div>
 
-          {/* Footer — phone link · Delete (subtle) · Cancel · Save (dirty-gated) */}
-          <motion.div variants={itemVariants} className="px-7 py-3.5 border-t border-border flex items-center gap-3">
-            {apt.client.phone ? (
-              <a
-                href={`tel:${apt.client.phone}`}
-                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground tabular-nums transition-colors"
+          {/* Danger zone — cancel appointment */}
+          {(apt.status !== 'cancelled' && apt.status !== 'completed') && (
+            <motion.div variants={itemVariants} className="px-7 py-3 border-t border-border flex items-center justify-between gap-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+                {t('apt.modal.dangerZone')}
+              </p>
+              <button
+                type="button"
+                onClick={() => setCancelConfirmOpen(true)}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-destructive hover:text-destructive/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <PhoneIcon className="h-3 w-3" />
-                {apt.client.phone}
-              </a>
-            ) : (
-              <span className="text-xs text-muted-foreground/40">—</span>
-            )}
+                <XCircleIcon className="h-4 w-4 shrink-0" />
+                {t('calendar.cancelAppointment')}
+              </button>
+            </motion.div>
+          )}
+
+          {/* Footer — Delete (subtle) · Cancel · Save (dirty-gated) */}
+          <motion.div variants={itemVariants} className="px-7 py-3.5 border-t border-border flex items-center gap-3">
             <button
               onClick={() => onDelete(apt.id, `${apt.client.firstName} ${apt.client.lastName}`)}
               disabled={busy}
-              className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground/70 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground/70 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-40"
               title={t('common.delete')}
             >
               <TrashIcon className="h-3.5 w-3.5" />
@@ -1030,13 +1088,14 @@ function AppointmentDetailModal({
             <button
               onClick={onClose}
               disabled={busy}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              className="ml-auto text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             >
               {t('common.cancel')}
             </button>
             <Button
               onClick={save}
               disabled={!isSavable || busy || savingPending || !canEditFully}
+              title={!isSavable ? t('apt.modal.saveTooltip') : undefined}
               className="min-w-[120px] gap-1.5"
             >
               <span>{t('common.saveChanges')}</span>
@@ -1156,6 +1215,52 @@ function AppointmentDetailModal({
           </Dialog>
         )}
       </AnimatePresence>
+
+      {/* Service picker — main appointment */}
+      <ServicePickerSheet
+        open={servicePickerOpen}
+        onClose={() => setServicePickerOpen(false)}
+        services={serviceList}
+        categories={categories}
+        staffName={selectedStaff ? selectedStaff.firstName : ''}
+        selectedIds={form.serviceId ? [form.serviceId] : []}
+        onSelect={(serviceId) => {
+          const svc = serviceList.find(s => s.id === serviceId);
+          setForm(f => ({
+            ...f,
+            serviceId,
+            durationMin: svc?.duration ?? f.durationMin,
+          }));
+          setServicePickerOpen(false);
+        }}
+        t={t}
+      />
+
+      {/* Service picker — pending slot (Add next service) */}
+      {slotPickerTempId && (() => {
+        const slot = pendingSlots.find(s => s.tempId === slotPickerTempId);
+        if (!slot) return null;
+        const slotStaff = staffList.find(s => s.id === slot.staffId);
+        return (
+          <ServicePickerSheet
+            open
+            onClose={() => setSlotPickerTempId(null)}
+            services={serviceList}
+            categories={categories}
+            staffName={slotStaff ? slotStaff.firstName : ''}
+            selectedIds={slot.serviceId ? [slot.serviceId] : []}
+            onSelect={(serviceId) => {
+              const svc = serviceList.find(s => s.id === serviceId);
+              updatePendingSlot(slot.tempId, {
+                serviceId,
+                durationMin: svc?.duration ?? slot.durationMin,
+              });
+              setSlotPickerTempId(null);
+            }}
+            t={t}
+          />
+        );
+      })()}
     </Dialog>
   );
 }
@@ -1252,6 +1357,7 @@ function BlockDialog({
   const queryClient = useQueryClient();
   const reduce = useReducedMotion();
   const currentUserId = useAuthStore(s => s.user?.id);
+  const [timeFormat] = useTimeFormat();
 
   // Derive initial form values from the state
   const init = useMemo(() => {
@@ -1494,6 +1600,9 @@ function BlockDialog({
           </p>
           <p className="mt-1 text-2xl sm:text-3xl font-bold text-foreground tracking-tight leading-tight">
             {isEdit ? t('calendar.blockEditTitle') : t('calendar.blockTitle')}
+          </p>
+          <p className="text-[12px] text-muted-foreground leading-relaxed mt-1">
+            {t('block.modal.helpText')}
           </p>
         </div>
 
@@ -1863,26 +1972,30 @@ function BlockDialog({
                 className="mt-4 grid grid-cols-2 gap-3"
               >
                 <div>
-                  <Label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Starts</Label>
-                  <Input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="mt-1.5 h-10 tabular-nums"
-                  />
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('block.modal.starts')}</Label>
+                  <div className="mt-1.5">
+                    <TimePickerField
+                      value={startTime}
+                      onChange={setStartTime}
+                      timeFormat={timeFormat}
+                      ariaLabel={t('block.modal.starts')}
+                    />
+                  </div>
                 </div>
                 <div>
-                  <Label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ends</Label>
-                  <Input
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className={cn('mt-1.5 h-10 tabular-nums', breakInvalid && 'border-rose-500')}
-                  />
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('block.modal.ends')}</Label>
+                  <div className={cn('mt-1.5', breakInvalid && '[&_button]:border-rose-500')}>
+                    <TimePickerField
+                      value={endTime}
+                      onChange={setEndTime}
+                      timeFormat={timeFormat}
+                      ariaLabel={t('block.modal.ends')}
+                    />
+                  </div>
                 </div>
                 {breakInvalid && (
                   <p className="col-span-2 text-[11px] text-rose-600 dark:text-rose-400">
-                    End time must be after start time.
+                    {t('calendar.invalidRange')}
                   </p>
                 )}
               </motion.div>
@@ -1941,7 +2054,7 @@ function BlockDialog({
               type="button"
               onClick={() => removeMut.mutate()}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 border border-destructive text-destructive hover:bg-destructive/5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
             >
               <TrashIcon className="h-3.5 w-3.5" />
               {t('calendar.removeBlock')}
@@ -2272,11 +2385,13 @@ function WalkInDialog({
 // morph would only animate part of the time and feel inconsistent.
 function FocusBanner({
   staff,
+  color,
   onClear,
   onJumpToShift,
   t,
 }: {
   staff: { id: string; firstName: string; lastName: string; avatarUrl?: string };
+  color: { dot: string; light: string; label: string };
   onClear: () => void;
   onJumpToShift: () => void;
   t: (key: TranslationKey) => string;
@@ -2285,39 +2400,49 @@ function FocusBanner({
   return (
     <motion.div
       key="focus-banner"
-      initial={reduce ? false : { opacity: 0, y: -4 }}
+      initial={reduce ? false : { opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={reduce ? undefined : { opacity: 0, y: -4 }}
+      exit={reduce ? undefined : { opacity: 0, y: -6 }}
       transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
-      className="flex items-center gap-2 rounded-xl border border-foreground/15 bg-foreground/[0.03] px-3 py-2"
+      className="flex items-center gap-3 border-b border-border bg-card px-4 py-2.5"
     >
-      <Avatar className="h-7 w-7">
-        {staff.avatarUrl && <AvatarImage src={staff.avatarUrl} alt={staff.firstName} />}
-        <AvatarFallback className="text-[10px] font-bold bg-muted">
-          {staff.firstName[0]}{staff.lastName[0]}
-        </AvatarFallback>
-      </Avatar>
+      {/* Staff color accent pill */}
+      <span className={cn('h-8 w-1 rounded-full shrink-0', color.dot)} aria-hidden />
+
+      {/* Avatar in staff color ring */}
+      <div className={cn('rounded-full p-[1.5px] shrink-0', color.dot)}>
+        <Avatar className="h-7 w-7 block">
+          {staff.avatarUrl && <AvatarImage src={staff.avatarUrl} alt={staff.firstName} />}
+          <AvatarFallback className={cn('text-[10px] font-bold', color.light, color.label)}>
+            {staff.firstName[0]}{staff.lastName[0]}
+          </AvatarFallback>
+        </Avatar>
+      </div>
+
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground leading-none mb-0.5">
           {t('calendar.focus')}
         </p>
         <p className="text-sm font-semibold text-foreground truncate leading-tight">
           {staff.firstName} {staff.lastName}
         </p>
       </div>
+
       <button
         type="button"
         onClick={onJumpToShift}
-        className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
         {t('calendar.contextJumpShift')}
       </button>
+
       <button
         type="button"
         onClick={onClear}
-        className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
       >
+        <XMarkIcon className="h-3.5 w-3.5" />
         {t('calendar.focusClear')}
       </button>
     </motion.div>
@@ -2798,7 +2923,7 @@ function ScheduleStrip({
 
         {/* Working band — animates left/width when mode/times change */}
         <motion.div
-          className="absolute top-1.5 bottom-1.5 rounded-md bg-foreground/10 ring-1 ring-foreground/40 flex items-center justify-center overflow-hidden backdrop-blur-[1px]"
+          className="absolute top-1.5 bottom-1.5 rounded-md bg-foreground/10 ring-1 ring-foreground/40 flex items-center justify-center overflow-hidden"
           animate={{
             left: `${leftPct}%`,
             width: `${widthPct}%`,
@@ -3529,7 +3654,7 @@ function ServicePickerSheet({
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.25, ease: MOTION_EASE }}
-                    className="sticky top-0 z-10 flex items-center gap-2 px-7 pt-6 pb-2.5 bg-card/95 backdrop-blur-sm"
+                    className="sticky top-0 z-10 flex items-center gap-2 px-7 pt-6 pb-2.5 bg-card"
                   >
                     <span className={cn('h-2 w-2 rounded-full shrink-0', catDot)} aria-hidden />
                     <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -4004,6 +4129,7 @@ export function CalendarPage() {
 
   // ─── Queries ────────────
   const { data: appointments = [], isLoading: appointmentsLoading } = useQuery({ queryKey: ['appointments', officeId], queryFn: () => appointmentsApi.getAllWithDetails(officeId) });
+  const { data: tenant } = useQuery({ queryKey: ['tenant'], queryFn: () => tenantApi.get(), staleTime: 5 * 60_000 });
   const { data: clients = [] } = useQuery({ queryKey: ['clients', officeId], queryFn: () => clientsApi.getAll(officeId) });
   const { data: allStaff = [] } = useQuery({ queryKey: ['staff', officeId], queryFn: () => staffApi.getAll(officeId) });
   // Accounts list is used to resolve `Appointment.createdBy` (Account.id) to a
@@ -5266,7 +5392,7 @@ export function CalendarPage() {
   // renderTileHoverCard render-prop) call this so a hover anywhere shows the
   // same editorial preview: hero time + status/payment pills + client identity
   // + service line + (optional) notes + audit footer with creator + timestamp.
-  const appointmentHoverCardContent = (apt: AppointmentWithDetails) => {
+  const appointmentHoverCardContent = (apt: AppointmentWithDetails, side: 'top' | 'bottom' | 'left' | 'right' = 'right', align: 'start' | 'center' | 'end' = 'start') => {
     const s = parseISO(apt.startTime);
     const e = parseISO(apt.endTime);
     const dur = differenceInMinutes(e, s);
@@ -5291,9 +5417,10 @@ export function CalendarPage() {
     const creatorChip = renderCreatorChip(apt.createdBy);
     return (
       <HoverCardContent
-        align="start"
-        side="right"
+        align={align}
+        side={side}
         sideOffset={8}
+        collisionPadding={12}
         className="w-80 p-0 overflow-hidden border-border/80 shadow-lg"
       >
         <div className="relative">
@@ -5405,58 +5532,46 @@ export function CalendarPage() {
     const isSelected = detailApt?.id === apt.id;
     const isDragging = draggingAptId === apt.id;
 
-    // Phase B3 — break-override detection. Compare the appointment's
-    // local-time HH:mm range against the staff's breaks for the same
-    // day-of-week. Hard-mode validator usually catches overlap before the
-    // appointment is created; this fires only for owner-overrides + edge
-    // cases like an existing appointment now overlapping a newly-added break.
-    const aptStartHM = `${String(s.getHours()).padStart(2, '0')}:${String(s.getMinutes()).padStart(2, '0')}`;
-    const aptEndHM = `${String(e.getHours()).padStart(2, '0')}:${String(e.getMinutes()).padStart(2, '0')}`;
+    // Warning triangle — single canonical predicate, 6 priority-ordered rules.
     const staffBreaks = breaksByStaff.get(apt.staffId) ?? [];
-    const overridesBreak = staffBreaks.some(
-      b => aptStartHM < b.endTime && b.startTime < aptEndHM,
-    );
+    const aptDateKey = format(s, 'yyyy-MM-dd');
+    const currentDow = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][s.getDay()];
+    const breaksForDay = staffBreaks.filter(b => {
+      if (b.recurrence === 'weekly') return b.dayOfWeek === currentDow;
+      if (b.recurrence === 'none') return b.dayOfWeek === currentDow;
+      if (b.recurrence === 'ranged') {
+        return b.dayOfWeek === currentDow
+          && (!b.startDate || b.startDate <= aptDateKey)
+          && (!b.endDate || b.endDate >= aptDateKey)
+          && !(b.exceptionDates ?? []).includes(aptDateKey);
+      }
+      return b.dayOfWeek === currentDow;
+    });
+    const peerApts = (aptsByStaff.get(apt.staffId) ?? []).filter(p => format(parseISO(p.startTime), 'yyyy-MM-dd') === aptDateKey);
+    const workingHoursDay = tenant?.workingHours?.[currentDow as keyof typeof tenant.workingHours];
+    const warning = getAppointmentWarning(apt, {
+      peerAppointments: peerApts,
+      staffBreaks: breaksForDay.filter(b => b.startTime && b.endTime).map(b => ({ startTime: b.startTime, endTime: b.endTime })),
+      workingHours: workingHoursDay,
+      bufferMinutes: tenant?.bookingRules?.bufferMinutes ?? 0,
+      now: new Date(),
+      t,
+    });
 
-    // Tile-level issue chip — replaces the silent amber triangle. Three
-    // distinct kinds the receptionist actually cares about, ranked by
-    // urgency. Only ONE chip renders (the highest-priority issue) so the
-    // tile chrome stays calm.
-    //
-    //   1. breakOverlap → amber       — booking sits inside a break (existing)
-    //   2. late         → rose        — start time has passed AND the apt is
-    //                                   still in scheduled/confirmed (the
-    //                                   client should be in the chair already)
-    //   3. unconfirmed  → blue        — status === 'scheduled' (no confirm)
-    //                                   and start is within next 24 hours
-    //
-    // `late` is gated to "today" so historical bookings from prior days don't
-    // light up the whole calendar in red. `unconfirmed` is gated to the
-    // 24-hour window because a year-out booking still being "scheduled" is
-    // not actionable today.
+    // Legacy chips (late, unconfirmed within 24h) — kept untouched, not triangles.
     const now = new Date();
     const ymdNow = format(now, 'yyyy-MM-dd');
     const ymdApt = format(s, 'yyyy-MM-dd');
     const minutesUntilStart = (s.getTime() - now.getTime()) / 60_000;
-    const isToday = ymdApt === ymdNow;
-    const isLate = isToday && minutesUntilStart < -5
+    const isTodayApt = ymdApt === ymdNow;
+    const isLate = isTodayApt && minutesUntilStart < -5
       && (apt.status === 'scheduled' || apt.status === 'confirmed');
     const isUnconfirmed = apt.status === 'scheduled'
       && minutesUntilStart > 0 && minutesUntilStart < 24 * 60;
 
-    type IssueKind = 'breakOverlap' | 'late' | 'unconfirmed';
-    const issueKind: IssueKind | null =
-      overridesBreak ? 'breakOverlap'
-      : isLate ? 'late'
-      : isUnconfirmed ? 'unconfirmed'
-      : null;
-    const issueMeta: Record<IssueKind, { Icon: typeof ExclamationTriangleIcon; bg: string; text: string; ring: string; tKey: TranslationKey }> = {
-      breakOverlap: {
-        Icon: ExclamationTriangleIcon,
-        bg: 'bg-amber-50 dark:bg-amber-500/15',
-        text: 'text-amber-700 dark:text-amber-400',
-        ring: 'ring-amber-500/30',
-        tKey: 'tile.overridesBreak',
-      },
+    type LegacyKind = 'late' | 'unconfirmed';
+    const legacyKind: LegacyKind | null = isLate ? 'late' : isUnconfirmed ? 'unconfirmed' : null;
+    const legacyMeta: Record<LegacyKind, { Icon: typeof ClockIcon; bg: string; text: string; ring: string; tKey: TranslationKey }> = {
       late: {
         Icon: ClockIcon,
         bg: 'bg-rose-50 dark:bg-rose-500/15',
@@ -5650,9 +5765,8 @@ export function CalendarPage() {
           // 5px stripe + real elevation utility so light theme tiles read as
           // *lifted papers* on the canvas, not painted regions.
           'group/tile absolute rounded-lg border-l-[5px] overflow-hidden calendar-tile-elev',
-          // Phase B3 — when this app overrides a break, sit on top (z-20)
-          // so the dashed break overlay no longer half-covers it.
-          overridesBreak ? 'z-20' : 'z-10',
+          // Sit on top of break overlays when overlap is detected.
+          (warning?.code === 'break_overlap' || warning?.code === 'break_touch') ? 'z-20' : 'z-10',
           'transition-all duration-150',
           canOverride ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
           c.bg, c.border,
@@ -5674,25 +5788,21 @@ export function CalendarPage() {
           className={cn('pointer-events-none absolute right-0 top-0 bottom-0 w-[2px]', STATUS_STRIPE[apt.status])}
         />
 
-        {/* Issue chip — one badge per tile, picks the highest-priority
-            issue (break > late > unconfirmed). Wrapped in a Radix Tooltip so
-            hover surfaces a real localized explanation, not a 1.5-second
-            native browser title delay. Hidden on tiny tiles where there's
-            no room. */}
-        {issueKind && !tiny && (() => {
-          const m = issueMeta[issueKind];
+        {/* Warning triangle — canonical 6-rule predicate, corner-pinned. */}
+        {warning && !tiny && <AppointmentWarningPin warning={warning} size="md" />}
+
+        {/* Legacy status chips (late / unconfirmed within 24h) — not triangles, kept untouched. */}
+        {legacyKind && !tiny && (() => {
+          const m = legacyMeta[legacyKind];
           return (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
                   className={cn(
-                    'absolute top-1 right-2 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full ring-1',
+                    'absolute top-1 right-7 z-20 inline-flex h-4 w-4 items-center justify-center rounded-full ring-1',
                     m.bg, m.text, m.ring,
                   )}
                   aria-label={t(m.tKey)}
-                  // Stop the tooltip-trigger click from bubbling to the tile
-                  // (which would open the detail modal). The chip is purely
-                  // informational; clicking it should do nothing.
                   onClick={(ev) => { ev.stopPropagation(); ev.preventDefault(); }}
                 >
                   <m.Icon className="h-2.5 w-2.5" />
@@ -5768,9 +5878,8 @@ export function CalendarPage() {
                 'opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100',
                 'hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
                 tiny && 'hidden',
-                // Hide ⋯ when the override badge is showing in the same corner —
-                // user can right-click instead.
-                overridesBreak && 'hidden',
+                // Hide ⋯ when the warning pin occupies the same corner.
+                warning && 'hidden',
                 contextApt?.id === apt.id && 'opacity-100',
               )}
             >
@@ -5953,56 +6062,11 @@ export function CalendarPage() {
             </PopoverContent>
           </Popover>
         </div>
-        {/* Three-action "+" Popover. Booking is the primary path so it stays
-            visible at sm+; Walk-in + Block ride along inside the dropdown so
-            the operator bar isn't cluttered at iPad widths. */}
         <div className="flex items-center gap-2 shrink-0">
-          <Button size="sm" onClick={openCreateFromHeader} className="hidden sm:inline-flex">
-            <PlusIcon className="mr-1 h-4 w-4" />
-            {t('calendar.newAppointment')}
+          <Button size="sm" onClick={openCreateFromHeader}>
+            <PlusIcon className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">{t('calendar.newAppointment')}</span>
           </Button>
-          {canOverride && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" aria-label="More actions">
-                  <PlusIcon className="h-4 w-4 sm:hidden" />
-                  <EllipsisHorizontalIcon className="hidden sm:block h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-[260px] p-1.5">
-                <button
-                  type="button"
-                  onClick={openCreateFromHeader}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors sm:hidden"
-                >
-                  <CalendarDaysIcon className="h-4 w-4 text-muted-foreground" />
-                  <span className="flex-1">{t('calendar.newAppointment')}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setWalkInOpen(true)}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
-                >
-                  <BoltIcon className="h-4 w-4 text-muted-foreground" />
-                  <div className="flex-1">
-                    <p className="font-medium">{t('calendar.walkIn')}</p>
-                    <p className="text-[11px] text-muted-foreground">{t('calendar.walkInSubtitle')}</p>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBlockState({ mode: 'create' })}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent transition-colors"
-                >
-                  <NoSymbolIcon className="h-4 w-4 text-muted-foreground" />
-                  <div className="flex-1">
-                    <p className="font-medium">{t('calendar.block')}</p>
-                    <p className="text-[11px] text-muted-foreground">{t('calendar.blockTitle')}</p>
-                  </div>
-                </button>
-              </PopoverContent>
-            </Popover>
-          )}
         </div>
       </div>
 
@@ -6172,10 +6236,10 @@ export function CalendarPage() {
                     className={cn(
                       'flex flex-col items-center rounded-lg w-10 py-1 transition-colors',
                       sel ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent',
-                      td && !sel && 'ring-1 ring-blue-500/40',
                     )}>
                     <span className="text-[10px] font-medium uppercase tracking-wider">{format(d, 'EEE', { locale: dateLocale })}</span>
                     <span className={cn('text-sm font-semibold', td && !sel && 'text-blue-600 dark:text-blue-400')}>{format(d, 'd', { locale: dateLocale })}</span>
+                    {td && !sel && <span className="mt-0.5 h-1 w-1 rounded-full bg-blue-500" />}
                   </button>
                 );
               })}
@@ -6210,30 +6274,42 @@ export function CalendarPage() {
                     </span>
                   </button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-[240px] p-1.5">
-                  <p className="px-2 pt-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    {t('calendar.filterStaff')}
-                  </p>
+                <PopoverContent align="end" className="w-[220px] p-2">
+                  {/* All */}
                   <button
                     type="button"
                     onClick={() => { setStaffFilter(null); setFocusedStaffId(null); }}
                     className={cn(
-                      'flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-                      !filterActive ? 'bg-accent text-foreground font-semibold' : 'text-foreground hover:bg-accent/60',
+                      'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-semibold transition-colors',
+                      !filterActive
+                        ? 'bg-foreground text-background'
+                        : 'text-foreground hover:bg-accent',
                     )}
                   >
-                    <span>{t('calendar.filterAll')}</span>
-                    <span className="text-[10px] text-muted-foreground tabular-nums">{staffCount}</span>
+                    <span className={cn(
+                      'flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
+                      !filterActive ? 'bg-white/15' : 'bg-muted',
+                    )}>
+                      <UsersIcon className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="flex-1">{t('calendar.filterAll')}</span>
+                    <span className={cn(
+                      'text-[11px] font-bold tabular-nums',
+                      !filterActive ? 'text-white/60' : 'text-muted-foreground',
+                    )}>{staffCount}</span>
                   </button>
-                  <div className="my-1 border-t border-border" />
+
+                  <div className="my-2 border-t border-border" />
+
+                  {/* Per-staff rows */}
+                  <div className="space-y-0.5">
                   {activeStaff.map(m => {
                     const colorIdx = staffColorMap.get(m.id) ?? 0;
                     const c = getStaffColor(colorIdx);
                     const checked = focusedStaffId
                       ? focusedStaffId === m.id
-                      : staffFilter
-                        ? staffFilter.has(m.id)
-                        : true;
+                      : staffFilter ? staffFilter.has(m.id) : true;
+                    const cnt = aptsByStaff.get(m.id)?.length ?? 0;
                     return (
                       <button
                         key={m.id}
@@ -6243,29 +6319,37 @@ export function CalendarPage() {
                           setStaffFilter(prev => {
                             const next = new Set(prev ?? activeStaff.map(s => s.id));
                             if (next.has(m.id)) next.delete(m.id); else next.add(m.id);
-                            // If the new set is the full active set, clear the filter to "all".
                             if (next.size === activeStaff.length) return null;
-                            // Empty set is meaningless — fall back to all.
                             if (next.size === 0) return null;
                             return next;
                           });
                         }}
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
+                        className={cn(
+                          'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
+                          checked ? cn(c.light, 'font-semibold') : 'opacity-40 hover:opacity-70 hover:bg-accent/50',
+                        )}
                       >
-                        <span
-                          className={cn(
-                            'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors',
-                            checked ? 'border-foreground bg-foreground' : 'border-border',
-                          )}
-                          aria-hidden
-                        >
-                          {checked && <CheckBadgeIcon className="h-3 w-3 text-background" />}
-                        </span>
-                        <span className={cn('h-1.5 w-1.5 rounded-full', c.dot)} />
+                        {/* Avatar with staff-color ring */}
+                        <div className={cn('shrink-0 rounded-full p-[1.5px]', checked ? c.dot : 'bg-muted-foreground/30')}>
+                          <Avatar className="h-6 w-6 block">
+                            {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.firstName} />}
+                            <AvatarFallback className={cn('text-[8px] font-bold', c.light, c.label)}>
+                              {m.firstName[0]}{m.lastName[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
                         <span className="flex-1 truncate text-sm text-foreground">{m.firstName} {m.lastName}</span>
+                        {cnt > 0 && (
+                          <span className={cn(
+                            'shrink-0 text-[10px] font-bold tabular-nums rounded-full px-1.5 py-0.5 leading-none',
+                            checked ? cn(c.dot, 'text-white') : 'bg-muted text-muted-foreground',
+                          )}>{cnt}</span>
+                        )}
+                        {checked && <CheckIcon className={cn('h-3.5 w-3.5 shrink-0', c.label)} />}
                       </button>
                     );
                   })}
+                  </div>
                 </PopoverContent>
               </Popover>
             )}
@@ -6335,10 +6419,17 @@ export function CalendarPage() {
 
           {/* When focused, narrow the appointment list to that single barber
               so DayAgenda + WeekView render only their bookings. The grid view
-              already handles focus via `visibleStaff` so nothing changes there. */}
-          {focusedStaffId && (
+              already handles focus via `visibleStaff` so nothing changes there.
+              Banner only shown in week view — other views don't have a strip to
+              pair it with. */}
+          {focusedStaffId && viewMode === 'week' && (
             <FocusBanner
               staff={activeStaff.find(s => s.id === focusedStaffId)!}
+              color={(() => {
+                const idx = staffColorMap.get(focusedStaffId) ?? 0;
+                const c = getStaffColor(idx);
+                return { dot: c.dot, light: c.light, label: c.label };
+              })()}
               onClear={() => setFocusedStaffId(null)}
               onJumpToShift={() => navigate(`/staff?focus=${focusedStaffId}`)}
               t={t}
@@ -6347,9 +6438,14 @@ export function CalendarPage() {
 
           {/* Week staff bar — replaces the old toolbar dropdown. Shows all
               visible barbers as clickable cards; active card = current week view.
+              During focus mode, shows ALL active staff so the operator can
+              quick-switch the focus target: clicking the active card clears focus,
+              clicking another card shifts focus to them.
               Intentionally absent in day/grid views (those have their own controls). */}
-          {viewMode === 'week' && visibleStaff.length > 0 && (() => {
-            const sortedForBar = [...visibleStaff].sort((a, b) =>
+          {viewMode === 'week' && (() => {
+            const staffForBar = focusedStaffId ? activeStaff : visibleStaff;
+            if (staffForBar.length === 0) return null;
+            const sortedForBar = [...staffForBar].sort((a, b) =>
               `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`),
             );
             return (
@@ -6358,6 +6454,7 @@ export function CalendarPage() {
                   {sortedForBar.map(m => {
                     const colorIdx = staffColorMap.get(m.id) ?? 0;
                     const c = getStaffColor(colorIdx);
+                    const isActive = focusedStaffId ? focusedStaffId === m.id : weekViewStaffId === m.id;
                     return (
                       <StaffCard
                         key={m.id}
@@ -6365,8 +6462,19 @@ export function CalendarPage() {
                         staff={m}
                         count={weekStaffApptCount.get(m.id) ?? 0}
                         color={{ dot: c.dot, light: c.light, label: c.label }}
-                        active={weekViewStaffId === m.id}
-                        onClick={sortedForBar.length > 1 ? () => setWeekViewStaffId(m.id) : undefined}
+                        active={isActive}
+                        onClick={() => {
+                          if (focusedStaffId) {
+                            if (focusedStaffId === m.id) {
+                              setFocusedStaffId(null);
+                            } else {
+                              setFocusedStaffId(m.id);
+                              setWeekViewStaffId(m.id);
+                            }
+                          } else {
+                            setWeekViewStaffId(m.id);
+                          }
+                        }}
                         className="min-w-[72px] max-w-[100px] flex-1"
                       />
                     );
@@ -6392,7 +6500,7 @@ export function CalendarPage() {
                 const status = action === 'complete' ? 'completed' : action === 'no_show' ? 'no_show' : 'cancelled';
                 updateStatusMutation.mutate({ id: aptId, status });
               }}
-              renderTileHoverCard={(apt) => appointmentHoverCardContent(apt)}
+              renderTileHoverCard={(apt) => appointmentHoverCardContent(apt, 'top', 'end')}
             />
           ) : viewMode === 'week' ? (
             <WeekView
@@ -6415,6 +6523,8 @@ export function CalendarPage() {
               shifts={allShifts}
               overrides={allOverrides}
               onEditBreak={(brk) => setBlockState({ mode: 'edit-break', brk })}
+              workingHours={tenant?.workingHours}
+              bufferMinutes={tenant?.bookingRules?.bufferMinutes ?? 0}
               onCreateAt={(date, hour, minute) => {
                 // Reuse the create-modal seeding pattern from openSlot.
                 // Pre-seed staff to the Week-view-selected barber since the
@@ -6582,6 +6692,7 @@ export function CalendarPage() {
                         color={{ dot: c.dot, light: c.light, label: c.label }}
                         focused={isFocused}
                         loadDot={loadDot}
+                        shift={shiftLabel}
                         title={
                           isFocused
                             ? t('calendar.focusClear')
@@ -6782,7 +6893,7 @@ export function CalendarPage() {
                               initial={reduceMotion ? false : { opacity: 0, scale: 0.97 }}
                               animate={{ opacity: 1, scale: 1 }}
                               transition={{ duration: 0.18, ease: MOTION_EASE }}
-                              className="absolute left-1 right-1 z-[15] pointer-events-none rounded-md border-2 border-dashed border-foreground/40 bg-foreground/5 backdrop-blur-[1px] overflow-hidden"
+                              className="absolute left-1 right-1 z-[15] pointer-events-none rounded-md border-2 border-dashed border-foreground/40 bg-foreground/5 overflow-hidden"
                               style={{ top: `${top}px`, height: `${h}px` }}
                             >
                               <div className="px-2 pt-1.5 text-[10px] tabular-nums text-muted-foreground/85">
@@ -6939,6 +7050,7 @@ export function CalendarPage() {
           canEditFully={canOverride /* owner + manager */}
           staffList={allStaff}
           serviceList={services}
+          categories={categories}
           isUpdating={updateStatusMutation.isPending || fullUpdateMutation.isPending}
           isDeleting={deleteMutation.isPending}
         />
@@ -7275,7 +7387,7 @@ export function CalendarPage() {
       <Dialog open={isCreateOpen} onOpenChange={open => { if (!open) closeCreate(); }}>
         <DialogContent className="sm:max-w-lg max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Add to calendar</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.addToCalendar')}</p>
             <DialogTitle className="text-2xl sm:text-3xl font-bold tracking-tight">
               {t('calendar.newAppointment')}
             </DialogTitle>
@@ -7292,7 +7404,7 @@ export function CalendarPage() {
                 className="relative px-3 py-2 text-sm font-semibold text-foreground"
                 aria-pressed
               >
-                Booking
+                {t('calendar.tabBooking')}
                 <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" />
               </button>
               <button
@@ -7308,7 +7420,7 @@ export function CalendarPage() {
                 }}
                 className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
               >
-                Block
+                {t('calendar.tabBlock')}
               </button>
             </div>
           )}
@@ -7455,7 +7567,7 @@ export function CalendarPage() {
                 tinted button — opens a Dialog-based picker (ServicePickerSheet)
                 with search + categorized list. */}
             <div className="border-t border-border pt-5">
-              <h3 className="mb-3 text-lg font-bold tracking-tight text-foreground">{t('calendar.services')}</h3>
+              <p className="mb-3 text-[11px] font-semibold text-muted-foreground tracking-wide">{t('calendar.sectionWhat')}</p>
               {(() => {
                 const picked = formData.serviceIds.map(id => services.find(s => s.id === id)).filter((s): s is Service => !!s);
                 const totalDuration = picked.reduce((sum, s) => sum + s.duration, 0);
@@ -7700,7 +7812,7 @@ export function CalendarPage() {
                             transition={{ delay: 0.16, duration: 0.32, ease: MOTION_EASE }}
                           >
                             <p className="text-[11px] font-semibold text-muted-foreground/80 mb-2.5 tracking-wide">
-                              Schedule
+                              {t('calendar.scheduleLabel')}
                             </p>
                             {/* overflow-visible so edge labels aren't clipped; pb-8 keeps
                                 space for the absolute date labels below each dot. */}

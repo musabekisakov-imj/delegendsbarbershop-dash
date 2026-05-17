@@ -39,9 +39,15 @@ export interface Staff {
   createdAt: string;
 }
 
+export type CategoryColorKey =
+  | 'slate' | 'rose' | 'amber' | 'emerald' | 'sky'
+  | 'violet' | 'fuchsia' | 'teal' | 'orange' | 'indigo';
+
 export interface Category {
   id: string;
   name: string;
+  color: CategoryColorKey;
+  sortOrder: number;
   createdAt: string;
 }
 
@@ -55,6 +61,10 @@ export interface Service {
   officeId: string;
   imageUrl?: string;
   createdAt: string;
+  staffIds?: string[];
+  prepMinutes?: number;
+  cleanupMinutes?: number;
+  isPublic?: boolean;
 }
 
 export interface Appointment {
@@ -214,7 +224,7 @@ export interface Tenant {
   website?: string;
   instagram?: string;
   /** Currency for prices throughout the app. Default 'EUR'. Schema v14. */
-  currency?: 'EUR' | 'USD' | 'GBP';
+  currency?: 'EUR' | 'USD' | 'GBP' | 'UZS';
   vatRate?: number;                  // VAT % e.g. 20 for 20%
   timezone?: string;                 // IANA, e.g. 'Europe/Vilnius'
   /** Reserved for future logo upload UI. Schema v14 (field only, no UI yet). */
@@ -223,6 +233,8 @@ export interface Tenant {
   holidays?: Holiday[];
   /** Booking-time policy. Schema v14. */
   bookingRules?: BookingRules;
+  /** Custom roles beyond the built-in StaffRole set. Schema v17. */
+  customRoles?: CustomRole[];
   offices: Office[];
   workingHours: WorkingHours;
   theme: Theme;
@@ -240,6 +252,18 @@ export interface User {
 
 export type AccountStatus = 'active' | 'invited' | 'disabled';
 
+export type RoleColorKey =
+  | 'fuchsia' | 'indigo' | 'teal' | 'slate'
+  | 'lime' | 'pink' | 'sky' | 'stone';
+
+export interface CustomRole {
+  id: string;
+  name: string;
+  color: RoleColorKey;
+  permissions: Permission[];
+  createdAt: string;
+}
+
 export interface Account {
   id: string;
   email: string;
@@ -252,6 +276,9 @@ export interface Account {
    *  linked staff member's `avatarUrl` if unset, then to a gradient initials. */
   avatarUrl?: string;
   staffId?: string;
+  phone?: string;
+  positionTitle?: string;
+  startDate?: string;
   lastLoginAt?: string | null;
   createdAt: string;
 }

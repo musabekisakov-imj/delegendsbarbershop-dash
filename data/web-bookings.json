@@ -1,0 +1,16 @@
+[
+  {
+    "id": "web-1779005987010-1btgr",
+    "serviceId": "svc-1",
+    "staffId": "staff-1",
+    "officeId": "office-1",
+    "startTime": "2026-05-18T10:00:00.000Z",
+    "endTime": "2026-05-18T10:30:00.000Z",
+    "clientName": "Test Client",
+    "clientEmail": "test@test.com",
+    "clientPhone": "+1555000",
+    "status": "cancelled",
+    "source": "web",
+    "createdAt": "2026-05-17T08:19:47.010Z"
+  }
+]

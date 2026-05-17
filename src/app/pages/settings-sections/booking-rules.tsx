@@ -34,7 +34,7 @@ export function BookingRulesSection({ tenant, onUpdate }: SectionProps) {
   return (
     <div className="space-y-5">
       {/* ─── Time picker interval ──── */}
-      <Card title={t('settings.bookingRules.timeGranularity')} hint={t('settings.bookingRules.timeGranularityHint')}>
+      <Card title={t('settings.bookingRules.timeGranularity')} hint={t('settings.bookingRules.timeGranularityHint')} delay={0}>
         <PillGroup>
           {GRANULARITY_OPTIONS.map((opt) => (
             <PillButton
@@ -52,7 +52,7 @@ export function BookingRulesSection({ tenant, onUpdate }: SectionProps) {
       </Card>
 
       {/* ─── Break overlay style ──── */}
-      <Card title={t('settings.bookingRules.breakCutMode')} hint={t('settings.bookingRules.breakCutModeHint')}>
+      <Card title={t('settings.bookingRules.breakCutMode')} hint={t('settings.bookingRules.breakCutModeHint')} delay={0.06}>
         <PillGroup>
           <PillButton
             active={breakCutMode === 'vertical'}
@@ -72,7 +72,7 @@ export function BookingRulesSection({ tenant, onUpdate }: SectionProps) {
       </Card>
 
       {/* ─── Lead time / cutoff / buffer ──── */}
-      <Card title={t('settings.bookingRules.policy')}>
+      <Card title={t('settings.bookingRules.policy')} delay={0.12}>
         <div className="grid gap-4 sm:grid-cols-3">
           <NumberField
             label={t('settings.bookingRules.leadTime')}
@@ -107,19 +107,27 @@ function Card({
   title,
   hint,
   children,
+  delay = 0,
 }: {
   title: string;
   hint?: string;
   children: React.ReactNode;
+  delay?: number;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <section className="rounded-xl border border-border bg-card">
+    <motion.section
+      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.32, ease: MOTION_EASE, delay }}
+      className="rounded-xl border border-border bg-card"
+    >
       <header className="px-5 pt-4 pb-3 border-b border-border">
         <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{title}</h2>
         {hint && <p className="mt-0.5 text-[12px] text-muted-foreground">{hint}</p>}
       </header>
       <div className="px-5 py-4">{children}</div>
-    </section>
+    </motion.section>
   );
 }
 
@@ -210,17 +218,39 @@ function NumberField({
     <div className="space-y-1.5">
       <Label className="text-[13px] font-medium text-foreground">{label}</Label>
       <div className="flex items-center gap-2">
-        <Input
-          type="number"
-          min={0}
-          inputMode="numeric"
-          value={value ?? ''}
-          onChange={(e) => {
-            const n = e.target.value === '' ? undefined : Number(e.target.value);
-            onChange(typeof n === 'number' && !Number.isNaN(n) ? n : undefined);
-          }}
-          className="w-20 tabular-nums"
-        />
+        <div className="flex items-center rounded-md border border-border overflow-hidden">
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.88 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+            onClick={() => onChange(Math.max(0, (value ?? 0) - 1))}
+            aria-label="Decrease"
+            className="px-2.5 py-1.5 text-[14px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 border-r border-border transition-colors"
+          >
+            −
+          </motion.button>
+          <Input
+            type="number"
+            min={0}
+            inputMode="numeric"
+            value={value ?? ''}
+            onChange={(e) => {
+              const n = e.target.value === '' ? undefined : Number(e.target.value);
+              onChange(typeof n === 'number' && !Number.isNaN(n) ? n : undefined);
+            }}
+            className="w-14 tabular-nums border-0 rounded-none text-center focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.88 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+            onClick={() => onChange((value ?? 0) + 1)}
+            aria-label="Increase"
+            className="px-2.5 py-1.5 text-[14px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 border-l border-border transition-colors"
+          >
+            +
+          </motion.button>
+        </div>
         <span className="text-[12px] text-muted-foreground">{suffix}</span>
       </div>
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}

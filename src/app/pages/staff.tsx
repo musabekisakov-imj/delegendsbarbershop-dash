@@ -58,12 +58,17 @@ const accentFor = (id: string) => {
 
 // Per-reason palette for absence chips — muted tones so the grid stays calm.
 // Rose is reserved for destructive UI (delete) — sick uses amber instead.
-const REASON_STYLE: Record<AbsenceReason, { label: string; bg: string; text: string; dot: string }> = {
-  'day-off':  { label: 'Day off',  bg: 'bg-muted/60',                         text: 'text-muted-foreground',                   dot: 'bg-muted-foreground/50' },
-  vacation:   { label: 'Vacation', bg: 'bg-sky-100 dark:bg-sky-950/50',       text: 'text-sky-700 dark:text-sky-300',          dot: 'bg-sky-500' },
-  sick:       { label: 'Sick',     bg: 'bg-amber-100 dark:bg-amber-950/50',   text: 'text-amber-700 dark:text-amber-300',      dot: 'bg-amber-500' },
-  training:   { label: 'Training', bg: 'bg-indigo-100 dark:bg-indigo-950/50', text: 'text-indigo-700 dark:text-indigo-300',    dot: 'bg-indigo-500' },
+const REASON_STYLE: Record<AbsenceReason, { labelKey: string; bg: string; text: string; dot: string }> = {
+  'day-off':  { labelKey: 'staff.statusDayOff',  bg: 'bg-muted/60',                         text: 'text-muted-foreground',                   dot: 'bg-muted-foreground/50' },
+  vacation:   { labelKey: 'staff.statusVacation', bg: 'bg-sky-100 dark:bg-sky-950/50',       text: 'text-sky-700 dark:text-sky-300',          dot: 'bg-sky-500' },
+  sick:       { labelKey: 'staff.statusSick',     bg: 'bg-amber-100 dark:bg-amber-950/50',   text: 'text-amber-700 dark:text-amber-300',      dot: 'bg-amber-500' },
+  training:   { labelKey: 'staff.statusTraining', bg: 'bg-indigo-100 dark:bg-indigo-950/50', text: 'text-indigo-700 dark:text-indigo-300',    dot: 'bg-indigo-500' },
 };
+
+// Today's day-of-week — used to highlight the current column in the schedule
+// table and the current day bar in the card week strip.
+const _dayMap: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const TODAY_DAY: DayOfWeek = _dayMap[new Date().getDay()];
 
 // Format an "HH:MM" shift string per the user's preferred 12h/24h setting.
 // 24h → "09:00", "21:30". 12h → "9 AM", "9:30 PM".
@@ -243,17 +248,17 @@ export function StaffPage() {
       shiftsApi.upsert(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shifts'] });
-      toast.success('Schedule updated');
+      toast.success(t('toast.staffUpdated'));
     },
-    onError: () => toast.error('Could not save schedule'),
+    onError: () => toast.error(t('toast.staffUpdateError')),
   });
   const removeShiftMut = useMutation({
     mutationFn: (params: { staffId: string; dayOfWeek: DayOfWeek }) => shiftsApi.remove(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shifts'] });
-      toast.success('Marked as day off');
+      toast.success(t('staff.markDayOff'));
     },
-    onError: () => toast.error('Could not update schedule'),
+    onError: () => toast.error(t('toast.staffUpdateError')),
   });
 
   const resetForm = () => setForm({
@@ -422,7 +427,7 @@ export function StaffPage() {
           <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums">
             {staff.length.toLocaleString()}{' '}
             <span className="text-muted-foreground/70 font-semibold">
-              {staff.length === 1 ? 'member' : 'staff'}
+              {staff.length === 1 ? t('staff.memberOne') : t('staff.memberMany')}
             </span>
           </h1>
         </div>
@@ -519,9 +524,8 @@ export function StaffPage() {
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={UsersIcon}
-              eyebrow={search || filter !== 'all' ? 'No matches' : 'Empty'}
               title={t('staff.none')}
-              description={search ? 'Try a different search term.' : filter !== 'all' ? 'No staff in this filter.' : 'Add your first team member to get started.'}
+              description={search ? t('staff.emptySearch') : filter !== 'all' ? t('staff.emptyFilter') : t('staff.emptyDefault')}
               variant={search || filter !== 'all' ? 'plain' : 'dashed'}
             />
           ) : (
@@ -536,12 +540,12 @@ export function StaffPage() {
                     key={member.id}
                     data-staff-id={member.id}
                     className={cn(
-                      'group relative flex flex-col rounded-xl border bg-card p-5',
+                      'group relative flex flex-col rounded-xl border bg-card p-5 cursor-pointer',
                       // Two transitions stacked so the deep-link highlight ring
                       // can fade out smoothly while hover effects stay snappy.
-                      'transition-[box-shadow,border-color,transform] duration-300',
-                      'hover:border-foreground/20 hover:shadow-sm',
-                      !member.isActive && 'opacity-60',
+                      'transition-[box-shadow,border-color,transform,opacity] duration-300',
+                      'hover:border-foreground/20 hover:shadow-md hover:-translate-y-0.5',
+                      !member.isActive && 'opacity-55',
                       highlightedId === member.id
                         ? 'border-foreground/60 ring-2 ring-foreground/30 ring-offset-2 ring-offset-background shadow-md'
                         : 'border-border',
@@ -551,9 +555,9 @@ export function StaffPage() {
                         sits in the top-right as a clean editorial chip
                         (replacing the old tiny dot inside the eyebrow). */}
                     <div className="flex items-start gap-3">
-                      <Avatar className="h-14 w-14 shrink-0">
+                      <Avatar className="h-16 w-16 shrink-0">
                         {member.avatarUrl && <AvatarImage src={member.avatarUrl} alt={member.firstName} />}
-                        <AvatarFallback className={cn('text-base font-bold', c.bg, c.text)}>
+                        <AvatarFallback className={cn('text-lg font-bold', c.bg, c.text)}>
                           {member.firstName[0]}{member.lastName[0]}
                         </AvatarFallback>
                       </Avatar>
@@ -561,7 +565,7 @@ export function StaffPage() {
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                           {roleLabel[member.role]}
                         </p>
-                        <p className="mt-0.5 font-semibold text-foreground truncate leading-tight text-base">
+                        <p className="mt-0.5 font-bold text-foreground truncate leading-tight text-[17px]">
                           {member.firstName} {member.lastName}
                         </p>
                       </div>
@@ -614,6 +618,7 @@ export function StaffPage() {
                       <div className="grid grid-cols-7 gap-1">
                         {DAYS.map(d => {
                           const has = memberShifts.some(s => s.dayOfWeek === d);
+                          const isToday = d === TODAY_DAY;
                           return (
                             <div
                               key={d}
@@ -621,15 +626,20 @@ export function StaffPage() {
                               className="flex flex-col items-center gap-1.5"
                             >
                               <span className={cn(
-                                'text-[9px] font-medium uppercase tracking-wider tabular-nums',
-                                has ? 'text-foreground' : 'text-muted-foreground/40',
+                                'text-[9px] font-semibold uppercase tracking-wider tabular-nums',
+                                isToday
+                                  ? 'text-foreground'
+                                  : has ? 'text-muted-foreground/70' : 'text-muted-foreground/30',
                               )}>
                                 {t(`days.short.${DAY_SHORT_KEY[d]}` as TranslationKey).slice(0, 1)}
                               </span>
                               <span
                                 className={cn(
-                                  'h-1.5 w-full rounded-full',
-                                  has ? c.dot : 'bg-muted/60',
+                                  'h-2 w-full rounded-full transition-opacity',
+                                  has ? c.dot : 'bg-muted/50',
+                                  isToday && has && 'ring-1 ring-offset-1 ring-offset-card opacity-100',
+                                  isToday && has && c.ring,
+                                  !isToday && !has && 'opacity-40',
                                 )}
                                 aria-hidden
                               />
@@ -703,11 +713,8 @@ export function StaffPage() {
         staff.filter(s => s.isActive).length === 0 ? (
           <EmptyState
             icon={CalendarDaysIcon}
-            eyebrow="Empty"
-            title={staff.length === 0 ? t('staff.none') : 'No active staff'}
-            description={staff.length === 0
-              ? 'Add your first team member, then come back to plan their week.'
-              : 'Activate at least one team member from the Directory tab to start scheduling.'}
+            title={staff.length === 0 ? t('staff.none') : t('staff.noActiveStaff')}
+            description={staff.length === 0 ? t('staff.addFirstDesc') : t('staff.noActiveDesc')}
           />
         ) : (
           <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -718,14 +725,29 @@ export function StaffPage() {
                     <th className="sticky left-0 z-10 bg-card px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground min-w-[180px]">
                       {t('staff.member')}
                     </th>
-                    {DAYS.map(day => (
-                      <th
-                        key={day}
-                        className="px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground tabular-nums"
-                      >
-                        {t(`days.short.${DAY_SHORT_KEY[day]}` as TranslationKey)}
-                      </th>
-                    ))}
+                    {DAYS.map(day => {
+                      const isToday = day === TODAY_DAY;
+                      return (
+                        <th
+                          key={day}
+                          className={cn(
+                            'px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.18em] tabular-nums',
+                            isToday
+                              ? 'text-foreground bg-muted/30'
+                              : 'text-muted-foreground',
+                          )}
+                        >
+                          <span className="flex items-center gap-1">
+                            {t(`days.short.${DAY_SHORT_KEY[day]}` as TranslationKey)}
+                            {isToday && (
+                              <span className="inline-flex items-center rounded-full bg-foreground px-1 py-px text-[8px] font-bold uppercase tracking-wide text-background leading-none">
+                                {t('staff.today')}
+                              </span>
+                            )}
+                          </span>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -753,8 +775,9 @@ export function StaffPage() {
                         {DAYS.map(day => {
                           const shift = memberShifts.find(s => s.dayOfWeek === day);
                           const absence = absences.find(a => a.staffId === member.id && a.dayOfWeek === day);
+                          const isToday = day === TODAY_DAY;
                           return (
-                            <td key={day} className="px-3 py-3 whitespace-nowrap">
+                            <td key={day} className={cn('px-3 py-3 whitespace-nowrap', isToday && 'bg-muted/20')}>
                               <ScheduleCell
                                 staffId={member.id}
                                 day={day}
@@ -762,6 +785,7 @@ export function StaffPage() {
                                 absence={absence?.reason}
                                 accent={c}
                                 canEdit={canEditSchedule}
+                                timeFormat={timeFormat}
                                 onSave={(startTime, endTime) => upsertShiftMut.mutate({ staffId: member.id, dayOfWeek: day, startTime, endTime })}
                                 onClear={() => removeShiftMut.mutate({ staffId: member.id, dayOfWeek: day })}
                                 offLabel={t('staff.off')}
@@ -786,10 +810,10 @@ export function StaffPage() {
         <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              {editingId ? 'Edit' : 'New'}
+              {editingId ? t('staff.editEyebrow') : t('staff.newEyebrow')}
             </p>
             <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight">
-              {editingId ? 'Staff member' : t('staff.addNew')}
+              {editingId ? t('staff.member') : t('staff.addNew')}
             </DialogTitle>
           </DialogHeader>
 
@@ -828,7 +852,7 @@ export function StaffPage() {
                     onClick={() => avatarInputRef.current?.click()}
                   >
                     <PhotoIcon className="mr-1.5 h-4 w-4" />
-                    {form.avatarUrl ? 'Replace' : 'Upload photo'}
+                    {form.avatarUrl ? t('staff.photoReplace') : t('staff.photoUpload')}
                   </Button>
                   {form.avatarUrl && (
                     <Button
@@ -837,12 +861,12 @@ export function StaffPage() {
                       variant="ghost"
                       onClick={() => setForm(prev => ({ ...prev, avatarUrl: undefined }))}
                     >
-                      Remove
+                      {t('staff.photoRemove')}
                     </Button>
                   )}
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Optional. Auto-resized to 512px.
+                  {t('staff.photoHint')}
                 </p>
               </div>
             </div>
@@ -906,10 +930,10 @@ export function StaffPage() {
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Default week
+                    {t('staff.defaultWeek')}
                   </p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground/80">
-                    Adjust later on the Schedule tab.
+                    {t('staff.scheduleHint')}
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
@@ -922,7 +946,7 @@ export function StaffPage() {
                       return acc;
                     }, {} as ScheduleDraft))}
                   >
-                    All working
+                    {t('staff.allWorking')}
                   </Button>
                   <Button
                     type="button"
@@ -933,7 +957,7 @@ export function StaffPage() {
                       return acc;
                     }, {} as ScheduleDraft))}
                   >
-                    All off
+                    {t('staff.allOff')}
                   </Button>
                 </div>
               </div>
@@ -960,11 +984,11 @@ export function StaffPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="working">Working</SelectItem>
-                          <SelectItem value="day-off">Day off</SelectItem>
-                          <SelectItem value="vacation">Vacation</SelectItem>
-                          <SelectItem value="sick">Sick</SelectItem>
-                          <SelectItem value="training">Training</SelectItem>
+                          <SelectItem value="working">{t('staff.statusWorking')}</SelectItem>
+                          <SelectItem value="day-off">{t('staff.statusDayOff')}</SelectItem>
+                          <SelectItem value="vacation">{t('staff.statusVacation')}</SelectItem>
+                          <SelectItem value="sick">{t('staff.statusSick')}</SelectItem>
+                          <SelectItem value="training">{t('staff.statusTraining')}</SelectItem>
                         </SelectContent>
                       </Select>
 
@@ -993,7 +1017,7 @@ export function StaffPage() {
                             REASON_STYLE[d.status as AbsenceReason].text,
                           )}>
                             <span className={cn('h-1.5 w-1.5 rounded-full', REASON_STYLE[d.status as AbsenceReason].dot)} />
-                            {REASON_STYLE[d.status as AbsenceReason].label}
+                            {t(REASON_STYLE[d.status as AbsenceReason].labelKey as Parameters<typeof t>[0])}
                           </span>
                         </div>
                       )}
@@ -1026,7 +1050,7 @@ export function StaffPage() {
 type Accent = ReturnType<typeof accentFor>;
 
 function ScheduleCell({
-  staffId, day, shift, absence, accent, canEdit, onSave, onClear, offLabel,
+  staffId, day, shift, absence, accent, canEdit, onSave, onClear, offLabel, timeFormat,
 }: {
   staffId: string;
   day: DayOfWeek;
@@ -1037,7 +1061,9 @@ function ScheduleCell({
   onSave: (startTime: string, endTime: string) => void;
   onClear: () => void;
   offLabel: string;
+  timeFormat: TimeFormat;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [start, setStart] = useState(shift?.startTime ?? '09:00');
   const [end, setEnd] = useState(shift?.endTime ?? '18:00');
@@ -1062,7 +1088,7 @@ function ScheduleCell({
       )}
     >
       <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
-      {shift.startTime}–{shift.endTime}
+      {formatShiftTime(shift.startTime, timeFormat)}–{formatShiftTime(shift.endTime, timeFormat)}
     </span>
   ) : reasonStyle ? (
     <span
@@ -1073,7 +1099,7 @@ function ScheduleCell({
       )}
     >
       <span className={cn('h-1.5 w-1.5 rounded-full', reasonStyle.dot)} />
-      {reasonStyle.label}
+      {t(reasonStyle.labelKey as Parameters<typeof t>[0])}
     </span>
   ) : canEdit ? (
     <span
@@ -1093,7 +1119,7 @@ function ScheduleCell({
 
   const save = () => {
     if (!start || !end || start >= end) {
-      toast.error('End time must be after start time');
+      toast.error(t('toast.invalidTimeRange') ?? 'End time must be after start time');
       return;
     }
     onSave(start, end);
@@ -1104,7 +1130,7 @@ function ScheduleCell({
     const previous = shift ? { startTime: shift.startTime, endTime: shift.endTime } : null;
     onClear();
     setOpen(false);
-    toast.success('Marked as day off', {
+    toast.success(t('staff.markDayOff'), {
       action: previous
         ? { label: 'Undo', onClick: () => onSave(previous.startTime, previous.endTime) }
         : undefined,
@@ -1122,7 +1148,7 @@ function ScheduleCell({
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <div>
-            <Label className="text-xs text-muted-foreground">Start</Label>
+            <Label className="text-xs text-muted-foreground">{t('staff.scheduleStart')}</Label>
             <Input
               type="time"
               step={300}
@@ -1132,7 +1158,7 @@ function ScheduleCell({
             />
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground">End</Label>
+            <Label className="text-xs text-muted-foreground">{t('staff.scheduleEnd')}</Label>
             <Input
               type="time"
               step={300}
@@ -1149,12 +1175,12 @@ function ScheduleCell({
               onClick={handleMarkOff}
               className="text-xs font-medium text-muted-foreground hover:text-foreground"
             >
-              Mark as day off
+              {t('staff.markDayOff')}
             </button>
           ) : <span />}
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button size="sm" onClick={save}>Save</Button>
+            <Button size="sm" variant="outline" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+            <Button size="sm" onClick={save}>{t('common.save')}</Button>
           </div>
         </div>
       </PopoverContent>

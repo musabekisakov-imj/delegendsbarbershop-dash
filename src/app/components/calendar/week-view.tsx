@@ -7,7 +7,7 @@ import {
 } from 'date-fns';
 import {
   ArrowPathIcon, ClockIcon, EllipsisHorizontalIcon, ExclamationCircleIcon,
-  ExclamationTriangleIcon, HeartIcon, MoonIcon, PencilSquareIcon,
+  HeartIcon, MoonIcon, PencilSquareIcon,
 } from '@heroicons/react/24/outline';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '../ui/hover-card';
 import { Popover, PopoverTrigger } from '../ui/popover';
@@ -16,11 +16,13 @@ import { formatTime, formatHourLabel } from '../../lib/time';
 import { assignLanes } from '../../lib/calendar-lanes';
 import { useT, useTimeFormat } from '../../hooks/use-t';
 import { useLanguageStore } from '../../store/language-store';
+import { AppointmentWarningPin } from './appointment-warning-pin';
+import { getAppointmentWarning } from '../../lib/appointment-warning';
 import {
   STATUS_STRIPE, STATUS_LABEL,
   CATEGORY_DOTS, hashToIndex, MOTION_EASE,
 } from '../../lib/tokens';
-import type { AppointmentWithDetails, Break, DayOfWeek, Shift, ShiftOverride } from '../../types';
+import type { AppointmentWithDetails, Break, DayOfWeek, Shift, ShiftOverride, WorkingHoursDay } from '../../types';
 import type { TranslationKey } from '../../i18n';
 
 // ─── Custom fork-knife glyph ─────────────────────────────
@@ -315,6 +317,10 @@ interface WeekViewProps {
   // break names without flipping to Day grid. Drag-to-reschedule on a 4px
   // bar is a hit-target nightmare, so that stays Day-grid-only.
   onEditBreak?: (brk: Break) => void;
+  /** Full working-hours map keyed by day name — used by warning predicate. */
+  workingHours?: Record<string, WorkingHoursDay>;
+  /** Minimum gap between back-to-back appointments (bookingRules.bufferMinutes). */
+  bufferMinutes?: number;
 }
 
 export function WeekView({
@@ -325,6 +331,7 @@ export function WeekView({
   onCreateAt, onRequestDragConfirm, onRequestBreakDragConfirm,
   canOverride = false,
   renderTileMenu, renderTileHoverCard, onEditBreak,
+  workingHours, bufferMinutes = 0,
 }: WeekViewProps) {
   const t = useT();
   const [timeFormat] = useTimeFormat();
@@ -476,7 +483,7 @@ export function WeekView({
       >
         {/* Sticky day header — bg-canvas matches the grid surface so the
             header reads as part of the canvas paper, not a floating chip. */}
-        <div className="sticky top-0 z-20 flex border-b border-border bg-canvas/95 backdrop-blur-sm">
+        <div className="sticky top-0 z-20 flex border-b border-border bg-canvas">
           <div className="shrink-0 border-r border-border" style={{ width: `${TIME_GUTTER_W}px` }} />
           {days.map((d, i) => {
             const td = isToday(d);
@@ -774,23 +781,20 @@ export function WeekView({
                   const statusLabel = STATUS_LABEL[apt.status] ?? '';
                   const isDragging = draggingId === apt.id;
                   const draggable = canOverride && !!onRequestDragConfirm;
-                  // Tile-level issue chip — mirrors day-grid (calendar.tsx:5196-5250).
-                  // Three kinds, single chip rendered (highest priority wins) so
-                  // the tile chrome stays calm:
-                  //   1. breakOverlap → amber  — booking sits inside a break
-                  //   2. late         → rose   — start time has passed AND apt
-                  //                              is still scheduled/confirmed
-                  //   3. unconfirmed  → blue   — status='scheduled' AND start
-                  //                              within next 24 hours
-                  // `late` is gated to "today" so historical bookings don't
-                  // light the calendar in red. `unconfirmed` is gated to a 24h
-                  // window because a year-out scheduled-only booking is not
-                  // actionable today.
-                  const aptStartAbs = start.getHours() * 60 + start.getMinutes();
-                  const aptEndAbs = aptStartAbs + dur;
-                  const overridesBreak = dayBreaks.some(
-                    b => aptStartAbs < b.end && b.start < aptEndAbs,
-                  );
+                  // Warning triangle — canonical 6-rule predicate.
+                  const rawBreaksForDay = filterBreaksForDate(breaks, d);
+                  const colApts = (bucket?.appts ?? []).filter(p => format(parseISO(p.startTime), 'yyyy-MM-dd') === key);
+                  const dayDow = DOW_BY_INDEX[d.getDay()];
+                  const warning = getAppointmentWarning(apt, {
+                    peerAppointments: colApts,
+                    staffBreaks: rawBreaksForDay.filter(b => b.startTime && b.endTime).map(b => ({ startTime: b.startTime, endTime: b.endTime })),
+                    workingHours: workingHours?.[dayDow],
+                    bufferMinutes,
+                    now: clock,
+                    t,
+                  });
+
+                  // Legacy status chips (late / unconfirmed within 24h) — not triangles.
                   const ymdNow = format(clock, 'yyyy-MM-dd');
                   const ymdApt = format(start, 'yyyy-MM-dd');
                   const minutesUntilStart = (start.getTime() - clock.getTime()) / 60_000;
@@ -798,11 +802,8 @@ export function WeekView({
                     && (apt.status === 'scheduled' || apt.status === 'confirmed');
                   const isUnconfirmed = apt.status === 'scheduled'
                     && minutesUntilStart > 0 && minutesUntilStart < 24 * 60;
-                  const issueKind: 'breakOverlap' | 'late' | 'unconfirmed' | null =
-                    overridesBreak ? 'breakOverlap'
-                    : isLate ? 'late'
-                    : isUnconfirmed ? 'unconfirmed'
-                    : null;
+                  const legacyKind: 'late' | 'unconfirmed' | null =
+                    isLate ? 'late' : isUnconfirmed ? 'unconfirmed' : null;
                   // Narrow lane (3+ lanes in one column) — switch to first-name
                   // only so the tile reads as "Daniel" instead of "Daniel..."
                   // with an ugly ellipsis. lanePct < 35 ≈ < 80px effective.
@@ -838,19 +839,19 @@ export function WeekView({
                     <>
                       <span className={cn('pointer-events-none absolute right-0 top-0 bottom-0 w-[2px]', STATUS_STRIPE[apt.status])} />
 
-                      {issueKind && (() => {
-                        const meta = issueKind === 'breakOverlap'
-                          ? { Icon: ExclamationTriangleIcon, bg: 'bg-amber-50 dark:bg-amber-500/15', text: 'text-amber-700 dark:text-amber-400', ring: 'ring-amber-500/30', tKey: 'tile.overridesBreak' as TranslationKey }
-                          : issueKind === 'late'
+                      {warning && <AppointmentWarningPin warning={warning} size="sm" />}
+
+                      {legacyKind && (() => {
+                        const meta = legacyKind === 'late'
                           ? { Icon: ClockIcon, bg: 'bg-rose-50 dark:bg-rose-500/15', text: 'text-rose-700 dark:text-rose-400', ring: 'ring-rose-500/30', tKey: 'tile.lateStart' as TranslationKey }
                           : { Icon: ExclamationCircleIcon, bg: 'bg-blue-50 dark:bg-blue-500/15', text: 'text-blue-700 dark:text-blue-400', ring: 'ring-blue-500/30', tKey: 'tile.unconfirmed' as TranslationKey };
-                        const { Icon: IssueIcon, bg, text: textCls, ring, tKey } = meta;
+                        const { Icon: LegacyIcon, bg, text: textCls, ring, tKey } = meta;
                         return (
                           <span
-                            className={cn('pointer-events-none absolute top-1 right-1.5 inline-flex items-center justify-center rounded-full ring-1 p-0.5', bg, ring)}
+                            className={cn('pointer-events-none absolute top-1 right-6 inline-flex items-center justify-center rounded-full ring-1 p-0.5', bg, ring)}
                             aria-label={t(tKey)} title={t(tKey)}
                           >
-                            <IssueIcon className={cn('h-2.5 w-2.5', textCls)} strokeWidth={2.4} />
+                            <LegacyIcon className={cn('h-2.5 w-2.5', textCls)} strokeWidth={2.4} />
                           </span>
                         );
                       })()}

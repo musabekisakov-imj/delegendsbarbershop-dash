@@ -17,6 +17,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { useGlobalSearch, type SearchResult } from '../hooks/use-global-search';
 import { cn } from './ui/utils';
+import { CONTAINER_SHELL } from './layout/header';
+import { useT } from '../hooks/use-t';
 
 const KIND_ICON: Record<SearchResult['kind'], typeof UserIcon> = {
   client: UserIcon,
@@ -36,6 +38,7 @@ export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
+  const t = useT();
   const results = useGlobalSearch(query);
 
   useEffect(() => {
@@ -70,14 +73,11 @@ export function GlobalSearch() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="hidden md:flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors w-64"
-        aria-label="Search"
+        className={cn(CONTAINER_SHELL, 'hidden md:inline-flex')}
+        aria-label={t('search.open')}
       >
-        <MagnifyingGlassIcon className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left">Search everything…</span>
-        <kbd className="hidden lg:inline-flex items-center rounded border border-border bg-card px-1.5 py-0.5 text-xs">
-          ⌘K
-        </kbd>
+        <MagnifyingGlassIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+        <kbd className="font-mono text-[11px] font-semibold text-muted-foreground/80 tracking-tight">⌘K</kbd>
       </button>
 
       <CommandDialog open={open} onOpenChange={setOpen} title="Global search" description="Search clients, staff, services, and bookings across all offices">

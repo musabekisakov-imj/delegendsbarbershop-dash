@@ -4,7 +4,7 @@ import {
   HomeIcon, CalendarIcon, ClipboardDocumentListIcon, UserGroupIcon, UsersIcon,
   ScissorsIcon, Cog6ToothIcon, QuestionMarkCircleIcon, ChartBarIcon, ShieldCheckIcon,
   Bars3Icon, XMarkIcon, SunIcon, MoonIcon, CheckIcon,
-  ArrowRightStartOnRectangleIcon, UserCircleIcon, GlobeAltIcon,
+  ArrowRightStartOnRectangleIcon, UserCircleIcon, ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { useTheme } from 'next-themes';
 import { cn } from '../ui/utils';
@@ -17,6 +17,13 @@ import { NotificationsBell } from '../notifications-bell';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import type { Language, Permission, StaffRole } from '../../types';
 import type { TranslationKey } from '../../i18n';
+
+// Shared shell for the three container-style controls (location, search, language).
+// Single source of truth — edit here to resize the whole cluster at once.
+export const CONTAINER_SHELL =
+  'inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card/60 px-2.5 ' +
+  'text-[13px] text-foreground transition-colors ' +
+  'hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50';
 
 // Map each role to its translation key so the user-menu badge localizes correctly.
 const ROLE_TRANSLATION_KEY: Record<StaffRole, TranslationKey> = {
@@ -54,6 +61,7 @@ const LANGUAGES: { code: Language; flag: string; label: string; short: string }[
 // Previous 2-row implementation ate ~104px of vertical on every page.
 export function Header() {
   const t = useT();
+  const [language] = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore(s => s.user);
@@ -61,6 +69,7 @@ export function Header() {
   const { can } = usePermission();
   const visibleNav = NAV.filter(item => !item.requires || can(item.requires));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const currentLang = LANGUAGES.find(l => l.code === language) ?? LANGUAGES[0];
 
   // Close mobile menu on route change
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
@@ -75,7 +84,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+    <header className="sticky top-0 z-40 border-b border-border bg-card">
       <div className="flex h-14 items-center gap-2 px-4 md:px-6">
         {/* Brand — two-line stacked logotype: "DeLegends" as the dominant
             18 px Bold mark, "barbershop" as a small wide-tracked secondary
@@ -133,24 +142,18 @@ export function Header() {
         {/* Push utilities right on mobile where nav is hidden */}
         <div className="flex-1 md:hidden" />
 
-        {/* Utilities */}
-        <div className="hidden md:block">
+        {/* Utility cluster — desktop only. Two visual groups separated by a divider.
+            Group A (containers, 36px): location | search | language
+            Group B (icon buttons, 36×36): theme | bell | avatar */}
+        <div className="hidden md:flex items-center gap-2">
+          {/* Group A — containers */}
           <OfficeSwitcher />
-        </div>
-
-        <div className="hidden md:block">
           <GlobalSearch />
-        </div>
-
-        {/* Icon-button cluster — all 30×30, rounded-[7px], gap-1.5 */}
-        <div className="hidden md:flex items-center gap-1.5 ml-1">
           <Popover>
             <PopoverTrigger asChild>
-              <button
-                className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                aria-label="Change language"
-              >
-                <GlobeAltIcon className="h-[18px] w-[18px]" />
+              <button className={CONTAINER_SHELL} aria-label={t('lang.change')}>
+                <span className="font-medium">{currentLang.label}</span>
+                <ChevronDownIcon className="h-3.5 w-3.5 text-muted-foreground/70" />
               </button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-48 p-1">
@@ -158,51 +161,52 @@ export function Header() {
             </PopoverContent>
           </Popover>
 
-          <ThemeToggle />
+          {/* Vertical divider */}
+          <span aria-hidden className="h-5 w-px bg-border/80" />
 
+          {/* Group B — icon buttons */}
+          <ThemeToggle />
           <NotificationsBell />
 
-          {/* User avatar → dropdown */}
+          {/* Avatar → dropdown */}
           <Popover>
             <PopoverTrigger asChild>
               <button
-                className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                aria-label="User menu"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+                aria-label={t('user.menu')}
               >
-                <div className="flex h-[26px] w-[26px] items-center justify-center rounded-md bg-indigo-100 text-[11px] font-bold text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
-                  {initials}
-                </div>
+                <span className="text-[12px] font-semibold tracking-tight">{initials}</span>
               </button>
             </PopoverTrigger>
-          <PopoverContent align="end" className="w-60 p-1">
-            <div className="px-3 py-2 border-b border-border">
-              <p className="text-sm font-semibold text-foreground truncate">
-                {user ? `${user.firstName} ${user.lastName}` : 'Guest'}
-              </p>
-              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-              {user?.role && (
-                <span className="mt-1.5 inline-flex text-[10px] font-semibold uppercase tracking-wider text-primary bg-primary/10 rounded px-1.5 py-0.5">
-                  {t(ROLE_TRANSLATION_KEY[user.role])}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={() => navigate('/profile')}
-              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 mt-1 text-sm text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-            >
-              <UserCircleIcon className="h-4 w-4 text-muted-foreground" />
-              My profile
-            </button>
-            <button
-              onClick={handleLogout}
-              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-            >
-              <ArrowRightStartOnRectangleIcon className="h-4 w-4 text-muted-foreground" />
-              {t('common.logout')}
-            </button>
-          </PopoverContent>
+            <PopoverContent align="end" className="w-60 p-1">
+              <div className="px-3 py-2 border-b border-border">
+                <p className="text-sm font-semibold text-foreground truncate">
+                  {user ? `${user.firstName} ${user.lastName}` : 'Guest'}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                {user?.role && (
+                  <span className="mt-1.5 inline-flex text-[10px] font-semibold uppercase tracking-wider text-primary bg-primary/10 rounded px-1.5 py-0.5">
+                    {t(ROLE_TRANSLATION_KEY[user.role])}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => navigate('/profile')}
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 mt-1 text-sm text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              >
+                <UserCircleIcon className="h-4 w-4 text-muted-foreground" />
+                My profile
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              >
+                <ArrowRightStartOnRectangleIcon className="h-4 w-4 text-muted-foreground" />
+                {t('common.logout')}
+              </button>
+            </PopoverContent>
           </Popover>
-        </div>{/* end icon-button cluster */}
+        </div>{/* end utility cluster */}
 
         {/* Mobile hamburger */}
         <button
@@ -254,34 +258,29 @@ export function Header() {
 
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  // Two-mode toggle: light ↔ dark. Icon hints at the *next* mode so the
-  // affordance reads as "click to advance."
+  const t = useT();
   const next = resolvedTheme === 'light' ? 'dark' : 'light';
-  const label = next === 'dark' ? 'Switch to dark mode' : 'Switch to light mode';
+  const label = next === 'dark' ? t('theme.switchToDark') : t('theme.switchToLight');
   return (
     <button
       onClick={() => setTheme(next)}
-      className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+      className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
       aria-label={label}
       title={label}
     >
-      {resolvedTheme === 'light' ? (
-        <MoonIcon className="h-[18px] w-[18px]" />
-      ) : (
-        <SunIcon className="h-[18px] w-[18px]" />
-      )}
+      <SunIcon
+        className={cn(
+          'h-[18px] w-[18px] absolute transition-opacity duration-200',
+          resolvedTheme === 'light' ? 'opacity-0' : 'opacity-100',
+        )}
+      />
+      <MoonIcon
+        className={cn(
+          'h-[18px] w-[18px] absolute transition-opacity duration-200',
+          resolvedTheme === 'light' ? 'opacity-100' : 'opacity-0',
+        )}
+      />
     </button>
-  );
-}
-
-function LanguageFlag() {
-  const [language] = useLanguage();
-  const current = LANGUAGES.find(l => l.code === language) ?? LANGUAGES[0];
-  return (
-    <>
-      <span className="text-sm leading-none">{current.flag}</span>
-      <span className="hidden sm:inline tabular-nums text-xs font-semibold">{current.short}</span>
-    </>
   );
 }
 
@@ -302,7 +301,7 @@ function LanguagePicker() {
           >
             <span className="text-sm leading-none">{l.flag}</span>
             <span className="flex-1 text-left">{l.label}</span>
-            {active && <CheckIcon className="h-4 w-4 text-primary shrink-0" />}
+            {active && <CheckIcon className="h-4 w-4 text-brand shrink-0" />}
           </button>
         );
       })}

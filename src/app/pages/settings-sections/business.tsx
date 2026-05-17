@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { PencilSquareIcon, PlusIcon, TrashIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
 import { Input } from '../../components/ui/input';
@@ -236,7 +236,7 @@ function LocationCard({ office, onEdit, index = 0 }: { office: Office; onEdit: (
           onClick={onEdit}
           whileHover={reduceMotion ? undefined : { scale: 1.05 }}
           whileTap={reduceMotion ? undefined : { scale: 0.92 }}
-          className="absolute top-2 right-2 inline-flex h-7 w-7 items-center justify-center rounded-md bg-card/90 backdrop-blur-sm text-foreground shadow-sm hover:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="absolute top-2 right-2 inline-flex h-7 w-7 items-center justify-center rounded-md bg-card text-foreground shadow-sm hover:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           aria-label={t('settings.business.editLocation')}
         >
           <PencilSquareIcon className="h-3.5 w-3.5" />
@@ -273,12 +273,16 @@ function LocationEditModal({
   onDelete?: () => void;
 }) {
   const t = useT();
-  const [draft, setDraft] = useState<Office>(
-    office ?? { id: `office-${Math.random().toString(36).substring(2, 9)}`, name: '', address: '', phone: '', timezone: '' },
-  );
+  const emptyOffice = () => ({ id: `office-${Math.random().toString(36).substring(2, 9)}`, name: '', address: '', phone: '', timezone: '' });
+  const [draft, setDraft] = useState<Office>(() => office ?? emptyOffice());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Reset draft when modal re-opens for a different office.
-  useState(() => setDraft(office ?? draft));
+  useEffect(() => {
+    if (open) {
+      setDraft(office ?? emptyOffice());
+      setShowDeleteConfirm(false);
+    }
+  }, [open, office]);
 
   if (!open) return null;
 
@@ -301,17 +305,33 @@ function LocationEditModal({
         </div>
         <DialogFooter className="gap-2 sm:justify-between">
           <div>
-            {onDelete && (
+            {onDelete && !showDeleteConfirm && (
               <Button
                 variant="ghost"
-                onClick={() => {
-                  if (confirm(t('settings.business.deleteLocationConfirm'))) onDelete();
-                }}
+                onClick={() => setShowDeleteConfirm(true)}
                 className="text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10"
               >
                 <TrashIcon className="h-4 w-4 mr-1.5" />
                 {t('settings.business.deleteLocation')}
               </Button>
+            )}
+            {onDelete && showDeleteConfirm && (
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-rose-600 dark:text-rose-400">
+                  {t('settings.business.deleteLocationConfirm')}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={onDelete}
+                  className="text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                >
+                  {t('common.confirm')}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowDeleteConfirm(false)}>
+                  {t('common.cancel')}
+                </Button>
+              </div>
             )}
           </div>
           <div className="flex gap-2">

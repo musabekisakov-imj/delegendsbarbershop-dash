@@ -2,23 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── HALL — dark editorial palette ─────────────────────────
-   The customer site commits to a single dark identity (lime + warm-black).
-   Tokens are L C H components; Tailwind wraps them in oklch() so opacity
-   modifiers (bg-primary/10) keep working. */
+/* ─── DE LEGENDS — dark luxury palette ─────────────────────
+   Warm near-black + champagne gold. */
 :root {
-  --bg: 0.06 0 0;
-  --surface: 0.10 0 0;
-  --surface-2: 0.14 0 0;
-  --fg: 0.96 0 0;
-  --fg-muted: 0.62 0 0;
-  --fg-subtle: 0.42 0 0;
-  --primary: 0.95 0.16 118.89;
-  --primary-fg: 0.10 0 0;
-  --border-rgb: 255 255 255;
-  --border-strong-rgb: 255 255 255;
-  /* Editorial darkening — brings warm photos into the HALL palette */
-  --photo-filter: brightness(0.62) contrast(1.08) sepia(0.18) saturate(0.85);
+  --bg: 0.07 0.005 60;
+  --surface: 0.11 0.007 60;
+  --surface-2: 0.16 0.008 60;
+  --fg: 0.95 0.01 80;
+  --fg-muted: 0.60 0.015 70;
+  --fg-subtle: 0.40 0.008 70;
+  --primary: 0.78 0.10 65;
+  --primary-fg: 0.08 0 0;
+  --border-rgb: 201 169 110;
+  --border-strong-rgb: 201 169 110;
+  --photo-filter: brightness(0.70) contrast(1.05) sepia(0.12) saturate(0.90);
   color-scheme: dark;
 }
 
@@ -44,8 +41,9 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Display headlines — Jakarta heavy + tracking-tight (matches the source pattern) */
+  /* Display headlines — Cormorant Garamond for luxury serif feel */
   .display {
+    font-family: var(--font-display), 'Cormorant Garamond', Georgia, serif;
     @apply font-medium tracking-tight leading-[1.05];
   }
 }

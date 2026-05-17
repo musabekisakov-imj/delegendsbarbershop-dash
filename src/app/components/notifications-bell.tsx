@@ -156,6 +156,24 @@ export function NotificationsBell() {
     return n;
   }, [newBookingsToday, newClientsToday, pendingInvites, noShows, lastSeen]);
 
+  // Severity of the highest-priority unread bucket.
+  // critical > warning > positive > info — dot color changes accordingly.
+  const severity = useMemo<'critical' | 'warning' | 'positive' | 'info' | null>(() => {
+    if (unreadCount === 0) return null;
+    if (cancelledToday.some(a => Date.parse(a.createdAt) > lastSeen)
+        || noShows.some(a => Date.parse(a.createdAt) > lastSeen)) return 'critical';
+    if (pendingInvites.some(p => Date.parse(p.createdAt) > lastSeen)) return 'warning';
+    if (newClientsToday.some(c => Date.parse(c.createdAt) > lastSeen)) return 'positive';
+    return 'info';
+  }, [unreadCount, cancelledToday, noShows, pendingInvites, newClientsToday, lastSeen]);
+
+  const SEVERITY_BG: Record<NonNullable<typeof severity>, string> = {
+    critical: 'bg-destructive',
+    warning: 'bg-warning',
+    positive: 'bg-success',
+    info: 'bg-brand',
+  };
+
   const totalSignals =
     upcoming.length + noShows.length + cancelledToday.length +
     pendingInvites.length + newBookingsToday.length + newClientsToday.length;
@@ -176,26 +194,27 @@ export function NotificationsBell() {
     <Popover>
       <PopoverTrigger asChild>
         <button
-          className="relative inline-flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-          aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}
+          className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+          aria-label={severity ? `${unreadCount} unread notifications` : 'Notifications'}
         >
-          {unreadCount > 0 ? (
+          {severity ? (
             <BellAlertIcon className="h-[18px] w-[18px]" />
           ) : (
             <BellIcon className="h-[18px] w-[18px]" />
           )}
           <AnimatePresence>
-            {unreadCount > 0 && !reduce && (
+            {severity && !reduce && (
               <motion.span
-                key="dot"
+                key={`dot-${severity}`}
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 exit={{ scale: 0 }}
                 transition={{ duration: MOTION_DUR.fast, ease: MOTION_EASE }}
-                className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white tabular-nums ring-2 ring-background"
-              >
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </motion.span>
+                className={cn(
+                  'absolute top-[8px] right-[8px] h-[7px] w-[7px] rounded-full ring-2 ring-card',
+                  SEVERITY_BG[severity],
+                )}
+              />
             )}
           </AnimatePresence>
         </button>

@@ -43,7 +43,14 @@ export function useKeyboardShortcuts({ onShowHelp }: Options) {
         return;
       }
 
-      // Don't intercept modifier combos (⌘K handled elsewhere, ⌘S is browser)
+      // ⌘/ (Mac) and Ctrl+/ (Win/Linux) open shortcuts dialog, same as '?'
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault();
+        onShowHelp();
+        return;
+      }
+
+      // Don't intercept other modifier combos (⌘K handled elsewhere, ⌘S is browser)
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const key = e.key.toLowerCase();
@@ -52,6 +59,7 @@ export function useKeyboardShortcuts({ onShowHelp }: Options) {
       if (gPressed.current) {
         const routes: Record<string, string> = {
           o: '/overview',
+          a: '/analytics',
           c: '/calendar',
           b: '/bookings',
           l: '/clients',

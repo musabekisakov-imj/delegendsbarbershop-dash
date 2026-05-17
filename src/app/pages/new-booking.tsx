@@ -694,7 +694,7 @@ export function NewBookingPage() {
               step bodies (time-slot grid) so Continue is always reachable
               without scrolling. Sits inside the form column so it doesn't
               cover the summary panel. */}
-          <div className="sticky bottom-0 z-10 -mx-4 md:mx-0 mt-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t border-border">
+          <div className="sticky bottom-0 z-10 -mx-4 md:mx-0 mt-2 bg-background border-t border-border">
             <div className="flex items-center justify-between gap-3 px-4 py-3 md:px-2">
               <button
                 type="button"

@@ -4,7 +4,6 @@ import { appointmentsApi, clientsApi, staffApi, accountsApi, tenantApi } from '.
 import { TodaySummary } from '../components/overview/today-summary';
 import { EmptyScheduleSlots } from '../components/overview/empty-schedule-slots';
 import { NextUp } from '../components/overview/next-up';
-import { QuickActions } from '../components/overview/quick-actions';
 import { ShopStatus } from '../components/shared/shop-status';
 import { getShopStatus } from '../lib/overview';
 import { useOfficeStore } from '../store/office-store';
@@ -27,7 +26,7 @@ import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveCo
 import { formatPrice } from '../lib/format';
 import { useNavigate } from 'react-router';
 import { cn } from '../components/ui/utils';
-import { gradientFor, STATUS_DOT, STATUS_PILL, STATUS_LABEL } from '../lib/tokens';
+import { gradientFor, STATUS_DOT, STATUS_PILL, STATUS_LABEL, STAFF_COLORS, hashToIndex } from '../lib/tokens';
 import { useT, useLanguage } from '../hooks/use-t';
 
 // ─── Date utilities (Overview-local) ──────────────────────
@@ -352,9 +351,6 @@ export function OverviewPage() {
         weekApptCount={weekAppointments.length}
       />
 
-      {/* Quick-action launch pad — only on today/future dates */}
-      {dateCtx !== 'past' && <QuickActions />}
-
       {/* ─── Schedule + sidebar (12-col grid on lg) ──
           Left 8/12: Today's Schedule with temporal styling (past dimmed,
           current highlighted + pulsing). Right 4/12: Next up + Top barber +
@@ -672,11 +668,7 @@ export function OverviewPage() {
   );
 }
 
-// Deterministic staff dot color — matches STAFF_COLORS order in calendar.tsx
-const STAFF_DOTS = ['bg-blue-500', 'bg-violet-500', 'bg-amber-500', 'bg-emerald-500', 'bg-rose-500', 'bg-cyan-500', 'bg-orange-500'];
 function staffDot(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return STAFF_DOTS[h % STAFF_DOTS.length];
+  return STAFF_COLORS[hashToIndex(id, STAFF_COLORS.length)].dot;
 }
 

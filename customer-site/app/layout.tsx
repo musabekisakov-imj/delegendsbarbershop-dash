@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Manrope } from 'next/font/google';
+import { Manrope, Cormorant_Garamond } from 'next/font/google';
 import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 import { MainNav } from '@/components/shared/main-nav';
@@ -16,6 +16,14 @@ const manrope = Manrope({
   variable: '--font-sans',
   display: 'swap',
   weight: ['400', '500', '600', '700', '800'],
+});
+
+const cormorant = Cormorant_Garamond({
+  subsets: ['latin', 'latin-ext', 'cyrillic'],
+  variable: '--font-display',
+  display: 'swap',
+  weight: ['300', '400', '500', '600', '700'],
+  style: ['normal', 'italic'],
 });
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://delegendsbarbershop.lt';
@@ -48,7 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN;
   const plausibleSrc = process.env.NEXT_PUBLIC_PLAUSIBLE_SRC ?? 'https://plausible.io/js/script.js';
   return (
-    <html lang={lang} className={`${manrope.variable} ${GeistMono.variable}`}>
+    <html lang={lang} className={`${manrope.variable} ${cormorant.variable} ${GeistMono.variable}`}>
       <body className="flex min-h-screen flex-col bg-background text-foreground">
         {/* Skip-to-content — invisible until keyboard-focused, then a lime
             chip the user can hit Enter on to jump past the nav. */}

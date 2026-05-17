@@ -1,5 +1,21 @@
 import type { Language } from '../types';
 
+const HOUR_LABELS: Record<Language, string> = { en: 'h', ru: 'ч', lt: 'h' };
+const MIN_LABELS: Record<Language, string> = { en: 'min', ru: 'мин', lt: 'min' };
+
+/**
+ * Locale-aware duration. 45 → "45 мин", 60 → "1 ч", 90 → "1 ч 30 мин".
+ * Falls back to English when language is unknown.
+ */
+export function formatDurationLocalized(min: number, language: Language): string {
+  if (min <= 0) return '—';
+  const h = HOUR_LABELS[language] ?? HOUR_LABELS.en;
+  const m = MIN_LABELS[language] ?? MIN_LABELS.en;
+  if (min < 60) return `${min} ${m}`;
+  if (min % 60 === 0) return `${min / 60} ${h}`;
+  return `${Math.floor(min / 60)} ${h} ${min % 60} ${m}`;
+}
+
 /**
  * Human-readable duration. 45 → "45m", 60 → "1h", 90 → "1.5h", 75 → "1h 15m".
  * Applied everywhere durations show: day agenda, grid tiles, week tiles.
@@ -30,30 +46,32 @@ export function formatMoney(amount: number, opts: { compact?: boolean } = {}): s
   return `€${amount.toLocaleString()}`;
 }
 
-// Cache Intl.NumberFormat instances per locale — constructing is surprisingly
-// slow when called once per tile across hundreds of bookings.
+// Cache keyed by `${locale}:${currency}` — avoids collision when currency changes.
 const priceFormatterCache = new Map<string, Intl.NumberFormat>();
 
+export type TenantCurrency = 'EUR' | 'USD' | 'GBP' | 'UZS';
+
 /**
- * Locale-aware currency formatter. `formatPrice(45, 'en')` → "€45",
- * `formatPrice(1250, 'lt')` → "1 250 €", etc. Always EUR; no fractional
- * digits (barbershop pricing is whole euros).
+ * Locale-aware currency formatter. Defaults to EUR (backwards-compatible).
+ * `formatPrice(45, 'en')` → "€45", `formatPrice(1250, 'lt')` → "1 250 €",
+ * `formatPrice(50000, 'ru', 'UZS')` → "50 000 UZS".
  */
-export function formatPrice(amount: number, language: Language): string {
+export function formatPrice(amount: number, language: Language, currency: TenantCurrency = 'EUR'): string {
   if (Number.isNaN(amount)) return '—';
   const locale =
     language === 'ru' ? 'ru-RU'
     : language === 'lt' ? 'lt-LT'
     : 'en-US';
 
-  let fmt = priceFormatterCache.get(locale);
+  const cacheKey = `${locale}:${currency}`;
+  let fmt = priceFormatterCache.get(cacheKey);
   if (!fmt) {
     fmt = new Intl.NumberFormat(locale, {
       style: 'currency',
-      currency: 'EUR',
-      maximumFractionDigits: 0,
+      currency,
+      maximumFractionDigits: currency === 'UZS' ? 0 : 2,
     });
-    priceFormatterCache.set(locale, fmt);
+    priceFormatterCache.set(cacheKey, fmt);
   }
   return fmt.format(amount);
 }

@@ -69,10 +69,10 @@ export const defaultTenant: Tenant = {
 
 // Categories
 export const defaultCategories: Category[] = [
-  { id: 'cat-1', name: 'Haircuts', createdAt: new Date().toISOString() },
-  { id: 'cat-2', name: 'Beard Grooming', createdAt: new Date().toISOString() },
-  { id: 'cat-3', name: 'Hair Coloring', createdAt: new Date().toISOString() },
-  { id: 'cat-4', name: 'Styling', createdAt: new Date().toISOString() }
+  { id: 'cat-1', name: 'Haircuts',       color: 'sky',     sortOrder: 0, createdAt: new Date().toISOString() },
+  { id: 'cat-2', name: 'Beard Grooming', color: 'amber',   sortOrder: 1, createdAt: new Date().toISOString() },
+  { id: 'cat-3', name: 'Hair Coloring',  color: 'violet',  sortOrder: 2, createdAt: new Date().toISOString() },
+  { id: 'cat-4', name: 'Styling',        color: 'emerald', sortOrder: 3, createdAt: new Date().toISOString() },
 ];
 
 // Curated Unsplash photo URLs — real barbershop / hair imagery.
@@ -114,12 +114,12 @@ export const defaultServices: Service[] = [
 
 // Staff — Maria floats between both offices to demonstrate cross-location conflict detection
 export const defaultStaff: Staff[] = [
-  { id: 'staff-1', firstName: 'John', lastName: 'Smith', email: 'john@barberpro.com', phone: '+1 (555) 111-1111', role: 'owner', isActive: true, avatarUrl: 'https://i.pravatar.cc/150?u=john-smith', officeIds: ['office-1', 'office-2'], createdAt: new Date().toISOString() },
-  { id: 'staff-2', firstName: 'Maria', lastName: 'Garcia', email: 'maria@barberpro.com', phone: '+1 (555) 222-2222', role: 'barber', isActive: true, avatarUrl: 'https://i.pravatar.cc/150?u=maria-garcia', officeIds: ['office-1', 'office-2'], createdAt: new Date().toISOString() },
-  { id: 'staff-3', firstName: 'David', lastName: 'Johnson', email: 'david@barberpro.com', phone: '+1 (555) 333-3333', role: 'barber', isActive: true, avatarUrl: 'https://i.pravatar.cc/150?u=david-johnson', officeIds: ['office-1'], createdAt: new Date().toISOString() },
-  { id: 'staff-4', firstName: 'Sarah', lastName: 'Williams', email: 'sarah@barberpro.com', phone: '+1 (555) 444-4444', role: 'receptionist', isActive: true, avatarUrl: 'https://i.pravatar.cc/150?u=sarah-williams', officeIds: ['office-1'], createdAt: new Date().toISOString() },
-  { id: 'staff-5', firstName: 'Michael', lastName: 'Brown', email: 'michael@barberpro.com', phone: '+1 (555) 555-5555', role: 'barber', isActive: false, avatarUrl: 'https://i.pravatar.cc/150?u=michael-brown', officeIds: ['office-2'], createdAt: new Date().toISOString() },
-  { id: 'staff-6', firstName: 'Emma', lastName: 'Davis', email: 'emma@barberpro.com', phone: '+1 (555) 666-6666', role: 'barber', isActive: true, avatarUrl: 'https://i.pravatar.cc/150?u=emma-davis', officeIds: ['office-2'], createdAt: new Date().toISOString() }
+  { id: 'staff-1', firstName: 'John', lastName: 'Smith', email: 'john@barberpro.com', phone: '+1 (555) 111-1111', role: 'owner', isActive: true, avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg', officeIds: ['office-1', 'office-2'], createdAt: new Date().toISOString() },
+  { id: 'staff-2', firstName: 'Maria', lastName: 'Garcia', email: 'maria@barberpro.com', phone: '+1 (555) 222-2222', role: 'barber', isActive: true, avatarUrl: 'https://randomuser.me/api/portraits/women/44.jpg', officeIds: ['office-1', 'office-2'], createdAt: new Date().toISOString() },
+  { id: 'staff-3', firstName: 'David', lastName: 'Johnson', email: 'david@barberpro.com', phone: '+1 (555) 333-3333', role: 'barber', isActive: true, avatarUrl: 'https://randomuser.me/api/portraits/men/68.jpg', officeIds: ['office-1'], createdAt: new Date().toISOString() },
+  { id: 'staff-4', firstName: 'Sarah', lastName: 'Williams', email: 'sarah@barberpro.com', phone: '+1 (555) 444-4444', role: 'receptionist', isActive: true, avatarUrl: 'https://randomuser.me/api/portraits/women/26.jpg', officeIds: ['office-1'], createdAt: new Date().toISOString() },
+  { id: 'staff-5', firstName: 'Michael', lastName: 'Brown', email: 'michael@barberpro.com', phone: '+1 (555) 555-5555', role: 'barber', isActive: false, avatarUrl: 'https://randomuser.me/api/portraits/men/47.jpg', officeIds: ['office-2'], createdAt: new Date().toISOString() },
+  { id: 'staff-6', firstName: 'Emma', lastName: 'Davis', email: 'emma@barberpro.com', phone: '+1 (555) 666-6666', role: 'barber', isActive: true, avatarUrl: 'https://randomuser.me/api/portraits/women/33.jpg', officeIds: ['office-2'], createdAt: new Date().toISOString() }
 ];
 
 // Clients — 30 names across both offices. Mixed gender, varied last-visit
@@ -432,7 +432,7 @@ export const defaultAccounts: Account[] = [
 
 // Schema version — bump to force re-seed when the data shape changes
 const SCHEMA_VERSION_KEY = 'barberpro_schema_version';
-const CURRENT_SCHEMA_VERSION = 14; // v14: settings expansion — Tenant gets displayName/website/instagram/currency/vatRate/timezone/logoUrl/holidays/bookingRules; WorkingHoursDay gets lunchStart/lunchEnd; legacy BarberPro email rewritten
+const CURRENT_SCHEMA_VERSION = 17; // v17: Account.phone/positionTitle/startDate; Tenant.customRoles
 
 // Initialize localStorage with default data
 // Wrapped in try/catch so a corrupted localStorage entry can't white-screen the app.
@@ -596,6 +596,61 @@ function _initializeMockData() {
     }
 
     if (touched) localStorage.setItem('barberpro_tenant', JSON.stringify(tenant));
+  }
+
+  // v16 — Category color + sortOrder; Service optional fields.
+  // Idempotent: only writes missing fields, never overwrites user edits.
+  if (storedVersion < 16) {
+    const COLOR_KEYS = ['slate','rose','amber','emerald','sky','violet','fuchsia','teal','orange','indigo'] as const;
+    const fallbackColor = (id: string) => COLOR_KEYS[id.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % COLOR_KEYS.length];
+
+    const catsRaw = localStorage.getItem('barberpro_categories');
+    if (catsRaw) {
+      const cats = JSON.parse(catsRaw) as Array<Record<string, unknown>>;
+      const next = cats.map((c, i) => ({
+        ...c,
+        color: c.color ?? fallbackColor(String(c.id)),
+        sortOrder: c.sortOrder ?? i,
+      }));
+      localStorage.setItem('barberpro_categories', JSON.stringify(next));
+    }
+
+    const svcsRaw = localStorage.getItem('barberpro_services');
+    if (svcsRaw) {
+      const svcs = JSON.parse(svcsRaw) as Array<Record<string, unknown>>;
+      const next = svcs.map(s => ({
+        ...s,
+        staffIds:      s.staffIds      ?? [],
+        prepMinutes:   s.prepMinutes   ?? 0,
+        cleanupMinutes: s.cleanupMinutes ?? 0,
+        isPublic:      s.isPublic      ?? true,
+      }));
+      localStorage.setItem('barberpro_services', JSON.stringify(next));
+    }
+  }
+
+  // v17 — Account extra fields; Tenant.customRoles.
+  if (storedVersion < 17) {
+    const accsRaw = localStorage.getItem('barberpro_accounts');
+    if (accsRaw) {
+      const accs = JSON.parse(accsRaw) as Array<Record<string, unknown>>;
+      const next = accs.map(a => ({
+        ...a,
+        phone:         a.phone         ?? '',
+        positionTitle: a.positionTitle  ?? '',
+        startDate:     a.startDate      ?? a.createdAt ?? new Date().toISOString(),
+      }));
+      localStorage.setItem('barberpro_accounts', JSON.stringify(next));
+    }
+
+    const tenantRaw17 = localStorage.getItem('barberpro_tenant');
+    if (tenantRaw17) {
+      const tenant = JSON.parse(tenantRaw17) as Record<string, unknown>;
+      if (!Array.isArray(tenant.customRoles)) {
+        tenant.customRoles = [];
+        localStorage.setItem('barberpro_tenant', JSON.stringify(tenant));
+      }
+    }
   }
 
   localStorage.setItem(SCHEMA_VERSION_KEY, String(CURRENT_SCHEMA_VERSION));

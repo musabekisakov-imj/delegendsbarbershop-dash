@@ -21,7 +21,7 @@ interface ConflictCandidate {
 }
 
 // Half-open interval overlap: back-to-back bookings (10:00-10:30 + 10:30-11:00) don't conflict
-const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean =>
+export const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean =>
   aStart.getTime() < bEnd.getTime() && bStart.getTime() < aEnd.getTime();
 
 // HH:mm string overlap — same half-open semantics as the Date overlap.

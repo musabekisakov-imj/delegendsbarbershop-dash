@@ -4,10 +4,14 @@ import type { Language } from '../types';
 import { translations, type TranslationKey } from '../i18n';
 import type { TimeFormat } from '../lib/time';
 
-export function useT(): (key: TranslationKey) => string {
+export function useT(): (key: TranslationKey, vars?: Record<string, string | number>) => string {
   const language = useLanguageStore(s => s.language);
   return useCallback(
-    (key: TranslationKey) => translations[language]?.[key] ?? translations.en[key] ?? key,
+    (key: TranslationKey, vars?: Record<string, string | number>) => {
+      const base = translations[language]?.[key] ?? translations.en[key] ?? key;
+      if (!vars) return base;
+      return base.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''));
+    },
     [language],
   );
 }

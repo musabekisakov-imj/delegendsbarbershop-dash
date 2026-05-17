@@ -27,6 +27,7 @@ interface GridVariantProps extends StaffCardBaseProps {
   variant: 'grid';
   focused?: boolean;
   loadDot?: string;
+  shift?: string;
 }
 
 interface WeekVariantProps extends StaffCardBaseProps {
@@ -42,7 +43,8 @@ export function StaffCard(props: StaffCardProps) {
   const isClickable = !!onClick;
 
   if (props.variant === 'grid') {
-    const { focused, loadDot } = props;
+    const { focused, loadDot, shift } = props;
+
     return (
       <button
         type="button"
@@ -50,29 +52,35 @@ export function StaffCard(props: StaffCardProps) {
         title={title}
         style={style}
         className={cn(
-          'group relative flex flex-1 items-center gap-3 px-3.5 py-3 transition-colors text-left',
+          'group relative flex flex-1 flex-col items-center px-2 pt-2.5 pb-2 gap-1 overflow-hidden transition-colors duration-150',
           'hover:bg-accent/40 focus-visible:outline-none focus-visible:bg-accent/40',
           focused && 'bg-accent/30',
           className,
         )}
       >
-        <Avatar className="h-9 w-9 shrink-0">
-          {staff.avatarUrl && <AvatarImage src={staff.avatarUrl} alt={`${staff.firstName} ${staff.lastName}`} />}
-          <AvatarFallback className={cn('text-xs font-bold', color.light, color.label)}>
-            {initials}
-          </AvatarFallback>
-        </Avatar>
-        <span className="text-sm font-semibold text-foreground truncate flex-1 leading-tight tracking-tight">
-          {staff.firstName}
-        </span>
-        <span className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-border bg-card/60 pl-1.5 pr-2 py-1">
-          {loadDot && <span className={cn('h-1.5 w-1.5 rounded-full transition-colors', loadDot)} aria-hidden />}
-          <span className="text-[13px] font-bold tabular-nums leading-none text-foreground">{count}</span>
-        </span>
-        <span
-          className={cn('absolute inset-x-3 bottom-0', color.dot, focused ? 'h-0.5' : 'h-px')}
-          aria-hidden
-        />
+        {/* Top accent */}
+        <span className={cn('absolute inset-x-0 top-0 h-[3px]', color.dot)} aria-hidden />
+
+        {/* Avatar */}
+        <div className={cn('rounded-full p-[2px]', color.dot)}>
+          <Avatar className="h-8 w-8 block">
+            {staff.avatarUrl && <AvatarImage src={staff.avatarUrl} alt={`${staff.firstName} ${staff.lastName}`} />}
+            <AvatarFallback className={cn('text-[9px] font-bold', color.light, color.label)}>
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+        </div>
+
+        {/* First name + last initial */}
+        <p className="text-[11px] font-bold text-foreground truncate w-full text-center leading-none px-0.5">
+          {staff.firstName} {staff.lastName[0]}.
+        </p>
+
+        {/* Count badge */}
+        <div className={cn('inline-flex items-center gap-1 rounded-full px-2 py-[3px]', color.light)}>
+          {loadDot && <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', loadDot)} aria-hidden />}
+          <span className={cn('text-[10px] font-bold tabular-nums leading-none', color.label)}>{count}</span>
+        </div>
       </button>
     );
   }

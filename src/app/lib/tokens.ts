@@ -73,16 +73,16 @@ export const CATEGORY_DOTS = [
 export const STATUS_DOT = {
   scheduled: 'bg-zinc-400',
   confirmed: 'bg-emerald-500',
-  completed: 'bg-muted-foreground/50',
-  cancelled: 'bg-rose-500',
+  completed: 'bg-teal-500',
+  cancelled: 'bg-red-500',
   no_show:   'bg-amber-500',
 } as const;
 
 export const STATUS_STRIPE = {
   scheduled: 'bg-zinc-400',
   confirmed: 'bg-emerald-500',
-  completed: 'bg-muted-foreground/40',
-  cancelled: 'bg-rose-500',
+  completed: 'bg-teal-500',
+  cancelled: 'bg-red-500',
   no_show:   'bg-amber-500',
 } as const;
 
@@ -92,18 +92,18 @@ export const STATUS_STRIPE = {
 //
 // Reference: WCAG AA requires 4.5:1 for body text. All light pairs clear
 // the bar at 4.5:1+; the previous /10 alpha trick was 3.1:1 and failed.
+// Dark variants lifted from /10→/15–/20 + text bumped 300→200 so the pills
+// actually read on --card (which is only slightly lighter than --background).
 //
-// SCHEDULED = grey neutral — booked but client hasn't confirmed yet, no
-// celebration warranted. CONFIRMED = green — client said yes. COMPLETED =
-// green — service finished. The two greens are intentional: both are
-// "positive states", but operators distinguish them via the explicit label
-// + the `STATUS_DOT` (blue/emerald/muted) on the booking tile.
+// SCHEDULED = grey neutral. CONFIRMED = emerald green. COMPLETED = teal
+// (distinct from confirmed so operators can scan at a glance). NO_SHOW =
+// amber. CANCELLED = red (not rose — red reads unambiguously as "stop").
 export const STATUS_PILL = {
-  scheduled: 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300',
-  confirmed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
-  completed: 'bg-green-100 text-green-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-  cancelled: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
-  no_show:   'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300',
+  scheduled: 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-200',
+  confirmed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200',
+  completed: 'bg-teal-50 text-teal-700 dark:bg-teal-500/20 dark:text-teal-200',
+  cancelled: 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-200',
+  no_show:   'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200',
 } as const;
 
 // Human-readable labels — status enum values are snake_case
@@ -123,6 +123,41 @@ export const RECENCY_STYLE = {
   cold: { dot: 'bg-rose-500', text: 'text-rose-600 dark:text-rose-400' },
   new: { dot: 'bg-blue-500', text: 'text-blue-600 dark:text-blue-400' },
 } as const;
+
+// ─── Per-staff accent colors ──────────────────────────────
+// Single source of truth — promoted from calendar.tsx so bookings + calendar
+// + week-view + day-agenda all share one definition.
+// Light-theme stripes use -600 (deep/saturated against #FFFFFF); dark uses -500.
+export const STAFF_COLORS = [
+  { bg: 'bg-card', border: 'border-l-blue-600 dark:border-l-blue-500',     text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-blue-500',    light: 'bg-blue-100 dark:bg-blue-900/70',       label: 'text-blue-700 dark:text-blue-200',       ring: 'ring-blue-400'    },
+  { bg: 'bg-card', border: 'border-l-violet-600 dark:border-l-violet-500', text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-violet-500',  light: 'bg-violet-100 dark:bg-violet-900/70',   label: 'text-violet-700 dark:text-violet-200',   ring: 'ring-violet-400'  },
+  { bg: 'bg-card', border: 'border-l-amber-600 dark:border-l-amber-500',   text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-amber-500',   light: 'bg-amber-100 dark:bg-amber-900/70',     label: 'text-amber-700 dark:text-amber-200',     ring: 'ring-amber-400'   },
+  { bg: 'bg-card', border: 'border-l-green-600 dark:border-l-emerald-500', text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-emerald-500', light: 'bg-emerald-100 dark:bg-emerald-900/70', label: 'text-emerald-700 dark:text-emerald-200', ring: 'ring-emerald-400' },
+  { bg: 'bg-card', border: 'border-l-rose-600 dark:border-l-rose-500',     text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-rose-500',    light: 'bg-rose-100 dark:bg-rose-900/70',       label: 'text-rose-700 dark:text-rose-200',       ring: 'ring-rose-400'    },
+  { bg: 'bg-card', border: 'border-l-cyan-600 dark:border-l-cyan-500',     text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-cyan-500',    light: 'bg-cyan-100 dark:bg-cyan-900/70',       label: 'text-cyan-700 dark:text-cyan-200',       ring: 'ring-cyan-400'    },
+  { bg: 'bg-card', border: 'border-l-orange-600 dark:border-l-orange-500', text: 'text-foreground', sub: 'text-muted-foreground', dot: 'bg-orange-500',  light: 'bg-orange-100 dark:bg-orange-900/70',   label: 'text-orange-700 dark:text-orange-200',   ring: 'ring-orange-400'  },
+] as const;
+
+export const getStaffColor = (idx: number) => STAFF_COLORS[idx % STAFF_COLORS.length];
+
+// ─── Client avatar colors ─────────────────────────────────
+// 8 hues deliberately disjoint from the 7 STAFF_COLORS hues above so a
+// client avatar never reads as a staff member's color in the same row.
+// slate / teal / indigo / pink / lime / sky / fuchsia / stone — none overlap
+// blue / violet / amber / emerald / rose / cyan / orange.
+export const CLIENT_AVATAR_COLORS = [
+  { bg: 'bg-slate-400',   text: 'text-white' },
+  { bg: 'bg-teal-500',    text: 'text-white' },
+  { bg: 'bg-indigo-400',  text: 'text-white' },
+  { bg: 'bg-pink-400',    text: 'text-white' },
+  { bg: 'bg-lime-500',    text: 'text-white' },
+  { bg: 'bg-sky-500',     text: 'text-white' },
+  { bg: 'bg-fuchsia-500', text: 'text-white' },
+  { bg: 'bg-stone-500',   text: 'text-white' },
+] as const;
+
+export const getClientAvatarColor = (clientId: string) =>
+  CLIENT_AVATAR_COLORS[hashToIndex(clientId, CLIENT_AVATAR_COLORS.length)];
 
 // ─── Role identity ───────────────────────────────────────
 // Single source of truth for role hues + labels. Promoted from
@@ -176,6 +211,54 @@ export const gradientFor = (id: string) => AVATAR_GRADIENTS[hashToIndex(id, AVAT
 export const serviceGradientFor = (id: string) => SERVICE_GRADIENTS[hashToIndex(id, SERVICE_GRADIENTS.length)];
 export const dotFor = (id: string) => CATEGORY_DOTS[hashToIndex(id, CATEGORY_DOTS.length)];
 
+// ─── Booking filter UI tokens ─────────────────────────────
+// Badge tint for unselected status pills — colored hint before selection.
+export const STATUS_BADGE_TINT = {
+  scheduled: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+  confirmed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  completed: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
+  cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  no_show:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+} as const;
+
+// Icon stroke color for unselected status pills.
+export const STATUS_ICON_COLOR = {
+  scheduled: 'text-zinc-500 dark:text-zinc-400',
+  confirmed: 'text-emerald-600 dark:text-emerald-400',
+  completed: 'text-teal-600 dark:text-teal-400',
+  cancelled: 'text-red-600 dark:text-red-400',
+  no_show:   'text-amber-600 dark:text-amber-400',
+} as const;
+
+// Tinted hover bg — previews selection color before click.
+export const STATUS_HOVER = {
+  scheduled: 'hover:bg-zinc-100 dark:hover:bg-zinc-800/50',
+  confirmed: 'hover:bg-emerald-50 dark:hover:bg-emerald-950/30',
+  completed: 'hover:bg-teal-50 dark:hover:bg-teal-950/30',
+  cancelled: 'hover:bg-red-50 dark:hover:bg-red-950/30',
+  no_show:   'hover:bg-amber-50 dark:hover:bg-amber-950/30',
+} as const;
+
+// Colored glow for selected pills — matches 500-weight fill at ~40% opacity.
+export const STATUS_GLOW = {
+  scheduled: '0 4px 14px -3px rgba(113,113,122,0.40)',
+  confirmed: '0 4px 14px -3px rgba(16,185,129,0.45)',
+  completed: '0 4px 14px -3px rgba(20,184,166,0.45)',
+  cancelled: '0 4px 14px -3px rgba(239,68,68,0.40)',
+  no_show:   '0 4px 14px -3px rgba(245,158,11,0.40)',
+} as const;
+
+// Logical next-state map — forward transitions highlighted in the modal status
+// picker; anything not in this list for the current status is a backwards move
+// and gets dimmed (still clickable).
+export const STATUS_NEXT: Record<string, string[]> = {
+  scheduled: ['confirmed', 'completed', 'no_show', 'cancelled'],
+  confirmed: ['completed', 'no_show', 'cancelled'],
+  completed: [],
+  no_show:   [],
+  cancelled: ['scheduled', 'confirmed'],
+};
+
 // ─── Motion — reusable durations ──────────────────────────
 // CSS-string variant (transitions, animation-duration, transition-timing-function).
 export const MOTION = {
@@ -189,3 +272,68 @@ export const MOTION = {
 // Use these wherever you'd write `transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}`.
 export const MOTION_EASE = [0.16, 1, 0.3, 1] as const;
 export const MOTION_DUR = { fast: 0.15, base: 0.22, slow: 0.32 } as const;
+
+// ─── Role color palette ───────────────────────────────────
+// 8 hues deliberately disjoint from the 7 STAFF_COLORS hues above:
+// fuchsia / indigo / teal / slate / lime / pink / sky / stone
+// none overlap blue / violet / amber / emerald / rose / cyan / orange.
+import type { CategoryColorKey, RoleColorKey, StaffRole } from '../types';
+
+export const ROLE_COLOR_PALETTE: Record<RoleColorKey, {
+  chip: string;
+  dot: string;
+  tintBg: string;
+  tintText: string;
+  ring: string;
+}> = {
+  fuchsia: { chip: 'bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-950/40 dark:text-fuchsia-300', dot: 'bg-fuchsia-500', tintBg: 'bg-fuchsia-100 dark:bg-fuchsia-900/40', tintText: 'text-fuchsia-700 dark:text-fuchsia-300', ring: 'ring-fuchsia-400' },
+  indigo:  { chip: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',   dot: 'bg-indigo-500',  tintBg: 'bg-indigo-100 dark:bg-indigo-900/40',   tintText: 'text-indigo-700 dark:text-indigo-300',   ring: 'ring-indigo-400'  },
+  teal:    { chip: 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300',           dot: 'bg-teal-500',    tintBg: 'bg-teal-100 dark:bg-teal-900/40',       tintText: 'text-teal-700 dark:text-teal-300',       ring: 'ring-teal-400'    },
+  slate:   { chip: 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300',      dot: 'bg-slate-400',   tintBg: 'bg-slate-100 dark:bg-slate-800',         tintText: 'text-slate-700 dark:text-slate-300',     ring: 'ring-slate-400'   },
+  lime:    { chip: 'bg-lime-50 text-lime-700 dark:bg-lime-950/40 dark:text-lime-300',           dot: 'bg-lime-500',    tintBg: 'bg-lime-100 dark:bg-lime-900/40',       tintText: 'text-lime-700 dark:text-lime-300',       ring: 'ring-lime-400'    },
+  pink:    { chip: 'bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300',           dot: 'bg-pink-500',    tintBg: 'bg-pink-100 dark:bg-pink-900/40',       tintText: 'text-pink-700 dark:text-pink-300',       ring: 'ring-pink-400'    },
+  sky:     { chip: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300',               dot: 'bg-sky-500',     tintBg: 'bg-sky-100 dark:bg-sky-900/40',         tintText: 'text-sky-700 dark:text-sky-300',         ring: 'ring-sky-400'     },
+  stone:   { chip: 'bg-stone-100 text-stone-700 dark:bg-stone-800/60 dark:text-stone-300',      dot: 'bg-stone-400',   tintBg: 'bg-stone-100 dark:bg-stone-800',         tintText: 'text-stone-700 dark:text-stone-300',     ring: 'ring-stone-400'   },
+};
+
+export const ROLE_TO_COLOR: Record<StaffRole, RoleColorKey> = {
+  owner:        'fuchsia',
+  manager:      'indigo',
+  receptionist: 'teal',
+  barber:       'slate',
+};
+
+export const getRoleColor = (role: StaffRole) => ROLE_COLOR_PALETTE[ROLE_TO_COLOR[role]];
+
+const ROLE_COLOR_KEYS = Object.keys(ROLE_COLOR_PALETTE) as RoleColorKey[];
+
+export const colorForCustomRole = (id: string): RoleColorKey =>
+  ROLE_COLOR_KEYS[id.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % ROLE_COLOR_KEYS.length];
+
+// ─── Category color palette ───────────────────────────────
+
+export const CATEGORY_COLOR_PALETTE: Record<CategoryColorKey, {
+  dot: string;
+  tintBg: string;
+  tintText: string;
+  ring: string;
+}> = {
+  slate:   { dot: 'bg-slate-400',   tintBg: 'bg-slate-100 dark:bg-slate-800',        tintText: 'text-slate-700 dark:text-slate-300',   ring: 'ring-slate-400' },
+  rose:    { dot: 'bg-rose-400',    tintBg: 'bg-rose-100 dark:bg-rose-900/40',        tintText: 'text-rose-700 dark:text-rose-300',     ring: 'ring-rose-400' },
+  amber:   { dot: 'bg-amber-400',   tintBg: 'bg-amber-100 dark:bg-amber-900/40',      tintText: 'text-amber-700 dark:text-amber-300',   ring: 'ring-amber-400' },
+  emerald: { dot: 'bg-emerald-400', tintBg: 'bg-emerald-100 dark:bg-emerald-900/40',  tintText: 'text-emerald-700 dark:text-emerald-300', ring: 'ring-emerald-400' },
+  sky:     { dot: 'bg-sky-400',     tintBg: 'bg-sky-100 dark:bg-sky-900/40',          tintText: 'text-sky-700 dark:text-sky-300',       ring: 'ring-sky-400' },
+  violet:  { dot: 'bg-violet-400',  tintBg: 'bg-violet-100 dark:bg-violet-900/40',    tintText: 'text-violet-700 dark:text-violet-300', ring: 'ring-violet-400' },
+  fuchsia: { dot: 'bg-fuchsia-400', tintBg: 'bg-fuchsia-100 dark:bg-fuchsia-900/40',  tintText: 'text-fuchsia-700 dark:text-fuchsia-300', ring: 'ring-fuchsia-400' },
+  teal:    { dot: 'bg-teal-400',    tintBg: 'bg-teal-100 dark:bg-teal-900/40',        tintText: 'text-teal-700 dark:text-teal-300',     ring: 'ring-teal-400' },
+  orange:  { dot: 'bg-orange-400',  tintBg: 'bg-orange-100 dark:bg-orange-900/40',    tintText: 'text-orange-700 dark:text-orange-300', ring: 'ring-orange-400' },
+  indigo:  { dot: 'bg-indigo-400',  tintBg: 'bg-indigo-100 dark:bg-indigo-900/40',    tintText: 'text-indigo-700 dark:text-indigo-300', ring: 'ring-indigo-400' },
+};
+
+const COLOR_KEYS = Object.keys(CATEGORY_COLOR_PALETTE) as CategoryColorKey[];
+
+export const getCategoryColor = (key: CategoryColorKey) => CATEGORY_COLOR_PALETTE[key];
+
+/** Maps any category id to a palette key via char-code sum — no randomness. */
+export const colorForCategoryFallback = (id: string): CategoryColorKey =>
+  COLOR_KEYS[id.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % COLOR_KEYS.length];
