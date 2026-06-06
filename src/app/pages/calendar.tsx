@@ -79,7 +79,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/toolti
 import { MOTION_EASE, MOTION_DUR } from '../lib/tokens';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
-import { formatTime, formatHourLabel } from '../lib/time';
+import { formatTime, formatHourLabel, getHoursInTz, getMinutesInTz } from '../lib/time';
 import { assignLanes } from '../lib/calendar-lanes';
 import { MiniCalendar } from '../components/calendar/mini-calendar';
 import { DayAgenda } from '../components/calendar/day-agenda';
@@ -1574,9 +1574,9 @@ function BlockDialog({
       const aptDow = format(aptStart, 'EEEE').toLowerCase() as DayOfWeek;
       if (!targetDays.includes(aptDow)) return false;
       // Time overlap check (HH:mm strings)
-      const aptStartMin = aptStart.getHours() * 60 + aptStart.getMinutes();
+      const aptStartMin = getHoursInTz(aptStart) * 60 + getMinutesInTz(aptStart);
       const aptEnd = parseISO(apt.endTime);
-      const aptEndMin = aptEnd.getHours() * 60 + aptEnd.getMinutes();
+      const aptEndMin = getHoursInTz(aptEnd) * 60 + getMinutesInTz(aptEnd);
       return aptStartMin < endMin && aptEndMin > startMin;
     });
   }, [appointments, staffId, staffList, kind, targetDays, startMin, endMin]);
@@ -2624,7 +2624,7 @@ function TimePickerField({
   const snapNextSlot = () => {
     const now = new Date();
     const step = Math.max(granularity, 5);
-    const totalNowMin = now.getHours() * 60 + now.getMinutes();
+    const totalNowMin = getHoursInTz(now) * 60 + getMinutesInTz(now);
     const nextMin = Math.ceil((totalNowMin + 1) / step) * step;
     const newHr = Math.floor(nextMin / 60) % 24;
     const newMm = nextMin % 60;
@@ -4797,7 +4797,7 @@ export function CalendarPage() {
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, []);
-  const nowMin = (now.getHours() - DAY_START_HOUR) * 60 + now.getMinutes();
+  const nowMin = (getHoursInTz(now) - DAY_START_HOUR) * 60 + getMinutesInTz(now);
   const showNow = isToday(selectedDate) && nowMin >= 0 && nowMin <= (DAY_END_HOUR - DAY_START_HOUR) * 60;
   const totalSlots = DAY_END_HOUR - DAY_START_HOUR;
   const hours = Array.from({ length: totalSlots + 1 }, (_, i) => DAY_START_HOUR + i);
@@ -5287,8 +5287,8 @@ export function CalendarPage() {
           const s = parseISO(apt.startTime);
           const e = parseISO(apt.endTime);
           return {
-            aStart: (s.getHours() - DAY_START_HOUR) * 60 + s.getMinutes(),
-            aEnd:   (e.getHours()   - DAY_START_HOUR) * 60 + e.getMinutes(),
+            aStart: (getHoursInTz(s) - DAY_START_HOUR) * 60 + getMinutesInTz(s),
+            aEnd:   (getHoursInTz(e) - DAY_START_HOUR) * 60 + getMinutesInTz(e),
           };
         })
         .filter(({ aStart, aEnd }) => aStart < breakEndMin && breakStartMin < aEnd)
@@ -5506,7 +5506,7 @@ export function CalendarPage() {
   const renderBlock = (apt: AppointmentWithDetails, laneInfo?: { lane: number; laneCount: number }) => {
     const s = parseISO(apt.startTime);
     const e = parseISO(apt.endTime);
-    const sMin = (s.getHours() - DAY_START_HOUR) * 60 + s.getMinutes();
+    const sMin = (getHoursInTz(s) - DAY_START_HOUR) * 60 + getMinutesInTz(s);
     const dur = differenceInMinutes(e, s);
     const top = (sMin / MINUTES_PER_SLOT) * SLOT_HEIGHT;
     const h = Math.max((dur / MINUTES_PER_SLOT) * SLOT_HEIGHT - 2, 36);
@@ -5713,7 +5713,7 @@ export function CalendarPage() {
           h >= 120 ? 'mt-auto pt-1' : 'mt-0.5',
         )}>
           <span className={cn('text-[11px] tabular-nums font-medium text-muted-foreground/80', c.sub)}>{timeStr}</span>
-          <span className="text-[13px] font-medium tabular-nums leading-none text-foreground">€{displayPrice}</span>
+          <span className={cn('text-[13px] font-bold tabular-nums leading-none', c.label)}>€{displayPrice}</span>
         </div>
       </div>
     );
@@ -5764,12 +5764,13 @@ export function CalendarPage() {
         className={cn(
           // 5px stripe + real elevation utility so light theme tiles read as
           // *lifted papers* on the canvas, not painted regions.
-          'group/tile absolute rounded-lg border-l-[5px] overflow-hidden calendar-tile-elev',
+          'group/tile absolute rounded-xl border-l-[5px] overflow-hidden calendar-tile-elev',
+          'hover:-translate-y-[1px]',
           // Sit on top of break overlays when overlap is detected.
           (warning?.code === 'break_overlap' || warning?.code === 'break_touch') ? 'z-20' : 'z-10',
           'transition-all duration-150',
           canOverride ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
-          c.bg, c.border,
+          c.surface, c.border,
           // Phase C1 — cancelled bumped from opacity-40 to opacity-50 so the
           // strikethrough line stays legible.
           isCancelled && 'opacity-50',
@@ -6044,7 +6045,7 @@ export function CalendarPage() {
                 aria-label="Open date picker"
                 title="Click to pick another date"
               >
-                {format(selectedDate, 'EEEE, MMMM d', { locale: dateLocale })}
+                {format(selectedDate, 'EEEE, MMMM d, yyyy', { locale: dateLocale })}
                 {/* Always visible so operators know the title is clickable —
                     not a decorative glyph. Brightens + nudges right on hover
                     to telegraph the affordance. */}
@@ -6063,7 +6064,11 @@ export function CalendarPage() {
           </Popover>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button size="sm" onClick={openCreateFromHeader}>
+          <Button
+            size="sm"
+            onClick={openCreateFromHeader}
+            className="h-11 rounded-xl px-5 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-[0_8px_20px_-6px_rgba(37,99,235,0.5)] hover:-translate-y-[1px] transition-transform"
+          >
             <PlusIcon className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">{t('calendar.newAppointment')}</span>
           </Button>
@@ -6075,7 +6080,7 @@ export function CalendarPage() {
 
         {/* ── Left Sidebar ── */}
         <div className="hidden lg:flex flex-col gap-4 w-[248px] shrink-0">
-          <div className="rounded-xl border border-border bg-card p-3.5">
+          <div className="rounded-2xl border border-border bg-card p-3.5 shadow-sm">
             <MiniCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} appointments={appointments} />
           </div>
 
@@ -6084,7 +6089,7 @@ export function CalendarPage() {
               no tinted panels. Consistent с другими страницами
               в editorial-семье (Clients, Staff, Services, etc). */}
           {appointmentsLoading ? <SummarySkeleton /> : (
-          <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-4 shadow-sm">
             <div className="flex items-baseline justify-between gap-2">
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.18em]">
                 {t('calendar.summary')}
@@ -6099,7 +6104,7 @@ export function CalendarPage() {
               <p className="text-3xl font-bold text-foreground tabular-nums leading-none tracking-tight">
                 €{dayApts
                   .filter(a => a.status === 'completed')
-                  .reduce((s, a) => s + (a.service.price ?? 0), 0)
+                  .reduce((s, a) => s + Number(a.service.price ?? 0), 0)
                   .toLocaleString()}
               </p>
               <p className="mt-1.5 text-[11px] text-muted-foreground tabular-nums">
@@ -6117,7 +6122,7 @@ export function CalendarPage() {
                 const key = format(d, 'yyyy-MM-dd');
                 return appointments
                   .filter(a => a.status === 'completed' && format(parseISO(a.startTime), 'yyyy-MM-dd') === key)
-                  .reduce((s, a) => s + (a.service?.price ?? 0), 0);
+                  .reduce((s, a) => s + Number(a.service?.price ?? 0), 0);
               });
               const max = Math.max(1, ...series);
               const W = 200;
@@ -6173,10 +6178,13 @@ export function CalendarPage() {
                   const cnt = aptsByStaff.get(m.id)?.length ?? 0;
                   return (
                     <div key={m.id} className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.firstName} />}
-                        <AvatarFallback className={cn('text-[10px] font-bold', c.light, c.label)}>{m.firstName[0]}{m.lastName[0]}</AvatarFallback>
-                      </Avatar>
+                      <div className="relative shrink-0">
+                        <Avatar className="h-6 w-6">
+                          {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.firstName} />}
+                          <AvatarFallback className={cn('text-[10px] font-bold', c.light, c.label)}>{m.firstName[0]}{m.lastName[0]}</AvatarFallback>
+                        </Avatar>
+                        <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-card" aria-hidden />
+                      </div>
                       <span className="flex-1 text-[13px] text-foreground truncate">{m.firstName}</span>
                       <span className={cn(
                         'text-[11px] font-semibold tabular-nums',
@@ -6191,6 +6199,28 @@ export function CalendarPage() {
             </div>
           </div>
           )}
+
+          {/* ── Connect calendar (Google / Outlook sync — placeholder) ── */}
+          <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4 shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-card text-primary shadow-sm">
+              <CalendarDaysIcon className="h-5 w-5" />
+            </div>
+            <p className="mt-3 text-sm font-semibold text-foreground">{t('calendar.connectTitle')}</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{t('calendar.connectBody')}</p>
+            <button
+              type="button"
+              onClick={() => toast.info(t('calendar.connectSoon'))}
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-[13px] font-semibold text-foreground shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 48 48" aria-hidden>
+                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 5.1 29.5 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.3-.4-3.5z"/>
+                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 7.1 29.5 5 24 5 16 5 9.1 9.5 6.3 14.7z"/>
+                <path fill="#4CAF50" d="M24 45c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.2 35.9 26.7 37 24 37c-5.3 0-9.7-2.6-11.3-7l-6.5 5C9 41.4 15.9 45 24 45z"/>
+                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.5l6.3 5.3C41.8 36 45 30.5 45 24c0-1.2-.1-2.3-.4-3.5z"/>
+              </svg>
+              {t('calendar.connectCta')}
+            </button>
+          </div>
         </div>
 
         {/* ── Main Area ── */}
@@ -6235,7 +6265,7 @@ export function CalendarPage() {
                   <button key={format(d, 'yyyy-MM-dd')} onClick={() => setSelectedDate(d)}
                     className={cn(
                       'flex flex-col items-center rounded-lg w-10 py-1 transition-colors',
-                      sel ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent',
+                      sel ? 'bg-blue-600 text-white shadow-sm' : 'text-muted-foreground hover:bg-accent',
                     )}>
                     <span className="text-[10px] font-medium uppercase tracking-wider">{format(d, 'EEE', { locale: dateLocale })}</span>
                     <span className={cn('text-sm font-semibold', td && !sel && 'text-blue-600 dark:text-blue-400')}>{format(d, 'd', { locale: dateLocale })}</span>
@@ -6382,7 +6412,7 @@ export function CalendarPage() {
             {/* View toggle — LayoutGroup + motion.span layoutId for the active
                 pill, matching the role-tab underline pattern from /accounts. */}
             <LayoutGroup id="cal-view-toggle">
-              <div className="flex items-center rounded-md border border-border p-0.5">
+              <div className="flex items-center gap-0.5 rounded-xl border border-border bg-muted/60 p-1 backdrop-blur supports-[backdrop-filter]:bg-muted/50 shadow-sm">
                 {([
                   { mode: 'day',  Icon: ListBulletIcon,  label: t('calendar.viewDay')  },
                   { mode: 'week', Icon: TableCellsIcon,  label: t('calendar.viewWeek') },
@@ -6397,14 +6427,14 @@ export function CalendarPage() {
                       aria-label={label}
                       aria-pressed={isActive}
                       className={cn(
-                        'relative flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                        isActive ? 'text-background' : 'text-muted-foreground hover:text-foreground',
+                        'relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors',
+                        isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
                       {isActive && (
                         <motion.span
                           layoutId="cal-view-toggle-pill"
-                          className="absolute inset-0 rounded bg-foreground"
+                          className="absolute inset-0 rounded-lg bg-card shadow-md ring-1 ring-border/60"
                           transition={{ duration: MOTION_DUR.base, ease: MOTION_EASE }}
                         />
                       )}

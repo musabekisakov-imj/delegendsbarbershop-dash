@@ -66,6 +66,10 @@ export const ru: Record<TranslationKey, string> = {
   // Calendar
   'calendar.title': 'Календарь',
   'calendar.newAppointment': 'Новая запись',
+  'calendar.connectTitle': 'Подключите календарь',
+  'calendar.connectBody': 'Синхронизируйте с Google или Outlook, чтобы удобно вести расписание.',
+  'calendar.connectCta': 'Подключить календарь',
+  'calendar.connectSoon': 'Синхронизация календаря скоро появится.',
   'calendar.noActiveStaff': 'Нет активных сотрудников',
   'calendar.noActiveStaffHint': 'Добавьте сотрудников на странице «Сотрудники».',
   'calendar.booking': 'запись',

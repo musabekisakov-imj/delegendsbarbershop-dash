@@ -11,7 +11,7 @@ import { Button } from '../ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '../ui/hover-card';
 import { cn } from '../ui/utils';
-import { formatTime } from '../../lib/time';
+import { formatTime, getHoursInTz } from '../../lib/time';
 import type { TimeFormat } from '../../lib/time';
 import { formatDuration } from '../../lib/format';
 import { useT, useTimeFormat, useLanguage } from '../../hooks/use-t';
@@ -198,7 +198,7 @@ export function DayAgenda({
     };
     const sorted = [...filtered].sort((a, b) => a.startTime.localeCompare(b.startTime));
     for (const a of sorted) {
-      byBucket[BUCKET_FOR_HOUR(parseISO(a.startTime).getHours())].push(a);
+      byBucket[BUCKET_FOR_HOUR(getHoursInTz(parseISO(a.startTime)))].push(a);
     }
     return byBucket;
   }, [filtered]);

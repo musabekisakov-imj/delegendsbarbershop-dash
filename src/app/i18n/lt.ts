@@ -66,6 +66,10 @@ export const lt: Record<TranslationKey, string> = {
   // Calendar
   'calendar.title': 'Kalendorius',
   'calendar.newAppointment': 'Nauja rezervacija',
+  'calendar.connectTitle': 'Prijunkite kalendorių',
+  'calendar.connectBody': 'Sinchronizuokite su Google ar Outlook, kad lengvai valdytumėte tvarkaraštį.',
+  'calendar.connectCta': 'Prijungti kalendorių',
+  'calendar.connectSoon': 'Kalendoriaus sinchronizacija greitai bus prieinama.',
   'calendar.noActiveStaff': 'Nėra aktyvių darbuotojų',
   'calendar.noActiveStaffHint': 'Pridėkite darbuotojų skiltyje „Darbuotojai“, kad matytumėte jų stulpelius.',
   'calendar.booking': 'rezervacija',

@@ -16,6 +16,7 @@ import { cn } from '../components/ui/utils';
 import { useT, useLanguage } from '../hooks/use-t';
 import { formatPrice } from '../lib/format';
 import { DateRangeSelector } from '../components/analytics/date-range-selector';
+import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
 import { getPresetRange, getPreviousRange } from '../lib/date-range';
 import type { RangePreset } from '../lib/date-range';
 import type { TranslationKey } from '../i18n';
@@ -271,26 +272,24 @@ export function AnalyticsPage() {
     <div className="space-y-6 max-w-[1600px]">
 
       {/* ─── Eyebrow + h1 + range selector ── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <PageHeader
+        eyebrow={(
+          <>
             <span>{t('analytics.eyebrow')}</span>
             {currentOffice && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
                   <MapPinIcon className="h-3 w-3" />
                   {currentOffice.name}
                 </span>
               </>
             )}
-          </div>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none">
-            {t('analytics.heroTitle')}
-          </h1>
-        </div>
-        <DateRangeSelector value={preset} onChange={setPreset} />
-      </div>
+          </>
+        )}
+        title={t('analytics.heroTitle')}
+        action={<DateRangeSelector value={preset} onChange={setPreset} />}
+      />
 
       {/* ─── Hero financial figure + sparkline ──
           One display number anchors the page: revenue for the chosen

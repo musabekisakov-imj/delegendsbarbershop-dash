@@ -14,8 +14,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const t = useT();
   const { isAuthenticated, login } = useAuthStore();
-  const [email, setEmail] = useState('owner@delegendsbarbershop.lt');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('admin@delegends.com');
+  const [password, setPassword] = useState('demo1234');
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {

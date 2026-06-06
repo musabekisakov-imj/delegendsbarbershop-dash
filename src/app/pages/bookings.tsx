@@ -39,6 +39,7 @@ import { EmptyState } from '../components/shared/empty-state';
 import { STATUS_DOT, STATUS_PILL, STATUS_STRIPE, STATUS_BADGE_TINT, STATUS_ICON_COLOR, STATUS_HOVER, STATUS_GLOW, getClientAvatarColor } from '../lib/tokens';
 import { BookingDetailModal } from '../components/bookings/booking-detail-modal';
 import { formatPrice, formatDurationLocalized } from '../lib/format';
+import { getHoursInTz, getMinutesInTz } from '../lib/time';
 import { StaffFilterRow } from '../components/shared/staff-filter-row';
 import { BulkActionBar } from '../components/shared/bulk-action-bar';
 import { FilterPill } from '../components/shared/filter-pill';
@@ -472,7 +473,7 @@ export function BookingsPage() {
         {todayWorkingHours && (() => {
           const now = new Date();
           const closeMin = todayWorkingHours.closeTime.split(':').map(Number).reduce((h, m) => h * 60 + m);
-          const nowMin = now.getHours() * 60 + now.getMinutes();
+          const nowMin = getHoursInTz(now) * 60 + getMinutesInTz(now);
           const isOpenNow = todayWorkingHours.isOpen && isSameDay(selectedDate, now) && nowMin < closeMin;
           return (
             <span className={cn(

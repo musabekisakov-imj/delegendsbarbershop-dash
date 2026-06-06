@@ -17,6 +17,7 @@ import type {
   Shift,
   ShiftOverride,
   Break,
+  BreakType,
   Absence,
   AbsenceReason,
   Tenant,
@@ -29,6 +30,7 @@ import type {
 } from '../types';
 import { findConflicts, type Conflict } from './booking-validation';
 import { http, httpGet, httpPost, httpPatch, httpPut, httpDelete, HttpError, API_BASE_URL } from './http';
+import { getHoursInTz, getMinutesInTz } from './time';
 
 const REMOTE = !!(import.meta.env.VITE_API_URL as string | undefined);
 
@@ -114,11 +116,12 @@ function tryThrowBookingConflict(err: unknown): never {
 export const authApi = {
   login: async (email: string, password: string): Promise<LoginResponse> => {
     if (REMOTE) {
-      return http<LoginResponse>('/auth/login', {
+      const raw = await http<{ access_token: string; user: User }>('/auth/login', {
         method: 'POST',
         body: { email, password },
         noAuth: true,
       });
+      return { token: raw.access_token, user: raw.user };
     }
     await delay();
 
@@ -166,7 +169,7 @@ export const authApi = {
 
 export const tenantApi = {
   get: async (): Promise<Tenant> => {
-    if (REMOTE) return httpGet<Tenant>('/tenants/current');
+    if (REMOTE) return httpGet<Tenant>('/tenants/me');
     await delay();
     const tenant = getSingleFromStorage<Tenant>('barberpro_tenant');
     if (!tenant) throw new Error('Tenant not found');
@@ -174,7 +177,7 @@ export const tenantApi = {
   },
 
   update: async (data: Partial<Tenant>): Promise<Tenant> => {
-    if (REMOTE) return httpPatch<Tenant>('/tenants/current', data);
+    if (REMOTE) return httpPatch<Tenant>('/tenants/me', data);
     await delay();
     const tenant = getSingleFromStorage<Tenant>('barberpro_tenant');
     if (!tenant) throw new Error('Tenant not found');
@@ -569,15 +572,14 @@ export const appointmentsApi = {
   // the client check is defense-in-depth for the localStorage fallback.
   update: async (id: string, data: Partial<Appointment>, opts: { officeId?: string } = {}): Promise<Appointment> => {
     if (REMOTE) {
-      // The server has no PATCH /appointments/:id yet — only cancel + delete + restore.
-      // Status changes (the only field the UI actually mutates) go through cancel for 'cancelled'.
-      // Other partial updates fall through to a generic POST cancel for now; full PATCH endpoint
-      // is a Phase 1 follow-up.
-      if (data.status === 'cancelled') {
-        return httpPost<Appointment>(`/appointments/${id}/cancel`, {});
-      }
-      // TODO(phase-1): add PATCH /appointments/:id on the server.
-      throw new Error('Appointment partial-update endpoint not yet implemented on the server');
+      // PATCH /appointments/:id on the server accepts status, notes, startTime, endTime.
+      // Status changes (incl. cancel) and time reschedules all go through this one route.
+      const payload: Record<string, unknown> = {};
+      if (data.status !== undefined) payload.status = data.status;
+      if (data.notes !== undefined) payload.notes = data.notes;
+      if (data.startTime !== undefined) payload.startTime = data.startTime;
+      if (data.endTime !== undefined) payload.endTime = data.endTime;
+      return httpPatch<Appointment>(`/appointments/${id}`, payload);
     }
     await delay();
     const appointments = getFromStorage<Appointment>('barberpro_appointments');
@@ -645,15 +647,90 @@ async function fanOutByStaff<T>(path: (staffId: string) => string): Promise<T[]>
   return lists.flat();
 }
 
+const DOW_NAMES: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+function normalizeShift(s: Shift & { dayOfWeek: number | DayOfWeek }): Shift {
+  return typeof s.dayOfWeek === 'number' ? { ...s, dayOfWeek: DOW_NAMES[s.dayOfWeek] } : s;
+}
+
+type RawBreak = {
+  id: string;
+  staffId: string;
+  startTime: string;
+  endTime: string;
+  label?: string | null;
+  isRecurring?: boolean;
+  recurrenceDays?: number[] | null;
+  createdAt?: string;
+};
+
+const BREAK_TZ = 'Europe/Vilnius';
+
+function normalizeBreak(raw: RawBreak): Break {
+  const start = new Date(raw.startTime);
+  const end = new Date(raw.endTime);
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const startH = getHoursInTz(start, BREAK_TZ);
+  const startM = getMinutesInTz(start, BREAK_TZ);
+  const endH = getHoursInTz(end, BREAK_TZ);
+  const endM = getMinutesInTz(end, BREAK_TZ);
+  const startHH = `${pad(startH)}:${pad(startM)}`;
+  const endHH = `${pad(endH)}:${pad(endM)}`;
+
+  const recurring = !!(raw.isRecurring && raw.recurrenceDays?.length);
+
+  // Use Vilnius local date/weekday so breaks land on the correct grid day
+  // regardless of the browser's timezone.
+  const vzDateFmt = new Intl.DateTimeFormat('sv-SE', { timeZone: BREAK_TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const vzWeekdayFmt = new Intl.DateTimeFormat('en-US', { timeZone: BREAK_TZ, weekday: 'long' });
+
+  const dayOfWeek: DayOfWeek = recurring
+    ? DOW_NAMES[raw.recurrenceDays![0]]
+    : vzWeekdayFmt.format(start).toLowerCase() as DayOfWeek;
+
+  const label = (raw.label ?? '').toLowerCase();
+  let type: BreakType = 'rest';
+  if (label.includes('lunch') || label.includes('pietų') || label.includes('pietu')) {
+    type = 'lunch';
+  } else if (label.includes('dinner') || label.includes('vakar')) {
+    type = 'dinner';
+  } else {
+    if (startH >= 10 && startH < 15) type = 'lunch';
+    else if (startH >= 15 && startH < 21) type = 'dinner';
+  }
+
+  const recurrence = recurring ? 'weekly' : 'one-off';
+  // sv-SE locale formats as 'YYYY-MM-DD' natively — no manual padding needed.
+  const startDate = !recurring ? vzDateFmt.format(start) : undefined;
+
+  return {
+    id: raw.id,
+    staffId: raw.staffId,
+    dayOfWeek,
+    startTime: startHH,
+    endTime: endHH,
+    type,
+    recurrence,
+    ...(startDate ? { startDate } : {}),
+    ...(raw.createdAt ? { createdAt: raw.createdAt } : {}),
+  };
+}
+
 export const shiftsApi = {
   getAll: async (): Promise<Shift[]> => {
-    if (REMOTE) return fanOutByStaff<Shift>(id => `/staff/${id}/shifts`);
+    if (REMOTE) {
+      const raw = await fanOutByStaff<Shift & { dayOfWeek: number | DayOfWeek }>(id => `/staff/${id}/shifts`);
+      return raw.map(normalizeShift);
+    }
     await delay();
     return getFromStorage<Shift>('barberpro_shifts');
   },
 
   getByStaffId: async (staffId: string): Promise<Shift[]> => {
-    if (REMOTE) return httpGet<Shift[]>(`/staff/${staffId}/shifts`);
+    if (REMOTE) {
+      const raw = await httpGet<(Shift & { dayOfWeek: number | DayOfWeek })[]>(`/staff/${staffId}/shifts`);
+      return raw.map(normalizeShift);
+    }
     await delay();
     const shifts = getFromStorage<Shift>('barberpro_shifts');
     return shifts.filter(s => s.staffId === staffId);
@@ -747,13 +824,19 @@ export const absencesApi = {
 
 export const breaksApi = {
   getAll: async (): Promise<Break[]> => {
-    if (REMOTE) return fanOutByStaff<Break>(id => `/staff/${id}/breaks`);
+    if (REMOTE) {
+      const raw = await fanOutByStaff<RawBreak>(id => `/staff/${id}/breaks`);
+      return raw.map(normalizeBreak);
+    }
     await delay();
     return getFromStorage<Break>('barberpro_breaks');
   },
 
   getByStaffId: async (staffId: string): Promise<Break[]> => {
-    if (REMOTE) return httpGet<Break[]>(`/staff/${staffId}/breaks`);
+    if (REMOTE) {
+      const raw = await httpGet<RawBreak[]>(`/staff/${staffId}/breaks`);
+      return raw.map(normalizeBreak);
+    }
     await delay();
     const breaks = getFromStorage<Break>('barberpro_breaks');
     return breaks.filter(b => b.staffId === staffId);

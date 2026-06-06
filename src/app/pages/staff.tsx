@@ -17,6 +17,7 @@ import type { TimeFormat } from '../lib/time';
 import { cn } from '../components/ui/utils';
 import { CardSkeleton } from '../components/shared/page-skeleton';
 import { EmptyState } from '../components/shared/empty-state';
+import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
 import { Field } from '../components/ui/field';
 import { useConfirm } from '../hooks/use-confirm';
 import { Can } from '../components/shared/can';
@@ -397,49 +398,51 @@ export function StaffPage() {
           matching the Client Ledger pattern on /clients.
           Eyebrow carries the active/inactive split so the
           owner reads the operational signal at a glance. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <PageHeader
+        eyebrow={(
+          <>
             <span>{t('staff.title')}</span>
             {currentOffice && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
                   <MapPinIcon className="h-3 w-3" />
                   {currentOffice.name}
                 </span>
               </>
             )}
-            <span className="text-muted-foreground/40">·</span>
+            <PageHeaderDivider />
             <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               <span className="tabular-nums">{activeCount} {t('staff.filterActive').toLowerCase()}</span>
             </span>
             {inactiveCount > 0 && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="normal-case tracking-normal tabular-nums">
                   {inactiveCount} {t('staff.filterInactive').toLowerCase()}
                 </span>
               </>
             )}
-          </div>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums">
+          </>
+        )}
+        title={(
+          <span className="tabular-nums">
             {staff.length.toLocaleString()}{' '}
-            <span className="text-muted-foreground/70 font-semibold">
+            <span className="font-semibold text-muted-foreground/70">
               {staff.length === 1 ? t('staff.memberOne') : t('staff.memberMany')}
             </span>
-          </h1>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+          </span>
+        )}
+        action={(
           <Can action="staff.manage">
             <Button size="sm" onClick={openCreate}>
               <PlusIcon className="mr-1 h-4 w-4" />
               {t('staff.add')}
             </Button>
           </Can>
-        </div>
-      </div>
+        )}
+      />
 
       {/* ─── Top-level tab bar (underline) ────────────────
           Directory vs Schedule are different VIEWS of the
@@ -1187,4 +1190,3 @@ function ScheduleCell({
     </Popover>
   );
 }
-

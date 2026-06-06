@@ -67,6 +67,10 @@ export const en = {
   // Calendar
   'calendar.title': 'Calendar',
   'calendar.newAppointment': 'New Appointment',
+  'calendar.connectTitle': 'Connect your calendar',
+  'calendar.connectBody': 'Sync with Google or Outlook to manage your schedule easily.',
+  'calendar.connectCta': 'Connect Calendar',
+  'calendar.connectSoon': 'Calendar sync is coming soon.',
   'calendar.noActiveStaff': 'No active staff members',
   'calendar.noActiveStaffHint': 'Add staff from the Staff page to see their columns here.',
   'calendar.booking': 'booking',

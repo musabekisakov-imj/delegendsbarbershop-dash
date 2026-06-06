@@ -19,6 +19,7 @@ import { Field } from '../components/ui/field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '../components/ui/hover-card';
+import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
 import { usePermission } from '../hooks/use-permission';
 import { useConfirm } from '../hooks/use-confirm';
 import { useAuthStore } from '../store/auth-store';
@@ -189,38 +190,41 @@ export function AccountsPage() {
           than a scanning-page hero. The count animates up on
           mount; a segmented status ribbon sits below showing
           the active/pending/disabled proportions visually. */}
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <PageHeader
+        className="gap-5"
+        eyebrow={(
+          <>
             <span>Team &amp; access</span>
             {currentOffice && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
                   <MapPinIcon className="h-3 w-3" />
                   {currentOffice.name}
                 </span>
               </>
             )}
-            <span className="text-muted-foreground/40">·</span>
+            <PageHeaderDivider />
             <span className="normal-case tracking-normal">Permissions &amp; invites</span>
-          </div>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums flex items-baseline gap-2">
+          </>
+        )}
+        title={(
+          <span className="flex items-baseline gap-2 tabular-nums">
             <AnimatedCounter to={accounts.length} />
-            <span className="text-muted-foreground/70 font-semibold">
+            <span className="font-semibold text-muted-foreground/70">
               {accounts.length === 1 ? 'account' : 'accounts'}
             </span>
-          </h1>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+          </span>
+        )}
+        action={(
           <Can action="accounts.manage">
             <Button size="sm" onClick={openNew}>
-              <PlusIcon className="h-4 w-4 mr-1" />
+              <PlusIcon className="mr-1 h-4 w-4" />
               Invite member
             </Button>
           </Can>
-        </div>
-      </div>
+        )}
+      />
 
       {/* Segmented status ribbon — three proportions in one bar.
           Reads left-to-right: active (emerald) → pending (amber)

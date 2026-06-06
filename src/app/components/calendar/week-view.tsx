@@ -12,7 +12,7 @@ import {
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '../ui/hover-card';
 import { Popover, PopoverTrigger } from '../ui/popover';
 import { cn } from '../ui/utils';
-import { formatTime, formatHourLabel } from '../../lib/time';
+import { formatTime, formatHourLabel, getHoursInTz, getMinutesInTz } from '../../lib/time';
 import { assignLanes } from '../../lib/calendar-lanes';
 import { useT, useTimeFormat } from '../../hooks/use-t';
 import { useLanguageStore } from '../../store/language-store';
@@ -759,7 +759,7 @@ export function WeekView({
                 {!isOff && bucket?.appts.map(apt => {
                   const start = parseISO(apt.startTime);
                   const end = parseISO(apt.endTime);
-                  const sMin = (start.getHours() - dayStartHour) * 60 + start.getMinutes();
+                  const sMin = (getHoursInTz(start) - dayStartHour) * 60 + getMinutesInTz(start);
                   const dur = differenceInMinutes(end, start);
                   const top = (sMin / minutesPerSlot) * slotHeight;
                   const h = Math.max((dur / minutesPerSlot) * slotHeight - 2, 32);

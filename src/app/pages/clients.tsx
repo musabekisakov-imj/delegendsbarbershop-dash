@@ -22,6 +22,7 @@ import { cn } from '../components/ui/utils';
 import { useT } from '../hooks/use-t';
 import { CardSkeleton, TableSkeleton } from '../components/shared/page-skeleton';
 import { EmptyState } from '../components/shared/empty-state';
+import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
 import { gradientFor } from '../lib/tokens';
 import { Field, Readonly } from '../components/ui/field';
 import { ClientForm } from '../components/clients/client-form';
@@ -309,56 +310,60 @@ export function ClientsPage() {
           Client Ledger: the count IS the headline (Analytics
           uses € revenue the same way). Eyebrow carries the
           operational signal — Office · returning · VIP. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <PageHeader
+        eyebrow={(
+          <>
             <span>{t('clients.title')}</span>
             {currentOffice && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
                   <MapPinIcon className="h-3 w-3" />
                   {currentOffice.name}
                 </span>
               </>
             )}
-            <span className="text-muted-foreground/40">·</span>
+            <PageHeaderDivider />
             <span className="normal-case tracking-normal tabular-nums">
               {t('clients.returning', { n: returningCount })}
             </span>
             {vipCount > 0 && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
                   <StarIconSolid className="h-3 w-3 text-amber-400" />
                   <span className="tabular-nums">{t('clients.vipCount', { n: vipCount })}</span>
                 </span>
               </>
             )}
-          </div>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums">
+          </>
+        )}
+        title={(
+          <span className="tabular-nums">
             {clients.length.toLocaleString()}{' '}
-            <span className="text-muted-foreground/70 font-semibold">
+            <span className="font-semibold text-muted-foreground/70">
               {clients.length === 1 ? t('clients.clientOne') : t('clients.clientMany')}
             </span>
-          </h1>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportClients}
-            disabled={filteredSorted.length === 0}
-            aria-label={t('clients.exportAria')}
-          >
-            <ArrowDownTrayIcon className="h-4 w-4" />
-          </Button>
-          <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
-            <PlusIcon className="mr-1 h-4 w-4" />
-            {t('clients.add')}
-          </Button>
-        </div>
-      </div>
+          </span>
+        )}
+        action={(
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportClients}
+              disabled={filteredSorted.length === 0}
+              aria-label={t('clients.exportAria')}
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+            </Button>
+            <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
+              <PlusIcon className="mr-1 h-4 w-4" />
+              {t('clients.add')}
+            </Button>
+          </div>
+        )}
+      />
 
       {/* ─── Operator bar ────────────────────────────────
           One tight band replaces the old filter row + controls
@@ -1159,5 +1164,4 @@ function IconAction({
     </button>
   );
 }
-
 

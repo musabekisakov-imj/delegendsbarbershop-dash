@@ -3,6 +3,7 @@ import { parseISO, differenceInMinutes, isSameDay, format } from 'date-fns';
 import { cn } from '../ui/utils';
 import { STATUS_STRIPE, STATUS_DOT, getClientAvatarColor } from '../../lib/tokens';
 import { formatPrice } from '../../lib/format';
+import { getHoursInTz, getMinutesInTz } from '../../lib/time';
 import { useT } from '../../hooks/use-t';
 import { useLanguageStore } from '../../store/language-store';
 import type { AppointmentWithDetails, WorkingHoursDay } from '../../types';
@@ -115,7 +116,7 @@ export function TimelineView({ appointments, workingHours, selectedDate, density
             {appointments.map(apt => {
               const start = parseISO(apt.startTime);
               const end = parseISO(apt.endTime);
-              const startMin = start.getHours() * 60 + start.getMinutes();
+              const startMin = getHoursInTz(start) * 60 + getMinutesInTz(start);
               const dur = differenceInMinutes(end, start);
               const top = (startMin - openMin) * pxPerMin;
               const height = Math.max(dur * pxPerMin, 24);

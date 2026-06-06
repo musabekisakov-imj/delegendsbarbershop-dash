@@ -12,6 +12,7 @@ import { cn } from '../components/ui/utils';
 import { MOTION_EASE } from '../lib/tokens';
 import { useT } from '../hooks/use-t';
 import { useAutoSave } from '../hooks/use-auto-save';
+import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
 import { SaveStatusIndicator } from '../components/shared/save-status-indicator';
 import type { Tenant } from '../types';
 import type { TranslationKey } from '../i18n';
@@ -119,26 +120,24 @@ export function SettingsPage() {
   return (
     <div className="space-y-5">
       {/* ─── Editorial hero with auto-save indicator ──── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <PageHeader
+        eyebrow={(
+          <>
             <span>{t('settings.title')}</span>
             {currentOffice && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
                   <MapPinIcon className="h-3 w-3" />
                   {currentOffice.name}
                 </span>
               </>
             )}
-          </div>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none">
-            {t(SIDEBAR_ITEMS.find(it => it.id === section)?.labelKey ?? 'settings.title')}
-          </h1>
-        </div>
-        <SaveStatusIndicator status={status} lastSavedAt={lastSavedAt} onRetry={retry} />
-      </div>
+          </>
+        )}
+        title={t(SIDEBAR_ITEMS.find(it => it.id === section)?.labelKey ?? 'settings.title')}
+        action={<SaveStatusIndicator status={status} lastSavedAt={lastSavedAt} onRetry={retry} />}
+      />
 
       {/* ─── Sub-sidebar + content layout ──── */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[14rem_1fr]">

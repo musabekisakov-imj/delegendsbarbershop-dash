@@ -1,4 +1,5 @@
 import { parseISO } from 'date-fns';
+import { getHoursInTz } from '../../lib/time';
 import { useNavigate } from 'react-router';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import { cn } from '../ui/utils';
@@ -22,8 +23,8 @@ export function EmptyScheduleSlots({ workingHours, viewDate, existingAppointment
   // Determine which hours are already occupied
   const takenHours = new Set<number>();
   for (const apt of existingAppointments) {
-    const startHour = parseISO(apt.startTime).getHours();
-    const endHour = parseISO(apt.endTime).getHours();
+    const startHour = getHoursInTz(parseISO(apt.startTime));
+    const endHour = getHoursInTz(parseISO(apt.endTime));
     for (let h = startHour; h < endHour; h++) takenHours.add(h);
   }
 

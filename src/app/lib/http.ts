@@ -83,6 +83,9 @@ export async function http<T>(path: string, opts: RequestOpts = {}): Promise<T> 
     throw new HttpError(res.status, parsed, message);
   }
 
+  if (parsed !== null && typeof parsed === 'object' && 'data' in parsed) {
+    return (parsed as { data: T }).data;
+  }
   return parsed as T;
 }
 

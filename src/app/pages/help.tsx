@@ -7,6 +7,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { cn } from '../components/ui/utils';
 import { EmptyState } from '../components/shared/empty-state';
+import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
 
 type CategoryId = 'appointments' | 'clients' | 'settings';
 
@@ -66,20 +67,18 @@ export function HelpPage() {
     // max-w-3xl keeps line length readable for FAQ copy (45-75 chars).
     <div className="space-y-5 max-w-3xl">
       {/* ─── Editorial hero ─────────────────────────── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <PageHeader
+        eyebrow={(
+          <>
             <span>Help</span>
-            <span className="text-muted-foreground/40">·</span>
+            <PageHeaderDivider />
             <span className="normal-case tracking-normal tabular-nums">{totalFaqs} articles</span>
-            <span className="text-muted-foreground/40">·</span>
+            <PageHeaderDivider />
             <span className="normal-case tracking-normal">Support</span>
-          </div>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none">
-            How can we help?
-          </h1>
-        </div>
-      </div>
+          </>
+        )}
+        title="How can we help?"
+      />
 
       {/* ─── Operator bar — search + category tabs ─── */}
       <div className="rounded-xl border border-border bg-card">

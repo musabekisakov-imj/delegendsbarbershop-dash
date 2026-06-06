@@ -15,6 +15,7 @@ import { AVATAR_GRADIENTS, hashToIndex, MOTION_EASE, MOTION_DUR } from '../lib/t
 import type { Appointment } from '../types';
 
 import { SectionHeading } from '../components/shared/section-heading';
+import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -319,34 +320,34 @@ export function NewBookingPage() {
           below carries the per-step label so we don't
           duplicate it as a giant title. The right side
           shows a numeric step counter chip. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <PageHeader
+        eyebrow={(
+          <>
             <span>Bookings</span>
             {currentOffice && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
                   <MapPinIcon className="h-3 w-3" />
                   {currentOffice.name}
                 </span>
               </>
             )}
-            <span className="text-muted-foreground/40">·</span>
+            <PageHeaderDivider />
             <span className="normal-case tracking-normal">{format(new Date(), 'EEE, MMM d')}</span>
+          </>
+        )}
+        title="New booking"
+        action={(
+          <div className="inline-flex items-baseline gap-1.5 self-start sm:self-end">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Step</span>
+            <span className="text-2xl font-bold leading-none text-foreground tabular-nums">
+              {(step + 1).toString().padStart(2, '0')}
+            </span>
+            <span className="text-sm text-muted-foreground/60 tabular-nums">/ {STEPS.length.toString().padStart(2, '0')}</span>
           </div>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none">
-            New booking
-          </h1>
-        </div>
-        <div className="shrink-0 inline-flex items-baseline gap-1.5 self-start sm:self-end">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Step</span>
-          <span className="text-2xl font-bold text-foreground tabular-nums leading-none">
-            {(step + 1).toString().padStart(2, '0')}
-          </span>
-          <span className="text-sm text-muted-foreground/60 tabular-nums">/ {STEPS.length.toString().padStart(2, '0')}</span>
-        </div>
-      </div>
+        )}
+      />
 
       {/* Step rail */}
       <Stepper step={step} onJump={(i) => i < step && setStep(i)} />

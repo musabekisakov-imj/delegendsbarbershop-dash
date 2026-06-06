@@ -30,6 +30,7 @@ import {
 import { Button } from '../components/ui/button';
 import { Field } from '../components/ui/field';
 import { Input } from '../components/ui/input';
+import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
 import { cn } from '../components/ui/utils';
 import type { Account } from '../types';
 
@@ -193,58 +194,61 @@ export function ProfilePage() {
           (PAGE · Office · context). Display-size title
           carries the user's full name; role chip + status
           dot sit underneath. */}
-      <motion.div {...animateProps(0)} className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <button
-            onClick={() => navigate(-1)}
-            className="mb-2 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeftIcon className="h-3 w-3" />
-            Back
-          </button>
-          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            <span>My profile</span>
-            {currentOffice && (
-              <>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
-                  <MapPinIcon className="h-3 w-3" />
-                  {currentOffice.name}
-                </span>
-              </>
-            )}
-            <span className="text-muted-foreground/40">·</span>
-            <span className="normal-case tracking-normal">Personal &amp; identity</span>
-          </div>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none">
-            {account.firstName} {account.lastName}
-          </h1>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]',
-              ROLE_CHIP[account.role],
-            )}>
-              <span className={cn('h-1.5 w-1.5 rounded-full', ROLE_DOT[account.role])} />
-              {ROLE_LABEL[account.role]}
-            </span>
-            <span className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ring-1',
-              STATUS_TONE[account.status],
-            )}>
+      <motion.div {...animateProps(0)}>
+        <PageHeader
+          eyebrow={(
+            <>
+              <button
+                onClick={() => navigate(-1)}
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeftIcon className="h-3 w-3" />
+                Back
+              </button>
+              <PageHeaderDivider />
+              <span>My profile</span>
+              {currentOffice && (
+                <>
+                  <PageHeaderDivider />
+                  <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
+                    <MapPinIcon className="h-3 w-3" />
+                    {currentOffice.name}
+                  </span>
+                </>
+              )}
+              <PageHeaderDivider />
+              <span className="normal-case tracking-normal">Personal &amp; identity</span>
+            </>
+          )}
+          title={`${account.firstName} ${account.lastName}`}
+          meta={(
+            <>
               <span className={cn(
-                'h-1.5 w-1.5 rounded-full',
-                account.status === 'active' && 'bg-emerald-500',
-                account.status === 'invited' && 'bg-amber-500',
-                account.status === 'disabled' && 'bg-muted-foreground/40',
-              )} />
-              {STATUS_DESC[account.status]}
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground/80">
-              <EnvelopeIcon className="h-3.5 w-3.5" />
-              {account.email}
-            </span>
-          </div>
-        </div>
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]',
+                ROLE_CHIP[account.role],
+              )}>
+                <span className={cn('h-1.5 w-1.5 rounded-full', ROLE_DOT[account.role])} />
+                {ROLE_LABEL[account.role]}
+              </span>
+              <span className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ring-1',
+                STATUS_TONE[account.status],
+              )}>
+                <span className={cn(
+                  'h-1.5 w-1.5 rounded-full',
+                  account.status === 'active' && 'bg-emerald-500',
+                  account.status === 'invited' && 'bg-amber-500',
+                  account.status === 'disabled' && 'bg-muted-foreground/40',
+                )} />
+                {STATUS_DESC[account.status]}
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground/80">
+                <EnvelopeIcon className="h-3.5 w-3.5" />
+                {account.email}
+              </span>
+            </>
+          )}
+        />
       </motion.div>
 
       {/* ─── Editable surface — photo + identity ─────

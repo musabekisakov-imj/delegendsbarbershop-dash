@@ -27,6 +27,7 @@ import { usePriceFormatter } from '../../hooks/use-price-formatter';
 import { CardSkeleton } from '../../components/shared/page-skeleton';
 import { EmptyState } from '../../components/shared/empty-state';
 import { BulkActionBar } from '../../components/shared/bulk-action-bar';
+import { PageHeader, PageHeaderDivider } from '../../components/shared/page-header';
 import { FilterPill } from '../../components/shared/filter-pill';
 import { ViewToggle, type ViewMode } from '../../components/shared/view-toggle';
 import { exportCsv } from '../../lib/csv';
@@ -321,13 +322,13 @@ export function ServicesPage() {
   return (
     <div className="space-y-5">
       {/* ─── Editorial hero ──────────────────────────────── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <PageHeader
+        eyebrow={(
+          <>
             <span>{t('services.title')}</span>
             {currentOffice && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
                   <MapPinIcon className="h-3 w-3" />
                   {currentOffice.name}
@@ -336,7 +337,7 @@ export function ServicesPage() {
             )}
             {categories.length > 0 && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="normal-case tracking-normal tabular-nums">
                   {categories.length} {categories.length === 1 ? t('services.hero.categoryOne') : t('services.hero.categoryMany')}
                 </span>
@@ -344,40 +345,44 @@ export function ServicesPage() {
             )}
             {priceRange && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <PageHeaderDivider />
                 <span className="normal-case tracking-normal tabular-nums">
                   {fmt(priceRange.min)}–{fmt(priceRange.max)}
                 </span>
               </>
             )}
-          </div>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums">
+          </>
+        )}
+        title={(
+          <span className="tabular-nums">
             {services.length.toLocaleString()}{' '}
-            <span className="text-muted-foreground/70 font-semibold">
+            <span className="font-semibold text-muted-foreground/70">
               {services.length === 1 ? t('services.hero.serviceOne') : t('services.hero.serviceMany')}
             </span>
-          </h1>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExport}
-            disabled={filteredServices.length === 0}
-            aria-label={t('services.actions.export')}
-          >
-            <ArrowDownTrayIcon className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setIsCategoryDialogOpen(true)}>
-            <Cog6ToothIcon className="mr-1 h-4 w-4" />
-            {t('services.actions.manageCategories')}
-          </Button>
-          <Button size="sm" onClick={openCreate}>
-            <PlusIcon className="mr-1 h-4 w-4" />
-            {t('services.actions.create')}
-          </Button>
-        </div>
-      </div>
+          </span>
+        )}
+        action={(
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={filteredServices.length === 0}
+              aria-label={t('services.actions.export')}
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setIsCategoryDialogOpen(true)}>
+              <Cog6ToothIcon className="mr-1 h-4 w-4" />
+              {t('services.actions.manageCategories')}
+            </Button>
+            <Button size="sm" onClick={openCreate}>
+              <PlusIcon className="mr-1 h-4 w-4" />
+              {t('services.actions.create')}
+            </Button>
+          </div>
+        )}
+      />
 
       {/* ─── Filter + search bar ─────────────────────────── */}
       {categories.length > 0 && (

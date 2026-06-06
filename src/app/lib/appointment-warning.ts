@@ -1,4 +1,5 @@
 import { parseISO } from 'date-fns';
+import { getHoursInTz, getMinutesInTz } from './time';
 import { overlaps } from './booking-validation';
 import type { AppointmentWithDetails, WorkingHoursDay } from '../types';
 import type { TranslationKey } from '../i18n';
@@ -41,7 +42,7 @@ function toMins(hhmm: string | undefined): number {
 
 function aptToMins(isoStr: string): number {
   const d = parseISO(isoStr);
-  return d.getHours() * 60 + d.getMinutes();
+  return getHoursInTz(d) * 60 + getMinutesInTz(d);
 }
 
 export function getAppointmentWarning(
