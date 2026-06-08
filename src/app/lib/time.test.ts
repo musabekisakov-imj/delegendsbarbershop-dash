@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { formatTime, formatHourLabel, getHoursInTz, getMinutesInTz, setDisplayTimezone } from './time';
+import { formatTime, formatHourLabel, getHoursInTz, getMinutesInTz, setDisplayTimezone, getWallDateInTz, getWallTimeInTz, wallTimeToUtc } from './time';
 
 describe('formatTime', () => {
   it('formats 24h with leading zero on the hour', () => {
@@ -93,5 +93,29 @@ describe('display timezone (module default)', () => {
     // 11:00 UTC is 07:00 in New York (EDT, UTC-4) in June.
     expect(formatTime(utc1100, '24h', 'America/New_York')).toBe('07:00');
     expect(getHoursInTz(new Date(utc1100), 'America/New_York')).toBe(7);
+  });
+});
+
+describe('wall-time helpers (form round-trip)', () => {
+  afterEach(() => setDisplayTimezone(undefined));
+  // 11:00 UTC on 8 Jun 2026 = 14:00 Europe/Vilnius. The edit form must read it
+  // as 14:00 and save it back to the exact same instant.
+  const utc1100 = '2026-06-08T11:00:00.000Z';
+
+  it('reads shop wall date/time from an instant', () => {
+    setDisplayTimezone('Europe/Vilnius');
+    expect(getWallDateInTz(new Date(utc1100))).toBe('2026-06-08');
+    expect(getWallTimeInTz(new Date(utc1100))).toBe('14:00');
+  });
+
+  it('round-trips wall time back to the exact same UTC instant', () => {
+    setDisplayTimezone('Europe/Vilnius');
+    expect(wallTimeToUtc('2026-06-08', '14:00').toISOString()).toBe(utc1100);
+  });
+
+  it('falls back to runtime-local when no shop zone is set', () => {
+    const back = wallTimeToUtc('2026-06-08', '14:00');
+    expect(back.getFullYear()).toBe(2026);
+    expect(back.getHours()).toBe(14); // local wall time
   });
 });

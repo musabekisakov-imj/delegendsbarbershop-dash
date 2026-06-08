@@ -79,7 +79,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/toolti
 import { MOTION_EASE, MOTION_DUR } from '../lib/tokens';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
-import { formatTime, formatHourLabel, getHoursInTz, getMinutesInTz } from '../lib/time';
+import { formatTime, formatHourLabel, getHoursInTz, getMinutesInTz, getWallDateInTz, getWallTimeInTz, wallTimeToUtc, type TimeFormat } from '../lib/time';
 import { getPaymentStatus } from '../lib/payment';
 import { assignLanes } from '../lib/calendar-lanes';
 import { MiniCalendar } from '../components/calendar/mini-calendar';
@@ -101,6 +101,18 @@ const DAY_START_HOUR = 8;
 const DAY_END_HOUR = 21;
 const SLOT_HEIGHT = 96;
 const MINUTES_PER_SLOT = 60;
+
+// End-time label for a wall-clock start ("HH:mm") + duration, rendered as a
+// pure wall time. Formats through a UTC instant so formatTime's shop-tz default
+// doesn't shift the label. Returns null on invalid input.
+function endLabelFromWall(time: string, durationMin: number, fmt: TimeFormat): string | null {
+  const [hh, mm] = time.split(':').map(Number);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  const total = hh * 60 + mm + durationMin;
+  const eh = ((Math.floor(total / 60) % 24) + 24) % 24;
+  const em = ((total % 60) + 60) % 60;
+  return formatTime(new Date(Date.UTC(2000, 0, 1, eh, em)), fmt, 'UTC');
+}
 const SLOT_MINUTES = 15;
 const SUB_SLOTS_PER_HOUR = 60 / SLOT_MINUTES; // 4
 // Two presets driven by user preference. Standard = roomy booking-card grammar;
@@ -316,8 +328,10 @@ function AppointmentDetailModal({
   // Save button is enabled only when the form is dirty (matches the
   // competitor's flow where the operator scans + tweaks in one motion).
   const [form, setForm] = useState(() => ({
-    date: format(start, 'yyyy-MM-dd'),
-    time: format(start, 'HH:mm'),
+    // Seed the form in shop time so it matches the header and the calendar grid
+    // (date-fns format would render the viewer's local zone instead).
+    date: getWallDateInTz(start),
+    time: getWallTimeInTz(start),
     durationMin: duration,
     staffId: apt.staffId,
     serviceId: apt.serviceId,
@@ -325,8 +339,8 @@ function AppointmentDetailModal({
   }));
 
   const dirty = (
-    form.date !== format(start, 'yyyy-MM-dd') ||
-    form.time !== format(start, 'HH:mm') ||
+    form.date !== getWallDateInTz(start) ||
+    form.time !== getWallTimeInTz(start) ||
     form.durationMin !== duration ||
     form.staffId !== apt.staffId ||
     form.serviceId !== apt.serviceId ||
@@ -335,14 +349,10 @@ function AppointmentDetailModal({
 
   // Live "ends at HH:mm" computed from the form's time + duration. Useful
   // because a barber tweaking duration sees the end immediately, no math.
-  const computedEndLabel = useMemo(() => {
-    const [hh, mm] = form.time.split(':').map(Number);
-    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
-    const s = new Date();
-    s.setHours(hh, mm, 0, 0);
-    const e = new Date(s.getTime() + form.durationMin * 60_000);
-    return formatTime(e, timeFormat);
-  }, [form.time, form.durationMin, timeFormat]);
+  const computedEndLabel = useMemo(
+    () => endLabelFromWall(form.time, form.durationMin, timeFormat),
+    [form.time, form.durationMin, timeFormat],
+  );
 
   // Pending slots — additional appointments added inline via "Add next service".
   // Each slot becomes its own appointment record on Save (sequential creates).
@@ -397,13 +407,8 @@ function AppointmentDetailModal({
     setPendingSlots((prev) => prev.filter((s) => s.tempId !== tempId));
   };
 
-  const computeEndLabel = (time: string, durationMin: number): string => {
-    const [hh, mm] = time.split(':').map(Number);
-    if (Number.isNaN(hh)) return '—';
-    const e = new Date();
-    e.setHours(hh, mm + durationMin, 0, 0);
-    return formatTime(e, timeFormat);
-  };
+  const computeEndLabel = (time: string, durationMin: number): string =>
+    endLabelFromWall(time, durationMin, timeFormat) ?? '—';
 
   const allPendingValid = pendingSlots.every((s) => s.serviceId);
   const hasPending = pendingSlots.length > 0;
@@ -416,9 +421,8 @@ function AppointmentDetailModal({
     }
     // 1. Save primary if dirty (mutation; fire-and-forget per existing pattern)
     if (dirty) {
-      const [y, m, d] = form.date.split('-').map(Number);
-      const [hh, mm] = form.time.split(':').map(Number);
-      const newStart = new Date(y, m - 1, d, hh, mm, 0, 0);
+      // form.date/time are shop wall-clock — convert back to the right instant.
+      const newStart = wallTimeToUtc(form.date, form.time);
       const newEnd = new Date(newStart.getTime() + form.durationMin * 60_000);
       onFullUpdate(apt.id, {
         startTime: newStart.toISOString(),
@@ -485,7 +489,9 @@ function AppointmentDetailModal({
     const [y, m, d] = form.date.split('-').map(Number);
     const [hh, mm] = form.time.split(':').map(Number);
     if (Number.isNaN(y) || Number.isNaN(hh)) return null;
-    return new Date(y, m - 1, d, hh, mm, 0, 0);
+    // form.date/time are shop wall-clock — resolve to the true instant so the
+    // header renders back to the same shop time via formatTime.
+    return wallTimeToUtc(form.date, form.time);
   }, [form.date, form.time]);
   const liveEnd = useMemo(() => {
     if (!liveStart) return null;
@@ -7061,9 +7067,8 @@ export function CalendarPage() {
               for (let i = 0; i < slots.length; i++) {
                 const slot = slots[i];
                 if (!slot.serviceId) continue;
-                const [y, m, d] = slot.date.split('-').map(Number);
-                const [hh, mm] = slot.time.split(':').map(Number);
-                const start = new Date(y, m - 1, d, hh, mm, 0, 0);
+                // slot.date/time are shop wall-clock — convert to the instant.
+                const start = wallTimeToUtc(slot.date, slot.time);
                 const end = new Date(start.getTime() + slot.durationMin * 60_000);
                 try {
                   await appointmentsApi.create({
