@@ -35,6 +35,7 @@ import {
   PlusIcon,
   MinusIcon,
   ScissorsIcon,
+  BanknotesIcon,
   PhoneIcon,
   ChatBubbleLeftIcon,
   CheckCircleIcon,
@@ -88,7 +89,7 @@ import { WeekView } from '../components/calendar/week-view';
 import { AppointmentWarningPin } from '../components/calendar/appointment-warning-pin';
 import { getAppointmentWarning } from '../lib/appointment-warning';
 import { StaffCard } from '../components/calendar/StaffCard';
-import type { Appointment, AppointmentStatus, AppointmentWithDetails, Service, Category, Shift, ShiftOverride, Break, Absence, AbsenceReason, DayOfWeek, Client, Language } from '../types';
+import type { Appointment, AppointmentStatus, AppointmentWithDetails, Service, Category, Shift, ShiftOverride, Break, Absence, AbsenceReason, DayOfWeek, Client, Language, StaffRole } from '../types';
 import type { TranslationKey } from '../i18n';
 import { AVATAR_GRADIENTS, ELEVATION, hashToIndex, ROLE_CHIP, ROLE_DOT, ROLE_LABEL, STATUS_DOT, STATUS_LABEL, STATUS_PILL, STATUS_STRIPE, STAFF_COLORS, getStaffColor, CLIENT_AVATAR_COLORS, getClientAvatarColor } from '../lib/tokens';
 
@@ -504,6 +505,8 @@ function AppointmentDetailModal({
   const selectedService = serviceList.find(s => s.id === form.serviceId) ?? apt.service;
   const selectedStaff = staffList.find(s => s.id === form.staffId);
   const heroPrice = selectedService?.price ?? apt.service.price;
+  // Service sub-line + category column resolve categoryId → category name.
+  const serviceCategoryName = categories.find(c => c.id === selectedService?.categoryId)?.name ?? '';
 
   // A public multi-service booking is a single row carrying several services.
   // Show the aggregate line ("primary + N") and the booking total instead of
@@ -564,7 +567,7 @@ function AppointmentDetailModal({
               toolbar. Same palette as the rest of the modal — no theme-inverting
               dark/white split that previously read as two stitched-together
               cards. */}
-          <motion.div variants={itemVariants} className="relative bg-card text-foreground pl-7 pr-5 pt-6 pb-5 border-b border-border">
+          <motion.div variants={itemVariants} className="relative bg-card text-foreground px-6 pt-6 pb-5 border-b border-border">
             {/* Header buttons — close + "..." (rebook) */}
             <div className="absolute top-3 right-3 flex items-center gap-1">
               <Popover>
@@ -599,43 +602,62 @@ function AppointmentDetailModal({
               </button>
             </div>
 
-            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground pr-10">
-              {apt.client.firstName} {apt.client.lastName}
-              <span className="mx-1.5 text-muted-foreground/40">·</span>
-              {format(start, 'EEE, MMM d')}
-            </p>
-            <h2 className="mt-2 text-[28px] sm:text-[30px] font-bold leading-none tracking-tight tabular-nums text-foreground break-words">
-              {liveTimeRange}
-            </h2>
-            <p className="mt-2 text-[12px] text-muted-foreground truncate">
-              <span className="text-foreground font-semibold">{heroServiceName}</span>
-              {selectedStaff && (
-                <>
-                  <span className="mx-1.5 text-muted-foreground/40">·</span>
-                  {selectedStaff.firstName} {selectedStaff.lastName}
-                </>
-              )}
-              <span className="mx-1.5 text-muted-foreground/40">·</span>
-              <span className="tabular-nums">{form.durationMin}m</span>
-            </p>
+            {/* Client identity — avatar + name + full date */}
+            <div className="flex items-center gap-3 pr-20">
+              <div className="relative shrink-0">
+                <div className={cn(
+                  'flex h-12 w-12 items-center justify-center rounded-full text-[14px] font-semibold ring-2 ring-background shadow-sm',
+                  clientAvatarColor.bg,
+                  clientAvatarColor.text,
+                )}>
+                  {clientInitials || <UserIcon className="h-6 w-6" />}
+                </div>
+                <span className={cn('absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-card', STATUS_DOT[apt.status])} aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-[19px] font-bold leading-tight tracking-tight text-foreground truncate">
+                  {apt.client.firstName} {apt.client.lastName}
+                </h2>
+                <p className="text-[12.5px] text-muted-foreground truncate mt-0.5">
+                  {isToday(start) && (
+                    <>
+                      <span className="text-foreground font-medium">{t('common.today')}</span>
+                      <span className="mx-1.5 text-muted-foreground/40">•</span>
+                    </>
+                  )}
+                  {format(start, 'EEEE, MMMM d, yyyy', { locale: dateLocale })}
+                </p>
+              </div>
+            </div>
+
+            {/* Live time range + duration chip */}
+            <div className="mt-4 flex items-center gap-3 flex-wrap">
+              <h3 className="text-[26px] sm:text-[28px] font-bold leading-none tracking-tight tabular-nums text-foreground">
+                {liveTimeRange}
+              </h3>
+              <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-[12px] font-semibold tabular-nums text-muted-foreground">
+                {form.durationMin}m
+              </span>
+            </div>
+
+            {/* Status + payment pills — soft, icon-led */}
             <div className="mt-3 flex items-center gap-2 flex-wrap">
-              {/* Status chip — neutral muted background, text-foreground. The
-                  status dot keeps its semantic color for instant recognition. */}
-              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] bg-muted text-foreground">
-                <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[apt.status])} />
+              <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold', STATUS_PILL[apt.status])}>
+                {apt.status === 'confirmed' || apt.status === 'completed'
+                  ? <CheckCircleIcon className="h-3.5 w-3.5" />
+                  : <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[apt.status])} />
+                }
                 {t(`status.${apt.status}` as TranslationKey)}
               </span>
-              {/* Payment chip — theme-aware semantic colors. dark: variants flip
-                  text shade so emerald/rose stay legible on both light and dark
-                  card surfaces. */}
               <span className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]',
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold',
                 paymentStatus === 'paid' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                   : paymentStatus === 'voided' ? 'bg-muted text-muted-foreground'
                   : 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300',
               )}>
+                <BanknotesIcon className="h-3.5 w-3.5" />
                 {paymentLabel}
-                <span className="tabular-nums font-bold opacity-90">€{heroTotal}</span>
+                <span className="tabular-nums font-bold">€{heroTotal}</span>
               </span>
             </div>
           </motion.div>
@@ -710,17 +732,15 @@ function AppointmentDetailModal({
           {/* CLIENT CARD — avatar circle + name + contact.
               Replaces the previous read-only Input pair, which had a
               "form field" feel that didn't match the rest of the modal. */}
-          <motion.div variants={itemVariants} className="px-7 py-4 border-b border-border">
-            <div className="flex items-center gap-3">
-              <div className={cn(
-                'flex h-11 w-11 items-center justify-center rounded-full text-[12px] font-semibold shrink-0 ring-2 ring-background shadow-sm',
-                clientAvatarColor.bg,
-                clientAvatarColor.text,
-              )}>
-                {clientInitials || <UserIcon className="h-5 w-5" />}
+          {/* CUSTOMER CARD */}
+          <motion.div variants={itemVariants} className="px-6 pt-4 pb-1">
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground shrink-0">
+                <UserIcon className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[15px] font-semibold tracking-tight text-foreground truncate leading-tight">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('calendar.customer')}</p>
+                <p className="text-[15px] font-semibold tracking-tight text-foreground truncate leading-tight mt-0.5">
                   {apt.client.firstName} {apt.client.lastName}
                 </p>
                 <p className="text-[12px] text-muted-foreground tabular-nums truncate mt-0.5">
@@ -730,7 +750,7 @@ function AppointmentDetailModal({
               {apt.client.phone && (
                 <a
                   href={`tel:${apt.client.phone}`}
-                  className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-card/50 text-muted-foreground hover:text-foreground hover:bg-card transition-colors shrink-0"
+                  className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0"
                   aria-label={`Call ${apt.client.firstName}`}
                 >
                   <PhoneIcon className="h-4 w-4" />
@@ -745,63 +765,90 @@ function AppointmentDetailModal({
             )}
           </motion.div>
 
-          {/* EDIT FORM — service select + 4-input grid + notes textarea.
-              Status pill is no longer here; it lives in the hero now. */}
-          <motion.div variants={itemVariants} className="px-7 py-5 space-y-4">
-            <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                {t('calendar.service')}
-              </Label>
-              <button
-                type="button"
-                onClick={() => canEditFully && setServicePickerOpen(true)}
+          {/* SERVICE CARD — scissor tile + name + category sub-line + price/duration/category strip.
+              Whole card opens the ServicePickerSheet (edit). */}
+          <motion.div variants={itemVariants} className="px-6 py-1">
+            <button
+              type="button"
+              onClick={() => canEditFully && setServicePickerOpen(true)}
+              disabled={!canEditFully}
+              className="w-full text-left rounded-xl border border-border bg-card p-4 shadow-sm transition-colors hover:bg-accent/30 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+                  <ScissorsIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('calendar.service')}</p>
+                  <p className="text-[15px] font-semibold tracking-tight text-foreground truncate leading-tight mt-0.5">
+                    {heroServiceName}
+                  </p>
+                  {serviceCategoryName && (
+                    <p className="text-[12px] text-muted-foreground truncate mt-0.5">{serviceCategoryName}</p>
+                  )}
+                </div>
+                <ChevronDownIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t('calendar.price')}</p>
+                  <p className="text-[13px] font-semibold tabular-nums text-foreground mt-0.5">€{selectedService?.price ?? 0}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t('common.duration')}</p>
+                  <p className="text-[13px] font-semibold tabular-nums text-foreground mt-0.5">{selectedService?.duration ?? form.durationMin} {t('common.minAbbr')}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t('calendar.category')}</p>
+                  <p className="text-[13px] font-semibold text-foreground truncate mt-0.5">{serviceCategoryName || '—'}</p>
+                </div>
+              </div>
+            </button>
+          </motion.div>
+
+          {/* DATE + TIME CARDS */}
+          <motion.div variants={itemVariants} className="px-6 py-1 grid grid-cols-2 gap-3">
+            <div className="min-w-0 rounded-xl border border-border bg-card p-3 shadow-sm">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground shrink-0">
+                  <CalendarDaysIcon className="h-4 w-4" />
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('common.date')}</p>
+              </div>
+              <CompactDateField
+                value={form.date}
+                onChange={(v) => setForm(f => ({ ...f, date: v }))}
+                locale={dateLocale}
+                ariaLabel={t('common.date')}
                 disabled={!canEditFully}
-                className="mt-1.5 w-full inline-flex items-center justify-between h-10 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground hover:bg-accent/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-              >
-                <span className="truncate">
-                  {selectedService
-                    ? `${selectedService.name} — €${selectedService.price} · ${selectedService.duration}m`
-                    : t('calendar.selectService')}
-                </span>
-                <ChevronDownIcon className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
-              </button>
+                className="h-9 w-full"
+              />
             </div>
-
-            {/* DATE + TIME row */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="min-w-0">
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.date')}</Label>
-                <div className="mt-1.5">
-                  <CompactDateField
-                    value={form.date}
-                    onChange={(v) => setForm(f => ({ ...f, date: v }))}
-                    locale={dateLocale}
-                    ariaLabel={t('common.date')}
-                    disabled={!canEditFully}
-                    className="h-10 w-full"
-                  />
+            <div ref={timeFieldRef} className="min-w-0 rounded-xl border border-border bg-card p-3 shadow-sm">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground shrink-0">
+                  <ClockIcon className="h-4 w-4" />
                 </div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('common.time')}</p>
               </div>
-              <div ref={timeFieldRef} className="min-w-0">
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.time')}</Label>
-                <div className="mt-1.5">
-                  <TimePickerField
-                    value={form.time}
-                    onChange={(v) => setForm(f => ({ ...f, time: v }))}
-                    timeFormat={timeFormat}
-                    disabled={!canEditFully}
-                    ariaLabel={t('common.time')}
-                    open={timePickerOpen}
-                    onOpenChange={setTimePickerOpen}
-                  />
-                </div>
-              </div>
+              <TimePickerField
+                value={form.time}
+                onChange={(v) => setForm(f => ({ ...f, time: v }))}
+                timeFormat={timeFormat}
+                disabled={!canEditFully}
+                ariaLabel={t('common.time')}
+                open={timePickerOpen}
+                onOpenChange={setTimePickerOpen}
+              />
             </div>
+          </motion.div>
 
-            {/* BARBER — avatar chip picker */}
+          {/* BARBER + DURATION + NOTES */}
+          <motion.div variants={itemVariants} className="px-6 py-2 space-y-4">
+            {/* BARBER — selectable cards */}
             <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.barber')}</Label>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('calendar.barber')}</Label>
+              <div className="mt-2 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
                 {staffList.filter(s => s.isActive).map(s => {
                   const sColorIdx = staffColorMap.get(s.id) ?? 0;
                   const sColor = getStaffColor(sColorIdx);
@@ -813,7 +860,7 @@ function AppointmentDetailModal({
                       onClick={() => canEditFully && setForm(f => ({ ...f, staffId: s.id }))}
                       disabled={!canEditFully}
                       className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full border pl-1 pr-3 py-1 text-[12px] font-medium transition-colors',
+                        'inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-[13px] font-medium transition-colors',
                         active
                           ? 'border-foreground bg-foreground text-background'
                           : 'border-border bg-card text-foreground hover:bg-accent/40',
@@ -821,7 +868,7 @@ function AppointmentDetailModal({
                       )}
                     >
                       <div className={cn('rounded-full p-[1.5px]', active ? 'bg-background/20' : sColor.dot)}>
-                        <Avatar className="h-5 w-5 block">
+                        <Avatar className="h-6 w-6 block">
                           {s.avatarUrl && <AvatarImage src={s.avatarUrl} alt={s.firstName} />}
                           <AvatarFallback className={cn('text-[9px] font-bold', active ? 'bg-background/30 text-foreground' : cn(sColor.light, sColor.label))}>
                             {s.firstName[0]}{s.lastName[0]}
@@ -829,16 +876,17 @@ function AppointmentDetailModal({
                         </Avatar>
                       </div>
                       {s.firstName}
+                      {active && <CheckIcon className="h-3.5 w-3.5 shrink-0" />}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* DURATION — preset chips */}
+            {/* DURATION — preset chips (blue selected) */}
             <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('common.duration')}</Label>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('common.duration')}</Label>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {[15, 30, 45, 60, 90, 120].map(d => (
                   <button
                     key={d}
@@ -846,9 +894,9 @@ function AppointmentDetailModal({
                     onClick={() => canEditFully && setForm(f => ({ ...f, durationMin: d }))}
                     disabled={!canEditFully}
                     className={cn(
-                      'inline-flex items-center justify-center h-9 min-w-[48px] px-2.5 rounded-md border text-[12px] font-semibold tabular-nums transition-colors',
+                      'inline-flex items-center justify-center h-9 min-w-[52px] px-3 rounded-lg border text-[12px] font-semibold tabular-nums transition-colors',
                       form.durationMin === d
-                        ? 'border-foreground bg-foreground text-background'
+                        ? 'border-primary bg-primary text-primary-foreground'
                         : 'border-border bg-card text-foreground hover:bg-accent/40',
                       !canEditFully && 'opacity-50 cursor-not-allowed',
                     )}
@@ -857,24 +905,28 @@ function AppointmentDetailModal({
                   </button>
                 ))}
                 {![15, 30, 45, 60, 90, 120].includes(form.durationMin) && (
-                  <span className="inline-flex items-center justify-center h-9 min-w-[48px] px-2.5 rounded-md border border-foreground bg-foreground text-background text-[12px] font-semibold tabular-nums">
+                  <span className="inline-flex items-center justify-center h-9 min-w-[52px] px-3 rounded-lg border border-primary bg-primary text-primary-foreground text-[12px] font-semibold tabular-nums">
                     {form.durationMin}m
                   </span>
                 )}
               </div>
             </div>
 
+            {/* NOTES */}
             <div>
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.notes')}</Label>
-              <Textarea
-                ref={notesRef}
-                rows={2}
-                value={form.notes}
-                onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder={t('calendar.specialRequests')}
-                disabled={!canEditFully}
-                className="mt-1.5"
-              />
+              <Label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('calendar.notes')}</Label>
+              <div className="relative mt-2">
+                <ChatBubbleLeftIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground/60 pointer-events-none" />
+                <Textarea
+                  ref={notesRef}
+                  rows={2}
+                  value={form.notes}
+                  onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder={t('calendar.specialRequests')}
+                  disabled={!canEditFully}
+                  className="pl-9"
+                />
+              </div>
             </div>
           </motion.div>
 
@@ -1059,36 +1111,29 @@ function AppointmentDetailModal({
             })}
           </AnimatePresence>
 
-          {/* Add next service — appends a slot inline (no redirect). */}
-          <motion.div variants={itemVariants} className="px-7 py-3 border-t border-border">
+          {/* Add extra service (left) + Cancel appointment (right) — one row */}
+          <motion.div variants={itemVariants} className="px-6 py-3 border-t border-border flex items-center justify-between gap-3 flex-wrap">
             <button
               type="button"
               onClick={addPendingSlot}
               disabled={busy || savingPending || !canEditFully}
-              className="group inline-flex items-center justify-center gap-2 h-10 rounded-md border border-border bg-card/50 px-3 text-[13px] font-semibold text-foreground transition-colors hover:bg-card hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="group inline-flex items-center gap-2 h-10 rounded-lg border border-border bg-card px-3 text-[13px] font-semibold text-foreground transition-colors hover:bg-accent/40 hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <PlusCircleIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
               {t('calendar.addNextService')}
             </button>
-          </motion.div>
-
-          {/* Danger zone — cancel appointment */}
-          {(apt.status !== 'cancelled' && apt.status !== 'completed') && (
-            <motion.div variants={itemVariants} className="px-7 py-3 border-t border-border flex items-center justify-between gap-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-                {t('apt.modal.dangerZone')}
-              </p>
+            {(apt.status !== 'cancelled' && apt.status !== 'completed') && (
               <button
                 type="button"
                 onClick={() => setCancelConfirmOpen(true)}
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-destructive hover:text-destructive/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-destructive hover:text-destructive/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <XCircleIcon className="h-4 w-4 shrink-0" />
                 {t('calendar.cancelAppointment')}
               </button>
-            </motion.div>
-          )}
+            )}
+          </motion.div>
 
           {/* Footer — Delete (subtle) · Cancel · Save (dirty-gated) */}
           <motion.div variants={itemVariants} className="px-7 py-3.5 border-t border-border flex items-center gap-3">
@@ -6002,6 +6047,13 @@ export function CalendarPage() {
   const visibleStaffCount = visibleStaff.length;
   const filterActive = staffFilter !== null || focusedStaffId !== null;
 
+  const staffRoleLabel: Record<StaffRole, string> = {
+    owner: t('staff.roleOwner'),
+    manager: t('staff.roleManager'),
+    barber: t('staff.roleBarber'),
+    receptionist: t('staff.roleReceptionist'),
+  };
+
   return (
     <div className="space-y-5">
       {/* Rebook mode banner — anchored to the top of the page. While set,
@@ -6201,31 +6253,63 @@ export function CalendarPage() {
               </div>
             </div>
 
-            {/* Staff roll — names с подсчётом appointments */}
+            {/* Staff roster — presence + role. Left color-accent matches each
+                barber's grid column hue (via staffColorMap), with role subtitle
+                and an Online/Offline pill driven by `isActive`. Iterates all
+                staff so off-shift members still appear (marked Offline). */}
             <div>
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.18em] mb-2">
-                On duty
+                {t('calendar.staff')}
               </p>
-              <div className="space-y-1.5">
-                {activeStaff.map((m, i) => {
-                  const c = getStaffColor(i);
+              <div className="space-y-0.5">
+                {allStaff.map((m, i) => {
+                  const c = getStaffColor(staffColorMap.get(m.id) ?? i);
+                  const online = m.isActive;
                   const cnt = aptsByStaff.get(m.id)?.length ?? 0;
                   return (
-                    <div key={m.id} className="flex items-center gap-2">
-                      <div className="relative shrink-0">
-                        <Avatar className="h-6 w-6">
-                          {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.firstName} />}
-                          <AvatarFallback className={cn('text-[10px] font-bold', c.light, c.label)}>{m.firstName[0]}{m.lastName[0]}</AvatarFallback>
-                        </Avatar>
-                        <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-card" aria-hidden />
+                    <div
+                      key={m.id}
+                      className="flex items-center gap-2.5 rounded-lg py-1.5 pr-1 transition-colors hover:bg-accent/40"
+                    >
+                      {/* Accent bar — same hue as the barber's calendar column */}
+                      <span className={cn('h-8 w-1 shrink-0 rounded-full', c.dot)} aria-hidden />
+
+                      <Avatar className="h-9 w-9 shrink-0">
+                        {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={`${m.firstName} ${m.lastName}`} />}
+                        <AvatarFallback className={cn('text-[11px] font-bold', c.light, c.label)}>{m.firstName[0]}{m.lastName[0]}</AvatarFallback>
+                      </Avatar>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-semibold text-foreground truncate leading-tight">
+                          {m.firstName} {m.lastName[0]}.
+                        </p>
+                        <p className="text-[11px] text-muted-foreground truncate leading-tight">
+                          {staffRoleLabel[m.role]}
+                        </p>
                       </div>
-                      <span className="flex-1 text-[13px] text-foreground truncate">{m.firstName}</span>
-                      <span className={cn(
-                        'text-[11px] font-semibold tabular-nums',
-                        cnt > 0 ? 'text-foreground' : 'text-muted-foreground/50',
-                      )}>
-                        {cnt}
-                      </span>
+
+                      <div className="flex shrink-0 flex-col items-end gap-1 pr-1">
+                        {/* Today's bookings — staff-hued pill */}
+                        <span
+                          aria-label={t('calendar.staffBookingsToday', { count: cnt })}
+                          className={cn(
+                            'inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
+                            cnt > 0 ? cn(c.light, c.label) : 'bg-muted text-muted-foreground/50',
+                          )}
+                        >
+                          {cnt}
+                        </span>
+                        {/* Presence */}
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            className={cn('h-1.5 w-1.5 rounded-full', online ? 'bg-emerald-500' : 'bg-muted-foreground/40')}
+                            aria-hidden
+                          />
+                          <span className="text-[11px] text-muted-foreground">
+                            {online ? t('calendar.staffOnline') : t('calendar.staffOffline')}
+                          </span>
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
@@ -6268,16 +6352,31 @@ export function CalendarPage() {
                 iPad mis-tap protection (WCAG 2.5.5). Month-jump chevrons were
                 removed (audit P2 #10) — duplicates the MiniCalendar popover's
                 own month nav, which the date-title chip opens in one tap. */}
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0" title="Previous day" aria-label="Previous day" onClick={() => setSelectedDate(d => subDays(d, 1))}>
-              <ChevronLeftIcon className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0" title="Next day" aria-label="Next day" onClick={() => setSelectedDate(d => addDays(d, 1))}>
-              <ChevronRightIcon className="h-4 w-4" />
-            </Button>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(d => subDays(d, 1))}
+              title="Previous day"
+              aria-label="Previous day"
+              className="inline-flex h-8 w-8 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-sm hover:bg-accent active:scale-[0.97] transition-all duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer"
+            >
+              <ChevronLeftIcon className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(d => addDays(d, 1))}
+              title="Next day"
+              aria-label="Next day"
+              className="inline-flex h-8 w-8 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-sm hover:bg-accent active:scale-[0.97] transition-all duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer"
+            >
+              <ChevronRightIcon className="h-3.5 w-3.5" />
+            </button>
 
             {!isToday(selectedDate) && (
-              <button onClick={() => setSelectedDate(new Date())}
-                className="ml-1 rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-accent transition-colors">
+              <button
+                type="button"
+                onClick={() => setSelectedDate(new Date())}
+                className="inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-foreground shadow-sm hover:bg-accent active:scale-[0.97] transition-all duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer"
+              >
                 {t('common.today')}
               </button>
             )}
