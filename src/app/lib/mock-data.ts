@@ -179,11 +179,12 @@ function buildDefaultClients(): Client[] {
 
 export const defaultClients: Client[] = buildDefaultClients();
 
-// Appointments — full month of May 2026 with realistic volume curves.
+// Appointments — full current month with realistic volume curves.
 // Mon-Thu carry 18-26 bookings, Fri 20-26, Sat 24-32 (peak), Sun closed.
 // Status distribution by date: past = mostly completed + small cancel/no-show
-// slice, today mixed, future = scheduled/confirmed.
-function buildMayAppointments(
+// slice, today mixed, future = scheduled/confirmed. Built around `new Date()`
+// so the calendar always opens onto a populated month (not a fixed May 2026).
+function buildCurrentMonthAppointments(
   clients: Client[],
   staff: Staff[],
   services: Service[],
@@ -191,6 +192,9 @@ function buildMayAppointments(
   const out: Appointment[] = [];
   const taken = new Set<string>(); // staff-day-startMin lock to avoid conflicts
   const now = new Date();
+  const seedYear = now.getFullYear();
+  const seedMonth = now.getMonth(); // 0-based — the month we generate bookings for
+  const daysInMonth = new Date(seedYear, seedMonth + 1, 0).getDate();
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const nowHour = now.getHours();
 
@@ -212,9 +216,9 @@ function buildMayAppointments(
   const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
   let id = 1;
-  // Iterate every day in May 2026 (month index 4)
-  for (let d = 1; d <= 31; d++) {
-    const day = new Date(2026, 4, d);
+  // Iterate every day in the current month
+  for (let d = 1; d <= daysInMonth; d++) {
+    const day = new Date(seedYear, seedMonth, d);
     const dow = day.getDay(); // 0=Sun, 6=Sat
     if (dow === 0) continue; // shop closed Sunday
 
@@ -245,7 +249,7 @@ function buildMayAppointments(
         if (taken.has(slotKey)) continue;
         taken.add(slotKey);
 
-        const start = new Date(2026, 4, d, hour, minute, 0, 0);
+        const start = new Date(seedYear, seedMonth, d, hour, minute, 0, 0);
         const end = new Date(start.getTime() + svc.duration * 60_000);
         const dayKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
 
@@ -280,7 +284,7 @@ function buildMayAppointments(
   return out;
 }
 
-export const defaultAppointments: Appointment[] = buildMayAppointments(
+export const defaultAppointments: Appointment[] = buildCurrentMonthAppointments(
   defaultClients,
   defaultStaff,
   defaultServices,
@@ -432,7 +436,7 @@ export const defaultAccounts: Account[] = [
 
 // Schema version — bump to force re-seed when the data shape changes
 const SCHEMA_VERSION_KEY = 'barberpro_schema_version';
-const CURRENT_SCHEMA_VERSION = 17; // v17: Account.phone/positionTitle/startDate; Tenant.customRoles
+const CURRENT_SCHEMA_VERSION = 18; // v18: seed appointments for the current month (was fixed May 2026)
 
 // Initialize localStorage with default data
 // Wrapped in try/catch so a corrupted localStorage entry can't white-screen the app.
