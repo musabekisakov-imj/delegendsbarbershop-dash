@@ -272,6 +272,7 @@ export function NewBookingPage() {
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4, ease: MOTION_EASE }}
+          data-skin="booking"
           className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-background px-6"
         >
           <motion.div
@@ -313,7 +314,7 @@ export function NewBookingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div data-skin="booking" className="mx-auto max-w-5xl space-y-5">
       {/* ─── Editorial hero ──────────────────────────
           Single confident H1 — "New booking" is the
           *purpose*, not the active step. The step rail

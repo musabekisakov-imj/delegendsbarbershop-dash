@@ -120,6 +120,36 @@
   --sidebar-ring: oklch(0.55 0 0);
 }
 
+/* ─── Booking wizard skin ───────────────────────────────────
+   Scopes the client website's gold/navy booking palette onto the
+   dashboard's New Booking wizard so staff and customers experience the
+   same flow. Only accent + ring + radius are remapped — surfaces, text
+   and borders stay on the dashboard theme so the page still belongs in
+   the admin shell. CSS vars resolve lazily, so overriding --primary here
+   recolors every `bg-primary`/`ring`/`rounded-*` inside the scope. */
+[data-skin='booking'] {
+  --primary: #f59e0b;            /* website gold-500 */
+  --primary-foreground: #0a1525; /* navy ink on gold */
+  --ring: #f59e0b;
+  --brand: #c8881c;
+  --brand-foreground: #ffffff;
+  --radius: 0.875rem;            /* website's rounder cards */
+}
+.dark [data-skin='booking'],
+[data-skin='booking'].dark {
+  --primary: #f59e0b;
+  --primary-foreground: #0a1525;
+  --ring: #f59e0b;
+}
+/* Editorial serif on the wizard's display headings, echoing the website's
+   Cormorant titles. Falls back to Georgia if the font isn't loaded, so this
+   adds no network dependency. */
+[data-skin='booking'] h1,
+[data-skin='booking'] h2 {
+  font-family: 'Cormorant Garamond', 'Georgia', serif;
+  letter-spacing: -0.01em;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
