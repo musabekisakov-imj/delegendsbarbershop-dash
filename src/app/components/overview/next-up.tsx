@@ -1,10 +1,11 @@
-import { parseISO, format, differenceInMinutes } from 'date-fns';
+import { parseISO, differenceInMinutes } from 'date-fns';
 import { ArrowRightIcon, ScissorsIcon } from '@heroicons/react/24/outline';
 import { cn } from '../ui/utils';
 import { gradientFor, STATUS_PILL, STATUS_DOT, STATUS_LABEL } from '../../lib/tokens';
 import { formatPrice } from '../../lib/format';
-import { getNextAppointments } from '../../lib/overview';
-import { useT } from '../../hooks/use-t';
+import { getNextAppointments, aptTotal } from '../../lib/overview';
+import { formatTime } from '../../lib/time';
+import { useT, useTimeFormat } from '../../hooks/use-t';
 import type { AppointmentWithDetails, Language } from '../../types';
 import { useNavigate } from 'react-router';
 
@@ -18,6 +19,7 @@ interface NextUpProps {
 
 export function NextUp({ todayAppointments, currentApt, now, language, isBarber }: NextUpProps) {
   const t = useT();
+  const [timeFormat] = useTimeFormat();
   const navigate = useNavigate();
 
   const upcoming = getNextAppointments(todayAppointments, 3, now);
@@ -85,7 +87,7 @@ export function NextUp({ todayAppointments, currentApt, now, language, isBarber 
                     'text-[11px] font-bold tabular-nums',
                     isCurrent ? 'text-primary' : isImminent ? 'text-amber-700 dark:text-amber-400' : 'text-foreground',
                   )}>
-                    {format(start, 'HH:mm')}
+                    {formatTime(start, timeFormat)}
                   </span>
                   <span className="text-[9px] text-muted-foreground tabular-nums">
                     {differenceInMinutes(end, start)}m
@@ -145,11 +147,11 @@ export function NextUp({ todayAppointments, currentApt, now, language, isBarber 
                     </span>
                   ) : !isBarber ? (
                     <span className="text-[11px] tabular-nums text-muted-foreground">
-                      {formatPrice(apt.service.price, language)}
+                      {formatPrice(aptTotal(apt), language)}
                     </span>
                   ) : (
                     <span className="text-[11px] tabular-nums text-muted-foreground">
-                      {format(start, 'HH:mm')}
+                      {formatTime(start, timeFormat)}
                     </span>
                   )}
                 </div>

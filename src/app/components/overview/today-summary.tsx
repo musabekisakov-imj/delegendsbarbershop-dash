@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
-import { parseISO, differenceInMinutes, format } from 'date-fns';
+import { parseISO, differenceInMinutes } from 'date-fns';
 import { cn } from '../ui/utils';
 import { ProgressBar } from '../shared/progress-bar';
 import { STATUS_LABEL } from '../../lib/tokens';
-import { calculateTypicalDayRevenue } from '../../lib/overview';
+import { calculateTypicalDayRevenue, aptTotal } from '../../lib/overview';
 import { formatPrice } from '../../lib/format';
-import { useT } from '../../hooks/use-t';
+import { formatTime } from '../../lib/time';
+import { useT, useTimeFormat } from '../../hooks/use-t';
 import type { AppointmentWithDetails, Language } from '../../types';
 
 interface TodaySummaryProps {
@@ -30,15 +31,16 @@ export function TodaySummary({
   weekApptCount,
 }: TodaySummaryProps) {
   const t = useT();
+  const [timeFormat] = useTimeFormat();
 
   const completedToday = todayAppointments.filter(a => a.status === 'completed');
   const pendingToday = todayAppointments.filter(a => a.status === 'scheduled' || a.status === 'confirmed');
   const noShowToday = todayAppointments.filter(a => a.status === 'no_show');
 
-  const todayRevenue = completedToday.reduce((s, a) => s + a.service.price, 0);
+  const todayRevenue = completedToday.reduce((s, a) => s + aptTotal(a), 0);
   const dayBooked = todayAppointments
     .filter(a => a.status !== 'cancelled' && a.status !== 'no_show')
-    .reduce((s, a) => s + a.service.price, 0);
+    .reduce((s, a) => s + aptTotal(a), 0);
   const dayPending = dayBooked - todayRevenue;
   const avgTicket = completedToday.length > 0 ? Math.round(todayRevenue / completedToday.length) : null;
   const uniqueClients = new Set(todayAppointments.map(a => a.clientId)).size;
@@ -136,7 +138,7 @@ export function TodaySummary({
                         key={apt.id}
                         className={cn('transition-colors', color)}
                         style={{ flex: minutes }}
-                        title={`${format(parseISO(apt.startTime), 'HH:mm')} · ${apt.client.firstName} ${apt.client.lastName} · ${STATUS_LABEL[apt.status]}`}
+                        title={`${formatTime(parseISO(apt.startTime), timeFormat)} · ${apt.client.firstName} ${apt.client.lastName} · ${STATUS_LABEL[apt.status]}`}
                       />
                     );
                   })}

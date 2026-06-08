@@ -73,9 +73,25 @@ export function getNextAppointments<T extends AppointmentWithTime>(
     .slice(0, count);
 }
 
+// A booking's charge. Public multi-service bookings carry an aggregate
+// `totalPrice`; single bookings fall back to the resolved service price. The
+// live backend sends BOTH as numeric strings (e.g. "67.00") and leaves
+// `totalPrice` null on single-service rows — so the fallback must be coerced
+// too, otherwise `0 + "18.00" + "22.00"` concatenates into "€NaN". Number()
+// wraps the whole expression so every path returns a real number.
+type AppointmentTotalLike = {
+  totalPrice?: number | string | null;
+  service?: { price: number | string };
+};
+
+export function aptTotal(a: AppointmentTotalLike): number {
+  return Number(a.totalPrice ?? a.service?.price ?? 0);
+}
+
 type AppointmentLike = {
   startTime: string;
   status: string;
+  totalPrice?: number | string | null;
   service: { price: number };
 };
 
@@ -101,7 +117,7 @@ export function calculateTypicalDayRevenue(
     if (dayStart.getTime() < cutoff.getTime()) continue;
 
     const key = dayStart.toISOString();
-    revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + apt.service.price);
+    revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + aptTotal(apt));
   }
 
   if (revenueByDay.size < 2) return null;

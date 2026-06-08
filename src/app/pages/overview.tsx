@@ -5,7 +5,8 @@ import { TodaySummary } from '../components/overview/today-summary';
 import { EmptyScheduleSlots } from '../components/overview/empty-schedule-slots';
 import { NextUp } from '../components/overview/next-up';
 import { ShopStatus } from '../components/shared/shop-status';
-import { getShopStatus } from '../lib/overview';
+import { getShopStatus, aptTotal } from '../lib/overview';
+import { formatTime } from '../lib/time';
 import { useOfficeStore } from '../store/office-store';
 import { useAuthStore } from '../store/auth-store';
 import { SectionHeading } from '../components/shared/section-heading';
@@ -27,7 +28,7 @@ import { formatPrice } from '../lib/format';
 import { useNavigate } from 'react-router';
 import { cn } from '../components/ui/utils';
 import { gradientFor, STATUS_DOT, STATUS_PILL, STATUS_LABEL, STAFF_COLORS, hashToIndex } from '../lib/tokens';
-import { useT, useLanguage } from '../hooks/use-t';
+import { useT, useLanguage, useTimeFormat } from '../hooks/use-t';
 
 // ─── Date utilities (Overview-local) ──────────────────────
 // Intl-based formatter: shows weekday + month + day; adds year only if ≠ current.
@@ -59,6 +60,7 @@ export function OverviewPage() {
   const isBarber = user?.role === 'barber';
   const t = useT();
   const [language] = useLanguage();
+  const [timeFormat] = useTimeFormat();
   const intlLocale = LOCALE_MAP[language] ?? 'en-US';
 
   const [viewDateStr, setViewDateStr] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -148,7 +150,7 @@ export function OverviewPage() {
     apt.status === 'completed'
   );
 
-  const weeklyRevenue = weekAppointments.reduce((sum, apt) => sum + apt.service.price, 0);
+  const weeklyRevenue = weekAppointments.reduce((sum, apt) => sum + aptTotal(apt), 0);
 
   const activeStaff = staff.filter(s => s.isActive).length;
   const newClientsThisWeek = clients.filter(c =>
@@ -180,7 +182,7 @@ export function OverviewPage() {
       apt.status === 'completed'
     );
     
-    const revenue = dayAppointments.reduce((sum, apt) => sum + apt.service.price, 0);
+    const revenue = dayAppointments.reduce((sum, apt) => sum + aptTotal(apt), 0);
     const count = dayAppointments.length;
     
     const isFutureDay = startOfDay(dayDate) > startOfDay(now);
@@ -209,7 +211,7 @@ export function OverviewPage() {
     for (const a of todayAppointments) {
       if (a.status !== 'completed') continue;
       const e = sums.get(a.staffId) ?? { staff: a.staff, revenue: 0, bookings: 0 };
-      e.revenue += a.service.price;
+      e.revenue += aptTotal(a);
       e.bookings += 1;
       sums.set(a.staffId, e);
     }
@@ -415,7 +417,7 @@ export function OverviewPage() {
                         'text-xs font-bold tabular-nums',
                         isCurrent ? 'text-primary' : 'text-foreground',
                       )}>
-                        {format(start, 'HH:mm')}
+                        {formatTime(start, timeFormat)}
                       </span>
                       <span className="text-[10px] text-muted-foreground tabular-nums">
                         {differenceInMinutes(end, start)}m
@@ -455,7 +457,7 @@ export function OverviewPage() {
 
                     {!isBarber && (
                       <span className="hidden sm:inline text-sm font-semibold tabular-nums text-foreground shrink-0">
-                        {formatPrice(apt.service.price, language)}
+                        {formatPrice(aptTotal(apt), language)}
                       </span>
                     )}
 
