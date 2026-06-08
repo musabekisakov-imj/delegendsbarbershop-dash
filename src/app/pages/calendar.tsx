@@ -80,6 +80,7 @@ import { MOTION_EASE, MOTION_DUR } from '../lib/tokens';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
 import { formatTime, formatHourLabel, getHoursInTz, getMinutesInTz } from '../lib/time';
+import { getPaymentStatus } from '../lib/payment';
 import { assignLanes } from '../lib/calendar-lanes';
 import { MiniCalendar } from '../components/calendar/mini-calendar';
 import { DayAgenda } from '../components/calendar/day-agenda';
@@ -469,13 +470,9 @@ function AppointmentDetailModal({
   const dateLocale: DateFnsLocale =
     language === 'ru' ? ruLocale : language === 'lt' ? ltLocale : enLocale;
 
-  // Derive a payment status from appointment status — we don't yet have a
-  // real payment flag in the data model, so this is a pragmatic mapping:
-  //   completed → paid · cancelled → voided · everything else → unpaid.
-  const paymentStatus: 'paid' | 'voided' | 'unpaid' =
-    apt.status === 'completed' ? 'paid'
-    : apt.status === 'cancelled' ? 'voided'
-    : 'unpaid';
+  // Prefer the backend's real payment flag; fall back to inferring from status
+  // for legacy rows. See lib/payment.ts.
+  const paymentStatus = getPaymentStatus(apt);
   const paymentLabel =
     paymentStatus === 'paid' ? t('calendar.paid')
     : paymentStatus === 'voided' ? t('calendar.voided')
@@ -501,6 +498,18 @@ function AppointmentDetailModal({
   const selectedService = serviceList.find(s => s.id === form.serviceId) ?? apt.service;
   const selectedStaff = staffList.find(s => s.id === form.staffId);
   const heroPrice = selectedService?.price ?? apt.service.price;
+
+  // A public multi-service booking is a single row carrying several services.
+  // Show the aggregate line ("primary + N") and the booking total instead of
+  // just the primary line item. (The edit form below stays single-service —
+  // the backend only persists status/notes/time, not service edits.)
+  const multiServices = apt.services && apt.services.length > 1 ? apt.services : null;
+  const heroServiceName = multiServices
+    ? `${multiServices[0].name} + ${multiServices.length - 1}`
+    : (selectedService?.name ?? apt.service.name);
+  const heroTotal = multiServices
+    ? (apt.totalPrice != null ? Number(apt.totalPrice) : multiServices.reduce((sum, s) => sum + s.price, 0))
+    : heroPrice;
 
   // Avatar — semantic palette for the client (separate from staff colors).
   const clientAvatarColor = getClientAvatarColor(apt.clientId);
@@ -593,7 +602,7 @@ function AppointmentDetailModal({
               {liveTimeRange}
             </h2>
             <p className="mt-2 text-[12px] text-muted-foreground truncate">
-              <span className="text-foreground font-semibold">{selectedService?.name ?? apt.service.name}</span>
+              <span className="text-foreground font-semibold">{heroServiceName}</span>
               {selectedStaff && (
                 <>
                   <span className="mx-1.5 text-muted-foreground/40">·</span>
@@ -620,7 +629,7 @@ function AppointmentDetailModal({
                   : 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300',
               )}>
                 {paymentLabel}
-                <span className="tabular-nums font-bold opacity-90">€{heroPrice}</span>
+                <span className="tabular-nums font-bold opacity-90">€{heroTotal}</span>
               </span>
             </div>
           </motion.div>
@@ -5397,10 +5406,13 @@ export function CalendarPage() {
     const e = parseISO(apt.endTime);
     const dur = differenceInMinutes(e, s);
     const timeStr = `${formatTime(s, timeFormat)}–${formatTime(e, timeFormat)}`;
-    const ps: 'paid' | 'voided' | 'unpaid' =
-      apt.status === 'completed' ? 'paid'
-        : apt.status === 'cancelled' ? 'voided'
-        : 'unpaid';
+    // Multi-service booking → aggregate name + total; otherwise the single line.
+    const hcMulti = apt.services && apt.services.length > 1 ? apt.services : null;
+    const hcServiceName = hcMulti ? `${hcMulti[0].name} + ${hcMulti.length - 1}` : apt.service.name;
+    const hcTotal = hcMulti
+      ? (apt.totalPrice != null ? Number(apt.totalPrice) : hcMulti.reduce((sum, x) => sum + x.price, 0))
+      : apt.service.price;
+    const ps = getPaymentStatus(apt);
     const psLabel =
       ps === 'paid' ? t('calendar.paid')
         : ps === 'voided' ? t('calendar.voided')
@@ -5449,7 +5461,7 @@ export function CalendarPage() {
                   : 'bg-rose-500/10 text-rose-700 dark:text-rose-400',
               )}>
                 {psLabel}
-                <span className="tabular-nums opacity-90">€{apt.service.price}</span>
+                <span className="tabular-nums opacity-90">€{hcTotal}</span>
               </span>
             </div>
           </div>
@@ -5474,10 +5486,10 @@ export function CalendarPage() {
           <div className="border-t border-border pl-5 pr-4 py-3 flex items-center gap-2.5">
             <ScissorsIcon className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
             <p className="text-[12.5px] font-semibold text-foreground truncate flex-1">
-              {apt.service.name}
+              {hcServiceName}
             </p>
             <p className="text-[13px] font-bold tabular-nums text-foreground shrink-0">
-              €{apt.service.price}
+              €{hcTotal}
             </p>
           </div>
           {apt.notes && apt.notes.trim().length > 0 && (
@@ -5600,11 +5612,27 @@ export function CalendarPage() {
     // service list and aggregate price/duration. groupMetaById is keyed by
     // primary id; standalones are absent → groupMeta is undefined.
     const groupMeta = groupMetaById.get(apt.id);
-    const isGroup = !!groupMeta && groupMeta.siblings.length > 1;
-    const displayServiceName = isGroup
-      ? `${apt.service?.name ?? ''} + ${groupMeta!.siblings.length - 1}`
-      : apt.service?.name ?? '';
-    const displayPrice = isGroup ? groupMeta!.totalPrice : (apt.service?.price ?? 0);
+    // Two multi-service shapes converge here: the dashboard's own sibling rows
+    // (grouped into `groupMeta`) and the public website's single row carrying a
+    // resolved `services[]` array. Prefer the website array when present.
+    const lineServices = apt.services && apt.services.length > 1 ? apt.services : null;
+    const siblingGroup = !!groupMeta && groupMeta.siblings.length > 1;
+    const isGroup = !!lineServices || siblingGroup;
+    const lineItemNames: string[] = lineServices
+      ? lineServices.map(s => s.name)
+      : siblingGroup
+        ? groupMeta!.siblings.map(sib => sib.service?.name ?? '')
+        : [];
+    const serviceCount = lineItemNames.length || 1;
+    const primaryName = lineServices ? lineServices[0].name : (apt.service?.name ?? '');
+    const displayServiceName = serviceCount > 1
+      ? `${primaryName} + ${serviceCount - 1}`
+      : primaryName;
+    const displayPrice = lineServices
+      ? (apt.totalPrice != null ? Number(apt.totalPrice) : lineServices.reduce((sum, x) => sum + x.price, 0))
+      : siblingGroup
+        ? groupMeta!.totalPrice
+        : (apt.service?.price ?? 0);
 
     const tileContent = tiny ? (
       // Phase C3 — tiny variant preserves service name as a 2nd line when
@@ -5667,14 +5695,14 @@ export function CalendarPage() {
             enough vertical space, otherwise single-line "name + N more". */}
         {isGroup && h >= 88 ? (
           <div className={cn('space-y-0.5', c.sub)}>
-            {groupMeta!.siblings.slice(0, h >= 120 ? 4 : 2).map((sib, idx) => (
-              <p key={sib.id} className="text-xs font-medium truncate flex items-center gap-1.5">
+            {lineItemNames.slice(0, h >= 120 ? 4 : 2).map((nm, idx) => (
+              <p key={idx} className="text-xs font-medium truncate flex items-center gap-1.5">
                 <span className="h-1 w-1 rounded-full bg-current opacity-50 shrink-0" />
-                <span className="truncate">{sib.service?.name ?? ''}</span>
+                <span className="truncate">{nm}</span>
               </p>
             ))}
-            {groupMeta!.siblings.length > (h >= 120 ? 4 : 2) && (
-              <p className="text-[11px] truncate opacity-70">+{groupMeta!.siblings.length - (h >= 120 ? 4 : 2)} more</p>
+            {lineItemNames.length > (h >= 120 ? 4 : 2) && (
+              <p className="text-[11px] truncate opacity-70">+{lineItemNames.length - (h >= 120 ? 4 : 2)} more</p>
             )}
           </div>
         ) : (

@@ -91,6 +91,16 @@ export interface Appointment {
    *  Optional so existing rows in storage still load; resolved to a display
    *  name via `accountsApi.getAll()` at render-time. */
   createdBy?: string;
+  /** Multi-service bookings from the public website are a single row carrying
+   *  every selected service id (the dashboard's own multi-service flow uses
+   *  sibling rows + `groupId` instead). Absent on legacy/localStorage rows. */
+  serviceIds?: string[];
+  /** Aggregate price for a multi-service booking. The numeric DB column
+   *  serializes as a string over the wire. Falls back to `service.price`. */
+  totalPrice?: number | string;
+  /** Real payment state from the backend. The dashboard previously inferred
+   *  this from `status`; prefer this field when present. */
+  paymentStatus?: 'unpaid' | 'paid' | 'pay_at_shop' | 'refunded';
 }
 
 export interface Shift {
@@ -321,4 +331,8 @@ export interface AppointmentWithDetails extends Appointment {
   client: Client;
   staff: Staff;
   service: Service;
+  /** Resolved line items for a multi-service booking, in selection order. The
+   *  backend resolves these from `serviceIds`; the primary `service` above
+   *  stays for backward-compat. Single-service rows carry one entry or none. */
+  services?: Service[];
 }

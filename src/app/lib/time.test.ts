@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { formatTime, formatHourLabel } from './time';
+import { describe, it, expect, afterEach } from 'vitest';
+import { formatTime, formatHourLabel, getHoursInTz, getMinutesInTz, setDisplayTimezone } from './time';
 
 describe('formatTime', () => {
   it('formats 24h with leading zero on the hour', () => {
@@ -64,5 +64,34 @@ describe('formatHourLabel', () => {
     // Hour granularity, used for time-axis labels in calendar grid
     expect(formatHourLabel(15, '24h')).not.toContain(':30');
     expect(formatHourLabel(15, '12h')).toBe('3 PM');
+  });
+});
+
+describe('display timezone (module default)', () => {
+  // Always clear the module state so the runtime-local tests above and below
+  // are never affected by a leaked default.
+  afterEach(() => setDisplayTimezone(undefined));
+
+  // 11:00 UTC on 8 Jun 2026 is 14:00 in Vilnius (UTC+3 in summer). This is the
+  // exact bug from the report: a booking made for 14:00 must read 14:00 here.
+  const utc1100 = '2026-06-08T11:00:00.000Z';
+
+  it('formats in the configured shop timezone, not the runtime zone', () => {
+    setDisplayTimezone('Europe/Vilnius');
+    expect(formatTime(utc1100, '24h')).toBe('14:00');
+    expect(formatTime(utc1100, '12h')).toBe('2:00 PM');
+  });
+
+  it('drives getHoursInTz / getMinutesInTz used for grid positioning', () => {
+    setDisplayTimezone('Europe/Vilnius');
+    expect(getHoursInTz(new Date(utc1100))).toBe(14);
+    expect(getMinutesInTz(new Date(utc1100))).toBe(0);
+  });
+
+  it('lets an explicit tz argument win over the module default', () => {
+    setDisplayTimezone('Europe/Vilnius');
+    // 11:00 UTC is 07:00 in New York (EDT, UTC-4) in June.
+    expect(formatTime(utc1100, '24h', 'America/New_York')).toBe('07:00');
+    expect(getHoursInTz(new Date(utc1100), 'America/New_York')).toBe(7);
   });
 });

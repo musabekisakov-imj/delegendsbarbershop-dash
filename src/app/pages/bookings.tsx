@@ -39,6 +39,7 @@ import { EmptyState } from '../components/shared/empty-state';
 import { STATUS_DOT, STATUS_PILL, STATUS_STRIPE, STATUS_BADGE_TINT, STATUS_ICON_COLOR, STATUS_HOVER, STATUS_GLOW, getClientAvatarColor } from '../lib/tokens';
 import { BookingDetailModal } from '../components/bookings/booking-detail-modal';
 import { formatPrice, formatDurationLocalized } from '../lib/format';
+import { getPaymentStatus } from '../lib/payment';
 import { getHoursInTz, getMinutesInTz } from '../lib/time';
 import { StaffFilterRow } from '../components/shared/staff-filter-row';
 import { BulkActionBar } from '../components/shared/bulk-action-bar';
@@ -49,6 +50,16 @@ import { useBookingsPrefsStore } from '../store/bookings-prefs-store';
 import type { AppointmentStatus, AppointmentWithDetails } from '../types';
 
 type ViewMode = 'list' | 'grid' | 'timeline';
+
+// A public multi-service booking is one row with an aggregate `totalPrice` and
+// a resolved `services[]` array. These mirror the calendar's handling so both
+// views agree on the amount and the service label.
+const aptTotal = (a: AppointmentWithDetails): number =>
+  a.totalPrice != null ? Number(a.totalPrice) : (a.service?.price ?? 0);
+const aptServiceLabel = (a: AppointmentWithDetails): string =>
+  a.services && a.services.length > 1
+    ? `${a.services[0].name} + ${a.services.length - 1}`
+    : a.service.name;
 
 // Icon per status — heroicons only. Double-encodes meaning (shape + color).
 // JSX lives here (not tokens.ts) because tokens.ts is a pure CSS-class file.
@@ -385,9 +396,9 @@ export function BookingsPage() {
     let booked = 0;
     let earned = 0;
     for (const a of dayAppointments) {
-      const price = a.service.price ?? 0;
+      const price = aptTotal(a);
       if (a.status !== 'cancelled' && a.status !== 'no_show') booked += price;
-      if (a.status === 'completed') earned += price;
+      if (getPaymentStatus(a) === 'paid') earned += price;
     }
     return { dayBooked: booked, dayRevenue: earned };
   }, [dayAppointments]);
@@ -582,9 +593,9 @@ export function BookingsPage() {
                       {dayRevenue > 0 && <span className="text-emerald-600 dark:text-emerald-400 font-medium"> {t('bookings.earnedDone').replace('{n}', formatPrice(dayRevenue, language))}</span>}
                     </p>
                     {dayAppointments.length > 0 && (() => {
-                      const confirmedAmt = dayAppointments.filter(a => a.status === 'confirmed').reduce((s, a) => s + (a.service?.price ?? 0), 0);
-                      const scheduledAmt = dayAppointments.filter(a => a.status === 'scheduled').reduce((s, a) => s + (a.service?.price ?? 0), 0);
-                      const completedAmt = dayAppointments.filter(a => a.status === 'completed').reduce((s, a) => s + (a.service?.price ?? 0), 0);
+                      const confirmedAmt = dayAppointments.filter(a => a.status === 'confirmed').reduce((s, a) => s + aptTotal(a), 0);
+                      const scheduledAmt = dayAppointments.filter(a => a.status === 'scheduled').reduce((s, a) => s + aptTotal(a), 0);
+                      const completedAmt = dayAppointments.filter(a => a.status === 'completed').reduce((s, a) => s + aptTotal(a), 0);
                       const parts: string[] = [];
                       if (confirmedAmt > 0) parts.push(`${t('status.confirmed')}: ${formatPrice(confirmedAmt, language)}`);
                       if (scheduledAmt > 0) parts.push(`${t('status.scheduled')}: ${formatPrice(scheduledAmt, language)}`);
@@ -1044,7 +1055,7 @@ export function BookingsPage() {
                               </TooltipProvider>
                             )}
                             <p className="text-xs text-muted-foreground tabular-nums truncate md:hidden">
-                              {apt.service.name}
+                              {aptServiceLabel(apt)}
                             </p>
                           </div>
                         </div>
@@ -1053,7 +1064,7 @@ export function BookingsPage() {
                       {/* Service */}
                       <td className={cn('px-5 hidden md:table-cell min-w-0', rowPy)}>
                         <div className="min-w-0">
-                          <p className="font-normal text-foreground truncate">{apt.service.name}</p>
+                          <p className="font-normal text-foreground truncate">{aptServiceLabel(apt)}</p>
                           <p className="text-xs text-muted-foreground/70 truncate">
                             {apt.staff.firstName}
                           </p>
@@ -1062,7 +1073,7 @@ export function BookingsPage() {
 
                       {/* Price */}
                       <td className={cn('px-5 text-right font-semibold text-foreground tabular-nums whitespace-nowrap', rowPy)}>
-                        {formatPrice(apt.service.price, language)}
+                        {formatPrice(aptTotal(apt), language)}
                       </td>
 
                       {/* Status */}
@@ -1245,8 +1256,8 @@ const BookingCard = memo(function BookingCard({
         <div className="mt-3 border-t border-border pt-3">
           <div className="flex items-center gap-1.5 text-sm min-w-0">
             <ScissorsIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <span className="text-foreground font-medium truncate">{apt.service.name}</span>
-            <span className="ml-auto font-semibold tabular-nums text-foreground">{formatPrice(apt.service.price, language)}</span>
+            <span className="text-foreground font-medium truncate">{aptServiceLabel(apt)}</span>
+            <span className="ml-auto font-semibold tabular-nums text-foreground">{formatPrice(aptTotal(apt), language)}</span>
           </div>
           <p className="text-xs text-muted-foreground/70 mt-0.5 pl-5 truncate">
             {apt.staff.firstName}
