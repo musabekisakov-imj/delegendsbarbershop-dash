@@ -10,7 +10,7 @@ import { useT, useLanguage, useTimeFormat, useTimeGranularity, useBreakCutMode, 
 import { ru as ruLocale, lt as ltLocale, enUS as enLocale } from 'date-fns/locale';
 import type { Locale as DateFnsLocale } from 'date-fns';
 import { Button } from '../components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
@@ -24,7 +24,7 @@ import { fileToDataUrl } from '../lib/image-upload';
 import {
   format, parseISO, setHours, setMinutes, startOfDay, startOfWeek,
   isToday, isBefore, differenceInMinutes, addDays, subDays,
-  addWeeks,
+  addWeeks, isValid,
 } from 'date-fns';
 import {
   ChevronLeftIcon,
@@ -107,8 +107,10 @@ const MINUTES_PER_SLOT = 60;
 // pure wall time. Formats through a UTC instant so formatTime's shop-tz default
 // doesn't shift the label. Returns null on invalid input.
 function endLabelFromWall(time: string, durationMin: number, fmt: TimeFormat): string | null {
-  const [hh, mm] = time.split(':').map(Number);
-  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  const parts = time.split(':');
+  if (parts.length !== 2) return null;
+  const [hh, mm] = parts.map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
   const total = hh * 60 + mm + durationMin;
   const eh = ((Math.floor(total / 60) % 24) + 24) % 24;
   const em = ((total % 60) + 60) % 60;
@@ -4711,6 +4713,44 @@ export function CalendarPage() {
     setIsCreateOpen(true);
   };
 
+  const createPickedServices = useMemo(
+    () => formData.serviceIds.map(id => services.find(s => s.id === id)).filter((s): s is Service => !!s),
+    [formData.serviceIds, services],
+  );
+  const createTotalDuration = useMemo(
+    () => createPickedServices.reduce((sum, s) => sum + s.duration, 0),
+    [createPickedServices],
+  );
+  const createTotalPrice = useMemo(
+    () => createPickedServices.reduce((sum, s) => sum + s.price, 0),
+    [createPickedServices],
+  );
+  const createSelectedClient = useMemo(
+    () => clients.find(c => c.id === formData.clientId) ?? null,
+    [clients, formData.clientId],
+  );
+  const createSelectedStaff = useMemo(
+    () => allStaff.find(s => s.id === formData.staffId) ?? activeStaff.find(s => s.id === formData.staffId) ?? null,
+    [activeStaff, allStaff, formData.staffId],
+  );
+  const createDateObject = useMemo(() => {
+    if (!createDate) return null;
+    const d = parseISO(createDate);
+    return isValid(d) ? d : null;
+  }, [createDate]);
+  const createDateLabel = createDateObject
+    ? format(createDateObject, 'EEE, d MMM', { locale: dateLocale })
+    : '—';
+  const createTimeLabel = endLabelFromWall(createTime, 0, timeFormat) ?? '';
+  const createEndLabel = createTotalDuration > 0
+    ? endLabelFromWall(createTime, createTotalDuration, timeFormat)
+    : null;
+  const createSummaryReady = createPickedServices.length > 0
+    && !!formData.staffId
+    && !!formData.clientId
+    && !!createDate
+    && !!createTime;
+
   const handleSubmit = () => {
     if (!formData.clientId || !formData.staffId || formData.serviceIds.length === 0) {
       toast.error(t('toast.fillRequired'));
@@ -6127,16 +6167,21 @@ export function CalendarPage() {
           <Popover open={miniOpen} onOpenChange={setMiniOpen}>
             <PopoverTrigger asChild>
               <button
-                className="group mt-2 inline-flex items-center gap-3 text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-none tabular-nums hover:text-foreground/80 transition-colors"
+                className="group mt-2 inline-flex max-w-full items-center gap-2.5 text-left text-2xl font-bold leading-tight tracking-tight text-foreground tabular-nums transition-colors hover:text-foreground/80 sm:gap-3 sm:text-4xl sm:leading-none"
                 aria-label="Open date picker"
                 title="Click to pick another date"
               >
-                {format(selectedDate, 'EEEE, MMMM d, yyyy', { locale: dateLocale })}
+                <span className="hidden sm:inline">
+                  {format(selectedDate, 'EEEE, MMMM d, yyyy', { locale: dateLocale })}
+                </span>
+                <span className="sm:hidden">
+                  {format(selectedDate, 'EEE, MMM d, yyyy', { locale: dateLocale })}
+                </span>
                 {/* Always visible so operators know the title is clickable —
                     not a decorative glyph. Brightens + nudges right on hover
                     to telegraph the affordance. */}
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground group-hover:text-foreground group-hover:border-foreground/30 group-hover:translate-x-[1px] transition-all">
-                  <CalendarDaysIcon className="h-5 w-5" />
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition-all group-hover:translate-x-[1px] group-hover:border-foreground/30 group-hover:text-foreground sm:h-9 sm:w-9">
+                  <CalendarDaysIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                 </span>
               </button>
             </PopoverTrigger>
@@ -6155,8 +6200,8 @@ export function CalendarPage() {
             onClick={openCreateFromHeader}
             className="h-11 rounded-xl px-5 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-[0_8px_20px_-6px_rgba(37,99,235,0.5)] hover:-translate-y-[1px] transition-transform"
           >
-            <PlusIcon className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">{t('calendar.newAppointment')}</span>
+            <PlusIcon className="h-4 w-4 shrink-0" />
+            <span className="ml-1">{t('calendar.newAppointment')}</span>
           </Button>
         </div>
       </div>
@@ -6317,28 +6362,6 @@ export function CalendarPage() {
             </div>
           </div>
           )}
-
-          {/* ── Connect calendar (Google / Outlook sync — placeholder) ── */}
-          <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4 shadow-sm">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-card text-primary shadow-sm">
-              <CalendarDaysIcon className="h-5 w-5" />
-            </div>
-            <p className="mt-3 text-sm font-semibold text-foreground">{t('calendar.connectTitle')}</p>
-            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{t('calendar.connectBody')}</p>
-            <button
-              type="button"
-              onClick={() => toast.info(t('calendar.connectSoon'))}
-              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-[13px] font-semibold text-foreground shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 48 48" aria-hidden>
-                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 5.1 29.5 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.3-.4-3.5z"/>
-                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 7.1 29.5 5 24 5 16 5 9.1 9.5 6.3 14.7z"/>
-                <path fill="#4CAF50" d="M24 45c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.2 35.9 26.7 37 24 37c-5.3 0-9.7-2.6-11.3-7l-6.5 5C9 41.4 15.9 45 24 45z"/>
-                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.5l6.3 5.3C41.8 36 45 30.5 45 24c0-1.2-.1-2.3-.4-3.5z"/>
-              </svg>
-              {t('calendar.connectCta')}
-            </button>
-          </div>
         </div>
 
         {/* ── Main Area ── */}
@@ -7547,47 +7570,116 @@ export function CalendarPage() {
           as labelled fields with shadcn primitives (no native
           inputs, no blue-tinted "When" panel). */}
       <Dialog open={isCreateOpen} onOpenChange={open => { if (!open) closeCreate(); }}>
-        <DialogContent className="sm:max-w-lg max-h-[92vh] overflow-y-auto">
-          <DialogHeader>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.addToCalendar')}</p>
-            <DialogTitle className="text-2xl sm:text-3xl font-bold tracking-tight">
-              {t('calendar.newAppointment')}
-            </DialogTitle>
+        <DialogContent className="sm:max-w-3xl lg:max-w-5xl max-h-[92vh] overflow-y-auto p-0 gap-0 [&>button]:hidden">
+          <DialogHeader className="border-b border-border bg-background/95 px-6 pt-5 text-left">
+            <div className="flex items-start justify-between gap-4 pb-4">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t('calendar.addToCalendar')}</p>
+                <DialogTitle className="mt-2 text-3xl sm:text-4xl font-bold tracking-tight">
+                  {t('calendar.newAppointment')}
+                </DialogTitle>
+              </div>
+              <div className="flex shrink-0 items-start gap-2">
+                <div className="hidden rounded-xl border border-border bg-muted/30 px-3 py-2 text-right sm:block">
+                  <p className="text-[11px] font-semibold text-foreground tabular-nums">
+                    {createDateLabel}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                    {createTimeLabel ? `${createTimeLabel}${createEndLabel ? `–${createEndLabel}` : ''}` : Intl.DateTimeFormat().resolvedOptions().timeZone}
+                  </p>
+                </div>
+                <DialogClose
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  aria-label="Close"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                  <span className="sr-only">Close</span>
+                </DialogClose>
+              </div>
+            </div>
+
+            {/* Mode tabs — match the BlockDialog tab strip so the operator can
+                flip intent without restarting the flow. Clicking "Block" closes
+                this dialog and opens BlockDialog with the chosen staff carried
+                over (currentDow as default day). */}
+            {canOverride && (
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  className="relative -mb-px rounded-t-lg border border-border border-b-background bg-background px-4 py-2 text-sm font-semibold text-foreground"
+                  aria-pressed
+                >
+                  {t('calendar.tabBooking')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const carryStaffId = formData.staffId || selectedSlot?.staffId;
+                    closeCreate();
+                    setBlockState({
+                      mode: 'create',
+                      staffId: carryStaffId || undefined,
+                      dayOfWeek: currentDow,
+                    });
+                  }}
+                  className="rounded-t-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                >
+                  {t('calendar.tabBlock')}
+                </button>
+              </div>
+            )}
           </DialogHeader>
 
-          {/* Mode tabs — match the BlockDialog tab strip so the operator can
-              flip intent without restarting the flow. Clicking "Block" closes
-              this dialog and opens BlockDialog with the chosen staff carried
-              over (currentDow as default day). */}
-          {canOverride && (
-            <div className="flex border-b border-border -mx-6 px-6 -mt-2 mb-2">
-              <button
-                type="button"
-                className="relative px-3 py-2 text-sm font-semibold text-foreground"
-                aria-pressed
-              >
-                {t('calendar.tabBooking')}
-                <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const carryStaffId = formData.staffId || selectedSlot?.staffId;
-                  closeCreate();
-                  setBlockState({
-                    mode: 'create',
-                    staffId: carryStaffId || undefined,
-                    dayOfWeek: currentDow,
-                  });
-                }}
-                className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {t('calendar.tabBlock')}
-              </button>
+          <div className="px-6 pt-4">
+            <div className="grid gap-2 rounded-2xl border border-border bg-muted/30 p-2.5 sm:grid-cols-4">
+              <div className="rounded-xl bg-card px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {t('calendar.sectionWhen').split('·')[0].trim()}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-foreground tabular-nums">
+                  {createDateLabel}{createTimeLabel ? ` · ${createTimeLabel}` : ''}
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                  {createTimeLabel && createEndLabel ? `${createTimeLabel}–${createEndLabel}` : Intl.DateTimeFormat().resolvedOptions().timeZone}
+                </p>
+              </div>
+              <div className="rounded-xl bg-card px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {t('calendar.customer')}
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                  {createSelectedClient ? `${createSelectedClient.firstName} ${createSelectedClient.lastName}` : '—'}
+                </p>
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {createSelectedClient?.phone || createSelectedClient?.email || '—'}
+                </p>
+              </div>
+              <div className="rounded-xl bg-card px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {t('calendar.barber')}
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                  {createSelectedStaff ? `${createSelectedStaff.firstName} ${createSelectedStaff.lastName}` : '—'}
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  {createSelectedStaff?.role ? staffRoleLabel[createSelectedStaff.role] : '—'}
+                </p>
+              </div>
+              <div className="rounded-xl bg-card px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {t('calendar.sectionWhat').split('·')[0].trim()}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-foreground tabular-nums">
+                  {createPickedServices.length > 0 ? `€${createTotalPrice}` : t('calendar.selectService')}
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                  {createPickedServices.length > 0 ? `${createTotalDuration}m · ${createPickedServices.length}` : '—'}
+                </p>
+              </div>
             </div>
-          )}
+          </div>
 
-          <div className="space-y-5">
+          <div className="space-y-5 px-6 py-5">
             {/* When — date and time triggers. Both open Popovers:
                 - Date  → MiniCalendar with month navigation + day grid.
                           Locale-aware display ("6 мая 2026" instead of the
@@ -7609,8 +7701,8 @@ export function CalendarPage() {
                       aria-label={t('calendar.sectionWhen')}
                     >
                       <span className="truncate">
-                        {createDate
-                          ? format(parseISO(createDate), 'd MMM yyyy', { locale: dateLocale })
+                        {createDateObject
+                          ? format(createDateObject, 'd MMM yyyy', { locale: dateLocale })
                           : <span className="text-muted-foreground/60">—</span>}
                       </span>
                       <CalendarDaysIcon className="h-4 w-4 text-muted-foreground/70 group-hover:text-foreground transition-colors shrink-0" />
@@ -7618,7 +7710,7 @@ export function CalendarPage() {
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-3" align="start">
                     <MiniCalendar
-                      selectedDate={createDate ? parseISO(createDate) : selectedDate}
+                      selectedDate={createDateObject ?? selectedDate}
                       onSelectDate={(d) => {
                         setCreateDate(format(d, 'yyyy-MM-dd'));
                         setCreateDatePickerOpen(false);
@@ -8072,15 +8164,11 @@ export function CalendarPage() {
                 competitor's restraint and stops competing visually with the
                 form fields above. */}
             {(() => {
-              const picked = formData.serviceIds.map(id => services.find(s => s.id === id)).filter((s): s is Service => !!s);
-              const totalPrice = picked.reduce((sum, s) => sum + s.price, 0);
-              const totalDuration = picked.reduce((sum, s) => sum + s.duration, 0);
-              const summaryReady = picked.length > 0 && !!formData.staffId && !!formData.clientId && !!createDate && !!createTime;
               return (
-                <div className="border-t border-border pt-5 flex items-center gap-3">
+                <div className="sticky bottom-0 -mx-6 border-t border-border bg-background/95 px-6 pb-5 pt-4 backdrop-blur flex items-center gap-3">
                   <div className="text-[11px] tabular-nums text-muted-foreground">
-                    {picked.length > 0 ? (
-                      <span><span className="font-semibold text-foreground">€{totalPrice}</span> · {totalDuration}m{picked.length > 1 && <span className="text-muted-foreground/60"> · {picked.length}×</span>}</span>
+                    {createPickedServices.length > 0 ? (
+                      <span><span className="font-semibold text-foreground">€{createTotalPrice}</span> · {createTotalDuration}m{createPickedServices.length > 1 && <span className="text-muted-foreground/60"> · {createPickedServices.length}×</span>}</span>
                     ) : (
                       <span className="text-muted-foreground/60">{t('calendar.selectService')}</span>
                     )}
@@ -8094,7 +8182,7 @@ export function CalendarPage() {
                   </button>
                   <Button
                     onClick={handleSubmit}
-                    disabled={createMutation.isPending || !summaryReady}
+                    disabled={createMutation.isPending || !createSummaryReady}
                   >
                     {createMutation.isPending ? t('calendar.creating') : t('common.saveChanges')}
                   </Button>
@@ -8317,7 +8405,7 @@ export function CalendarPage() {
             whileHover={reduceMotion ? undefined : { y: -2, scale: 1.04 }}
             whileTap={reduceMotion ? undefined : { scale: 0.94 }}
             className={cn(
-              'fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-foreground text-background ring-1 ring-foreground/20 flex items-center justify-center focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-foreground/25 transition-shadow',
+              'fixed bottom-6 right-6 z-40 hidden h-14 w-14 items-center justify-center rounded-full bg-foreground text-background ring-1 ring-foreground/20 transition-shadow focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-foreground/25 sm:flex',
               ELEVATION.fab,
             )}
             aria-label={t('calendar.newAppointment')}

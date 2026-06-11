@@ -224,11 +224,11 @@ export function DayAgenda({
           <CalendarIcon className="h-6 w-6 text-muted-foreground" />
         </div>
         <p className="text-sm font-semibold text-foreground">{t('calendar.noAppointments')}</p>
-        <p className="mt-1 text-xs text-muted-foreground">Your day is clear — create the first booking below</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t('calendar.noAppointmentsHint')}</p>
         {onCreate && (
           <Button size="sm" className="mt-4" onClick={onCreate}>
             <PlusIcon className="mr-1.5 h-4 w-4" />
-            New appointment
+            {t('calendar.newAppointment')}
           </Button>
         )}
       </div>
