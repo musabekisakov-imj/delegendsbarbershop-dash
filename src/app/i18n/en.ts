@@ -1,7 +1,8 @@
 export const en = {
   // Brand
-  'brand.name': 'DeLegends',
-  'brand.fullName': 'DeLegends Barbershop',
+  'brand.name': 'DE Legends',
+  'brand.fullName': 'DE Legends Barbershop',
+  'brand.tagline': 'barbershop',
 
   // Nav
   'nav.overview': 'Overview',
@@ -19,6 +20,7 @@ export const en = {
   'common.saveChanges': 'Save Changes',
   'common.save': 'Save',
   'common.cancel': 'Cancel',
+  'common.loading': 'Loading',
   'common.confirm': 'Confirm',
   'common.delete': 'Delete',
   'common.edit': 'Edit',
@@ -67,10 +69,6 @@ export const en = {
   // Calendar
   'calendar.title': 'Calendar',
   'calendar.newAppointment': 'New Appointment',
-  'calendar.connectTitle': 'Connect your calendar',
-  'calendar.connectBody': 'Sync with Google or Outlook to manage your schedule easily.',
-  'calendar.connectCta': 'Connect Calendar',
-  'calendar.connectSoon': 'Calendar sync is coming soon.',
   'calendar.noActiveStaff': 'No active staff members',
   'calendar.noActiveStaffHint': 'Add staff from the Staff page to see their columns here.',
   'calendar.booking': 'booking',
@@ -88,7 +86,7 @@ export const en = {
   'calendar.category': 'Category',
   'login.welcome': 'Welcome back',
   'login.subtitle': 'Sign in to access your barbershop dashboard.',
-  'login.ownerConsole': 'Owner Console',
+  'login.teamConsole': 'Team Console',
   'login.secure': 'Secure login • Encrypted connection',
   'login.email': 'Email',
   'login.emailPlaceholder': 'you@example.com',
@@ -140,7 +138,7 @@ export const en = {
   'calendar.allDone': 'Day complete',
   'calendar.allDoneCount': 'appointments served',
   'calendar.noAppointments': 'No appointments for this day',
-  'calendar.noAppointmentsHint': 'Switch to Grid to create one.',
+  'calendar.noAppointmentsHint': 'Create the first booking when you are ready.',
 
   // Status
   'status.confirmed': 'Confirmed',

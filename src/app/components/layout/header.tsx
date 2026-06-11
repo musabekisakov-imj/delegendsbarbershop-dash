@@ -86,22 +86,21 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-card">
       <div className="flex h-14 items-center gap-2 px-4 md:px-6">
-        {/* Brand — two-line stacked logotype: "DeLegends" as the dominant
-            18 px Bold mark, "barbershop" as a small wide-tracked secondary
-            line. Left-aligned to the icon's right edge so the eye reads
-            ✂ → D → L → e... in one stroke. "barbershop" is hardcoded as a
-            logotype element (not translated) — same way "Apple Inc." stays
-            English across locales. */}
-        <NavLink to="/overview" className="flex items-center gap-2.5 shrink-0">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600">
-            <ScissorsIcon className="h-5 w-5 text-white" />
-          </div>
+        {/* Brand — emblem mark + two-line logotype. Same asset as the favicon
+            and route loader, so the brand reads consistently everywhere. */}
+        <NavLink to="/overview" className="group flex items-center gap-2.5 shrink-0">
+          <img
+            src="/icon-192.png"
+            alt=""
+            draggable={false}
+            className="h-9 w-9 select-none rounded-full shadow-[0_8px_18px_-12px_rgba(10,21,37,0.65)] transition-all group-hover:-translate-y-px group-hover:shadow-[0_10px_22px_-12px_rgba(10,21,37,0.8)]"
+          />
           <div className="hidden sm:flex flex-col leading-none">
             <span className="text-[18px] font-bold tracking-tight text-foreground">
               {t('brand.name')}
             </span>
-            <span className="mt-1 text-[10px] font-medium tracking-[0.22em] uppercase text-muted-foreground">
-              barbershop
+            <span className="mt-1 text-[10px] font-semibold tracking-[0.18em] uppercase text-muted-foreground/90">
+              {t('brand.tagline')}
             </span>
           </div>
         </NavLink>

@@ -2,8 +2,9 @@ import type { TranslationKey } from './en';
 
 export const lt: Record<TranslationKey, string> = {
   // Brand
-  'brand.name': 'DeLegends',
-  'brand.fullName': 'DeLegends Barbershop',
+  'brand.name': 'DE Legends',
+  'brand.fullName': 'DE Legends Barbershop',
+  'brand.tagline': 'barbershop',
 
   // Nav
   'nav.overview': 'Apžvalga',
@@ -21,6 +22,7 @@ export const lt: Record<TranslationKey, string> = {
   'common.saveChanges': 'Išsaugoti',
   'common.save': 'Išsaugoti',
   'common.cancel': 'Atšaukti',
+  'common.loading': 'Įkeliama',
   'common.confirm': 'Patvirtinti',
   'common.delete': 'Ištrinti',
   'common.edit': 'Redaguoti',
@@ -66,10 +68,6 @@ export const lt: Record<TranslationKey, string> = {
   // Calendar
   'calendar.title': 'Kalendorius',
   'calendar.newAppointment': 'Nauja rezervacija',
-  'calendar.connectTitle': 'Prijunkite kalendorių',
-  'calendar.connectBody': 'Sinchronizuokite su Google ar Outlook, kad lengvai valdytumėte tvarkaraštį.',
-  'calendar.connectCta': 'Prijungti kalendorių',
-  'calendar.connectSoon': 'Kalendoriaus sinchronizacija greitai bus prieinama.',
   'calendar.noActiveStaff': 'Nėra aktyvių darbuotojų',
   'calendar.noActiveStaffHint': 'Pridėkite darbuotojų skiltyje „Darbuotojai“, kad matytumėte jų stulpelius.',
   'calendar.booking': 'rezervacija',
@@ -87,7 +85,7 @@ export const lt: Record<TranslationKey, string> = {
   'calendar.category': 'Kategorija',
   'login.welcome': 'Sveiki sugrįžę',
   'login.subtitle': 'Prisijunkite prie barbershopo skydelio',
-  'login.ownerConsole': 'Savininko konsolė',
+  'login.teamConsole': 'Komandos konsolė',
   'login.secure': 'Saugus prisijungimas • Šifruotas ryšys',
   'login.email': 'El. paštas',
   'login.emailPlaceholder': 'you@example.com',
@@ -139,7 +137,7 @@ export const lt: Record<TranslationKey, string> = {
   'calendar.allDone': 'Diena baigta',
   'calendar.allDoneCount': 'įrašų atlikta',
   'calendar.noAppointments': 'Šią dieną rezervacijų nėra',
-  'calendar.noAppointmentsHint': 'Perjunkite į „Tinklelis“, kad sukurtumėte.',
+  'calendar.noAppointmentsHint': 'Sukurkite pirmą rezervaciją, kai būsite pasiruošę.',
 
   // Status
   'status.confirmed': 'Patvirtinta',

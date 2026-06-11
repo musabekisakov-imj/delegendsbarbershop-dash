@@ -442,6 +442,19 @@
   -webkit-mask: radial-gradient(circle, transparent 55%, #000 57%);
 }
 
+/* Route fallback entrance — held invisible for 150ms, then fades in.
+   Fast chunk loads finish inside the hold window, so the loader never
+   flashes; slow ones get a calm entrance instead of a pop. */
+@keyframes route-fallback-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.route-fallback-enter {
+  opacity: 0;
+  animation: route-fallback-in 320ms cubic-bezier(0.16, 1, 0.3, 1) 150ms forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page-enter,
   .skeleton-base,
@@ -449,6 +462,13 @@
   .loader-dots > span,
   .spinner-conic {
     animation: none !important;
+  }
+
+  /* The entrance animation is what reveals the loader — without it the
+     element would stay at opacity 0, so show it immediately instead. */
+  .route-fallback-enter {
+    animation: none !important;
+    opacity: 1;
   }
 }
 

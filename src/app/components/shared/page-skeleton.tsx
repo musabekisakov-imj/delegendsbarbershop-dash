@@ -1,4 +1,5 @@
 import { cn } from '../ui/utils';
+import { useT } from '../../hooks/use-t';
 
 /**
  * Loading primitives — designed together so every loading state reads as "the
@@ -131,39 +132,36 @@ export function TableSkeleton({ rows = 5 }: { rows?: number }) {
 }
 
 // ─── Route fallback ─────────────────────────────────────
-// Shown during lazy-chunk load on route change. Previously 48px — users asked
-// for something bigger and more intentional-feeling. Now: 96px conic spinner,
-// brand mark inside, larger "Loading" text + dots. Reads as "the product is
-// working on your request", not "something tiny is spinning in a corner".
+// Shown during lazy-chunk load on route change. The brand mark (same asset as
+// the favicon) sits inside a rotating conic arc with a breathing halo, so the
+// wait reads as "DE Legends is working" rather than a generic spinner. The
+// whole block is wrapped in `route-fallback-enter`, which holds it invisible
+// for 150ms — fast chunk loads never flash a loader.
 export function RouteFallback() {
+  const t = useT();
   return (
-    <div className="flex min-h-[60vh] items-center justify-center">
-      <div className="flex flex-col items-center gap-5">
+    // NOT `fixed`: the page-enter wrapper animates `transform`, which turns it
+    // into the containing block for fixed children — the loader would anchor
+    // to the content div instead of the viewport and sit near the top. Flex
+    // centering inside a viewport-height box lands in the true screen center
+    // (100dvh minus the h-14 header and main's py-6 padding).
+    <div className="flex min-h-[calc(100dvh-6.5rem)] items-center justify-center">
+      <div className="route-fallback-enter flex flex-col items-center gap-6">
         {/* Soft halo behind the spinner so it has presence on both themes. */}
-        <div className="relative flex h-24 w-24 items-center justify-center">
-          <div className="absolute inset-0 rounded-full bg-primary/5 animate-[skeleton-pulse_2s_ease-in-out_infinite]" aria-hidden />
-          <Spinner size={96} />
-          <svg
+        <div className="relative flex h-36 w-36 items-center justify-center">
+          <div className="absolute -inset-4 rounded-full bg-primary/5 animate-[skeleton-pulse_2s_ease-in-out_infinite]" aria-hidden />
+          <Spinner size={144} />
+          <img
+            src="/icon-192.png"
+            alt=""
             aria-hidden
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="absolute h-9 w-9 text-primary"
-          >
-            {/* Scissors glyph — same icon as the brand header */}
-            <circle cx="6" cy="6" r="3" />
-            <circle cx="6" cy="18" r="3" />
-            <path d="M20 4L8.12 15.88" />
-            <path d="M14.47 14.48L20 20" />
-            <path d="M8.12 8.12L12 12" />
-          </svg>
+            draggable={false}
+            className="absolute h-[88px] w-[88px] select-none rounded-full shadow-md"
+          />
         </div>
-        <span className="inline-flex items-center gap-2 text-base font-medium text-foreground">
-          Loading
-          <span className="text-primary"><Dots /></span>
+        <span className="inline-flex items-center gap-2 text-lg font-medium text-foreground">
+          {t('common.loading')}
+          <span className="text-primary"><Dots size="lg" /></span>
         </span>
       </div>
     </div>

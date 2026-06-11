@@ -2,8 +2,9 @@ import type { TranslationKey } from './en';
 
 export const ru: Record<TranslationKey, string> = {
   // Brand
-  'brand.name': 'DeLegends',
-  'brand.fullName': 'DeLegends Barbershop',
+  'brand.name': 'DE Legends',
+  'brand.fullName': 'DE Legends Barbershop',
+  'brand.tagline': 'barbershop',
 
   // Nav
   'nav.overview': 'Обзор',
@@ -21,6 +22,7 @@ export const ru: Record<TranslationKey, string> = {
   'common.saveChanges': 'Сохранить',
   'common.save': 'Сохранять',
   'common.cancel': 'Отмена',
+  'common.loading': 'Загрузка',
   'common.confirm': 'Подтвердить',
   'common.delete': 'Удалить',
   'common.edit': 'Редактировать',
@@ -66,10 +68,6 @@ export const ru: Record<TranslationKey, string> = {
   // Calendar
   'calendar.title': 'Календарь',
   'calendar.newAppointment': 'Новая запись',
-  'calendar.connectTitle': 'Подключите календарь',
-  'calendar.connectBody': 'Синхронизируйте с Google или Outlook, чтобы удобно вести расписание.',
-  'calendar.connectCta': 'Подключить календарь',
-  'calendar.connectSoon': 'Синхронизация календаря скоро появится.',
   'calendar.noActiveStaff': 'Нет активных сотрудников',
   'calendar.noActiveStaffHint': 'Добавьте сотрудников на странице «Сотрудники».',
   'calendar.booking': 'запись',
@@ -87,7 +85,7 @@ export const ru: Record<TranslationKey, string> = {
   'calendar.category': 'Категория',
   'login.welcome': 'С возвращением',
   'login.subtitle': 'Войдите в панель управления барбершопом',
-  'login.ownerConsole': 'Консоль владельца',
+  'login.teamConsole': 'Консоль команды',
   'login.secure': 'Безопасный вход • Шифрованное соединение',
   'login.email': 'Эл. почта',
   'login.emailPlaceholder': 'you@example.com',
@@ -139,7 +137,7 @@ export const ru: Record<TranslationKey, string> = {
   'calendar.allDone': 'День завершён',
   'calendar.allDoneCount': 'записей выполнено',
   'calendar.noAppointments': 'На этот день записей нет',
-  'calendar.noAppointmentsHint': 'Переключитесь на «Сетка», чтобы создать запись.',
+  'calendar.noAppointmentsHint': 'Создайте первую запись, когда будете готовы.',
 
   // Status
   'status.confirmed': 'Подтверждено',
