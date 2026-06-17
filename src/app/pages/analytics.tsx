@@ -5,6 +5,7 @@ import { useOfficeStore } from '../store/office-store';
 import { SectionHeading } from '../components/shared/section-heading';
 import {
   ArrowTrendingUpIcon,
+  ArrowDownTrayIcon,
   MapPinIcon,
   PrinterIcon,
   CalendarDaysIcon,
@@ -21,6 +22,7 @@ import {
 import { cn } from '../components/ui/utils';
 import { useT, useLanguage } from '../hooks/use-t';
 import { formatPrice } from '../lib/format';
+import { exportCsv } from '../lib/csv';
 import { aptTotal } from '../lib/overview';
 import { PeriodNavigator } from '../components/analytics/date-range-selector';
 import { PageHeader } from '../components/shared/page-header';
@@ -381,6 +383,62 @@ export function AnalyticsPage() {
   const generatedAt = new Intl.DateTimeFormat(intlLocale, { dateStyle: 'long', timeStyle: 'short' }).format(new Date());
   const asOf = new Intl.DateTimeFormat(intlLocale, { hour: '2-digit', minute: '2-digit' }).format(new Date());
   const handlePrint = () => window.print();
+
+  // ── CSV export — exports the active tab's data as raw numbers (no currency
+  // glyphs or locale separators) so spreadsheets can compute on it. Headers
+  // are translated; the filename carries the tab + range for at-a-glance ID. ──
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const slug = `${tab}-${format(rangeStart, 'yyyy-MM-dd')}_${format(rangeEnd, 'yyyy-MM-dd')}`;
+
+  const canExport =
+    tab === 'performance' ? chartData.some(d => d.revenue > 0)
+    : tab === 'services' ? serviceStats.rows.length > 0
+    : tab === 'staff' ? staffStats.rows.length > 0
+    : products.length > 0;
+
+  const handleExport = () => {
+    if (tab === 'performance') {
+      exportCsv(`analytics-${slug}`, chartData, [
+        { key: 'date', header: t('analytics.export.period') },
+        { key: d => round2(d.revenue), header: t('analytics.col.revenue') },
+      ]);
+    } else if (tab === 'services') {
+      exportCsv(`analytics-${slug}`, serviceStats.rows, [
+        { key: 'name', header: t('analytics.export.service') },
+        { key: r => round2(r.revenue), header: t('analytics.col.revenue') },
+        { key: 'count', header: t('analytics.visits') },
+        { key: r => round2(r.avgTicket), header: t('analytics.avgTicket') },
+        { key: r => round2(r.share), header: `${t('analytics.col.share')} %` },
+      ]);
+    } else if (tab === 'staff') {
+      exportCsv(`analytics-${slug}`, staffStats.rows, [
+        { key: 'name', header: t('analytics.col.staff') },
+        { key: r => round2(r.revenue), header: t('analytics.col.revenue') },
+        { key: 'bookings', header: t('analytics.col.bookings') },
+        { key: r => round2(r.avgTicket), header: t('analytics.avgTicket') },
+        { key: r => round2(r.share), header: `${t('analytics.col.share')} %` },
+      ]);
+    } else {
+      const rows = products
+        .map(p => ({ ...p, inventoryValue: p.price * Math.max(p.stock, 0) }))
+        .sort((a, b) => b.inventoryValue - a.inventoryValue);
+      exportCsv(`analytics-products-${format(rangeEnd, 'yyyy-MM-dd')}`, rows, [
+        { key: 'name', header: t('analytics.export.product') },
+        { key: 'brand', header: t('analytics.export.brand') },
+        { key: p => t(`products.category.${p.category}` as TranslationKey), header: t('analytics.export.category') },
+        { key: 'stock', header: t('analytics.export.stock') },
+        { key: p => round2(p.price), header: t('analytics.export.price') },
+        { key: p => round2(p.inventoryValue), header: t('analytics.products.inventoryValue') },
+        {
+          key: p => p.stock <= 0
+            ? t('analytics.products.outOfStock')
+            : p.stock <= 5 ? t('analytics.products.lowStock') : t('analytics.export.inStock'),
+          header: t('analytics.export.status'),
+        },
+      ]);
+    }
+  };
+
   const serviceAvgTicket = serviceStats.totalCount > 0
     ? serviceStats.totalRevenue / serviceStats.totalCount
     : 0;
@@ -450,6 +508,16 @@ export function AnalyticsPage() {
               onAnchorChange={setAnchor}
               locale={intlLocale}
             />
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={!canExport}
+              aria-label={t('analytics.export')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-card disabled:hover:text-muted-foreground"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('analytics.export')}</span>
+            </button>
             <button
               type="button"
               onClick={handlePrint}
