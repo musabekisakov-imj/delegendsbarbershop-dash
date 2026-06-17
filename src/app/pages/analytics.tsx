@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { appointmentsApi, clientsApi, staffApi, servicesApi, productsApi } from '../lib/api';
+import { appointmentsApi, clientsApi, staffApi, productsApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
 import { SectionHeading } from '../components/shared/section-heading';
-import { ArrowTrendingUpIcon, MapPinIcon, PrinterIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
+import { ArrowTrendingUpIcon, MapPinIcon, PrinterIcon, CalendarDaysIcon, CubeIcon } from '@heroicons/react/24/outline';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, ReferenceLine,
@@ -64,10 +64,6 @@ export function AnalyticsPage() {
   const { data: staff = [] } = useQuery({
     queryKey: ['staff', officeId],
     queryFn: () => staffApi.getAll(officeId),
-  });
-  const { data: services = [] } = useQuery({
-    queryKey: ['services', officeId],
-    queryFn: () => servicesApi.getAll(officeId),
   });
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
@@ -179,37 +175,70 @@ export function AnalyticsPage() {
     });
   }, [appointments, intlLocale]);
 
-  // ── Top services by revenue — range-scoped ──
-  const topServices = useMemo(() => {
+  // ── Service performance — every service with completed bookings in range ──
+  // Share is computed against the range total (slices sum to 100%), avg ticket
+  // is per-completed-visit. Sorted by revenue so the leader sits on top.
+  const serviceStats = useMemo(() => {
     const rs = rangeStart.getTime();
     const re = rangeEnd.getTime();
     const byService = new Map<string, { name: string; revenue: number; count: number }>();
-    appointments
-      .filter(a => a.status === 'completed' && parseISO(a.startTime).getTime() >= rs && parseISO(a.startTime).getTime() <= re)
-      .forEach(a => {
-        const existing = byService.get(a.serviceId) ?? { name: a.service?.name ?? 'Unknown', revenue: 0, count: 0 };
-        existing.revenue += aptTotal(a);
-        existing.count += 1;
-        byService.set(a.serviceId, existing);
-      });
-    return Array.from(byService.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+    appointments.forEach(a => {
+      if (a.status !== 'completed') return;
+      const ts = parseISO(a.startTime).getTime();
+      if (ts < rs || ts > re) return;
+      const existing = byService.get(a.serviceId) ?? { name: a.service?.name ?? '—', revenue: 0, count: 0 };
+      existing.revenue += aptTotal(a);
+      existing.count += 1;
+      byService.set(a.serviceId, existing);
+    });
+    const ranked = Array.from(byService.values()).sort((a, b) => b.revenue - a.revenue);
+    const totalRevenue = ranked.reduce((s, r) => s + r.revenue, 0);
+    const totalCount = ranked.reduce((s, r) => s + r.count, 0);
+    return {
+      rows: ranked.map(r => ({
+        ...r,
+        avgTicket: r.count > 0 ? r.revenue / r.count : 0,
+        share: totalRevenue > 0 ? (r.revenue / totalRevenue) * 100 : 0,
+      })),
+      totalRevenue,
+      totalCount,
+    };
   }, [appointments, rangeStart, rangeEnd]);
 
-  // ── Revenue by staff — range-scoped ──
-  const byStaff = useMemo(() => {
+  // ── Staff performance — joins staff roster with completed bookings in range ──
+  // Seeded from the roster first so idle barbers still surface (zero revenue).
+  const staffStats = useMemo(() => {
     const rs = rangeStart.getTime();
     const re = rangeEnd.getTime();
-    const m = new Map<string, { id: string; name: string; revenue: number; bookings: number }>();
-    staff.forEach(s => m.set(s.id, { id: s.id, name: `${s.firstName} ${s.lastName}`, revenue: 0, bookings: 0 }));
-    appointments
-      .filter(a => a.status === 'completed' && parseISO(a.startTime).getTime() >= rs && parseISO(a.startTime).getTime() <= re)
-      .forEach(a => {
-        const entry = m.get(a.staffId);
-        if (!entry) return;
-        entry.revenue += aptTotal(a);
-        entry.bookings += 1;
-      });
-    return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue);
+    const m = new Map<string, { id: string; name: string; avatarUrl?: string; revenue: number; bookings: number }>();
+    staff.forEach(s => m.set(s.id, {
+      id: s.id,
+      name: `${s.firstName} ${s.lastName}`.trim(),
+      avatarUrl: s.avatarUrl,
+      revenue: 0,
+      bookings: 0,
+    }));
+    appointments.forEach(a => {
+      if (a.status !== 'completed') return;
+      const ts = parseISO(a.startTime).getTime();
+      if (ts < rs || ts > re) return;
+      const entry = m.get(a.staffId);
+      if (!entry) return;
+      entry.revenue += aptTotal(a);
+      entry.bookings += 1;
+    });
+    const ranked = Array.from(m.values()).sort((a, b) => b.revenue - a.revenue);
+    const totalRevenue = ranked.reduce((s, r) => s + r.revenue, 0);
+    const totalBookings = ranked.reduce((s, r) => s + r.bookings, 0);
+    return {
+      rows: ranked.map(r => ({
+        ...r,
+        avgTicket: r.bookings > 0 ? r.revenue / r.bookings : 0,
+        share: totalRevenue > 0 ? (r.revenue / totalRevenue) * 100 : 0,
+      })),
+      totalRevenue,
+      totalBookings,
+    };
   }, [appointments, staff, rangeStart, rangeEnd]);
 
   // ── Retention — % of clients returning within 60 days (all-time) ──
@@ -325,6 +354,14 @@ export function AnalyticsPage() {
       .filter(c => c.count > 0)
       .sort((a, b) => b.value - a.value);
   }, [products]);
+
+  // ── Restock list — out-of-stock first, then low (≤5), most urgent on top ──
+  const lowStockProducts = useMemo(() =>
+    products
+      .filter(p => p.stock <= 5)
+      .map(p => ({ ...p, lowStatus: (p.stock <= 0 ? 'out' : 'low') as 'out' | 'low' }))
+      .sort((a, b) => a.stock - b.stock),
+  [products]);
 
   const offices = useOfficeStore(s => s.offices);
   const currentOffice = offices.find(o => o.id === officeId);
@@ -639,35 +676,66 @@ export function AnalyticsPage() {
 
       {/* ─── Services ─── */}
       {tab === 'services' && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <SectionHeading size="sm" title={t('analytics.topServices')} subtitle={`${services.length} ${t('analytics.servicesAvailable')}`} />
-          {topServices.length === 0 ? (
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-3.5">
+            <div>
+              <h2 className="text-sm font-bold text-foreground">{t('analytics.topServices')}</h2>
+              <p className="text-xs text-muted-foreground">{t('analytics.servicesSubtitle')} · {rangeLabel}</p>
+            </div>
+            {serviceStats.totalRevenue > 0 && (
+              <div className="text-right">
+                <p className="text-lg font-bold leading-none tabular-nums text-foreground">
+                  {formatPrice(serviceStats.totalRevenue, language)}
+                </p>
+                <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+                  {serviceStats.totalCount} {serviceStats.totalCount === 1 ? t('analytics.visit') : t('analytics.visits')}
+                </p>
+              </div>
+            )}
+          </div>
+          {serviceStats.rows.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
               {t('analytics.noCompleted')}
             </div>
           ) : (
-            <ul className="space-y-2.5">
-              {topServices.map((s, i) => {
-                const max = topServices[0].revenue || 1;
-                const pct = (s.revenue / max) * 100;
+            <ul className="divide-y divide-border">
+              {serviceStats.rows.map((s, i) => {
+                const isLead = i === 0 && s.revenue > 0;
                 return (
-                  <li key={s.name}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-foreground">
-                        <span className="text-muted-foreground tabular-nums mr-2">#{i + 1}</span>
-                        {s.name}
+                  <li
+                    key={s.name}
+                    className={cn('px-5 py-3.5 transition-colors hover:bg-accent/30', isLead && 'bg-emerald-500/[0.04]')}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={cn(
+                        'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold tabular-nums',
+                        isLead ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground',
+                      )}>
+                        {i + 1}
                       </span>
-                      <span className="text-sm font-semibold tabular-nums text-foreground">
-                        {formatPrice(s.revenue, language)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div className="h-full bg-emerald-500/80" style={{ width: `${pct}%` }} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-foreground">{s.name}</span>
+                          {isLead && (
+                            <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-500/10 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                              {t('analytics.lead')}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+                          {s.count} {s.count === 1 ? t('analytics.visit') : t('analytics.visits')} · {t('analytics.avgTicket')} {formatPrice(Math.round(s.avgTicket), language)}
+                        </p>
                       </div>
-                      <span className="text-[11px] tabular-nums text-muted-foreground w-16 text-right">
-                        {s.count} {s.count === 1 ? t('analytics.visit') : t('analytics.visits')}
-                      </span>
+                      <div className="text-right">
+                        <p className="text-sm font-bold tabular-nums text-foreground">{formatPrice(s.revenue, language)}</p>
+                        <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">{s.share.toFixed(1)}%</p>
+                      </div>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn('h-full rounded-full', isLead ? 'bg-emerald-500' : 'bg-emerald-500/40')}
+                        style={{ width: `${s.share}%` }}
+                      />
                     </div>
                   </li>
                 );
@@ -679,67 +747,79 @@ export function AnalyticsPage() {
 
       {/* ─── Staff ─── */}
       {tab === 'staff' && (
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-3.5">
           <div>
             <h2 className="text-sm font-bold text-foreground">{t('analytics.staffPerformance')}</h2>
             <p className="text-xs text-muted-foreground">{t('analytics.staffSubtitle')} · {rangeLabel}</p>
           </div>
-          {insights.topBarberRevenue > 0 && (
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden sm:block">
-              {t('analytics.thisMonth')}: <span className="text-foreground normal-case tracking-normal">{insights.topBarberName}</span> · {formatPrice(insights.topBarberRevenue, language)}
-            </span>
+          {staffStats.totalRevenue > 0 && (
+            <div className="text-right">
+              <p className="text-lg font-bold leading-none tabular-nums text-foreground">
+                {formatPrice(staffStats.totalRevenue, language)}
+              </p>
+              <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+                {staffStats.totalBookings} {t('analytics.col.bookings').toLowerCase()}
+              </p>
+            </div>
           )}
         </div>
-        {byStaff.length === 0 ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">{t('analytics.noStaffData')}</div>
+        {staffStats.rows.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card py-10 text-center text-sm text-muted-foreground">
+            {t('analytics.noStaffData')}
+          </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-muted/40 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border">
-                <th className="text-left px-5 py-2.5">{t('analytics.col.staff')}</th>
-                <th className="text-right px-5 py-2.5">{t('analytics.col.bookings')}</th>
-                <th className="text-right px-5 py-2.5">{t('analytics.col.revenue')}</th>
-                <th className="text-left px-5 py-2.5 w-56">{t('analytics.col.share')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {byStaff.map((s, i) => {
-                const total = byStaff.reduce((sum, x) => sum + x.revenue, 0) || 1;
-                const share = (s.revenue / total) * 100;
-                const isLead = i === 0 && s.revenue > 0;
-                return (
-                  <tr key={s.id} className="hover:bg-accent/30 transition-colors">
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold tabular-nums text-muted-foreground w-4">#{i + 1}</span>
-                        <span className="font-medium text-foreground">{s.name}</span>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {staffStats.rows.map((s, i) => {
+              const isLead = i === 0 && s.revenue > 0;
+              return (
+                <div
+                  key={s.id}
+                  className={cn(
+                    'rounded-xl border bg-card p-4 transition-colors',
+                    isLead ? 'border-emerald-500/40' : 'border-border hover:border-muted-foreground/30',
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <StaffAvatar name={s.name} avatarUrl={s.avatarUrl} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-semibold text-foreground">{s.name || '—'}</span>
                         {isLead && (
-                          <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                          <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-500/10 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                             {t('analytics.lead')}
                           </span>
                         )}
                       </div>
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-foreground">{s.bookings}</td>
-                    <td className="px-5 py-3 text-right tabular-nums font-semibold text-foreground">
-                      {formatPrice(s.revenue, language)}
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                          <div className={cn('h-full', isLead ? 'bg-emerald-500' : 'bg-blue-500/40')} style={{ width: `${share}%` }} />
-                        </div>
-                        <span className="text-[11px] tabular-nums text-muted-foreground w-10 text-right">
-                          {share.toFixed(0)}%
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      <p className="text-[11px] tabular-nums text-muted-foreground">
+                        #{i + 1} · {s.share.toFixed(0)}% {t('analytics.col.share').toLowerCase()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
+                    <div>
+                      <p className="text-sm font-bold tabular-nums text-foreground">{formatPrice(s.revenue, language)}</p>
+                      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('analytics.col.revenue')}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold tabular-nums text-foreground">{s.bookings}</p>
+                      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('analytics.col.bookings')}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold tabular-nums text-foreground">{formatPrice(Math.round(s.avgTicket), language)}</p>
+                      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('analytics.avgTicket')}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn('h-full rounded-full', isLead ? 'bg-emerald-500' : 'bg-blue-500/40')}
+                      style={{ width: `${s.share}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
       )}
@@ -803,6 +883,48 @@ export function AnalyticsPage() {
                 })}
               </ul>
             </div>
+
+            {lowStockProducts.length > 0 && (
+              <div className="border-t border-border p-5">
+                <SectionHeading
+                  size="sm"
+                  title={t('analytics.products.restockTitle')}
+                  subtitle={t('analytics.products.restockSubtitle')}
+                />
+                <ul className="mt-1 divide-y divide-border">
+                  {lowStockProducts.map(p => (
+                    <li key={p.id} className="flex items-center gap-3 py-2.5">
+                      {p.imageUrl ? (
+                        <img src={p.imageUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+                      ) : (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <CubeIcon className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{p.name}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {p.brand} · {t(`products.category.${p.category}` as Parameters<typeof t>[0])}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                        {formatPrice(p.price, language)}
+                      </span>
+                      <span className={cn(
+                        'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider tabular-nums',
+                        p.lowStatus === 'out'
+                          ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                          : 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+                      )}>
+                        {p.lowStatus === 'out'
+                          ? t('analytics.products.outOfStock')
+                          : `${p.stock} ${t('analytics.products.left')}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -832,6 +954,26 @@ function TickerStat({
         {value}
       </p>
       {sub && <p className="mt-1 text-[11px] text-muted-foreground truncate">{sub}</p>}
+    </div>
+  );
+}
+
+// ─── Staff avatar — photo when available, gradient initials fallback ──
+function StaffAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
+  const initials = name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(p => p[0])
+    .join('')
+    .toUpperCase() || '—';
+
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />;
+  }
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-muted to-accent text-xs font-bold text-muted-foreground">
+      {initials}
     </div>
   );
 }
