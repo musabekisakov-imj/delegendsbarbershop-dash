@@ -1083,7 +1083,11 @@ export const ru: Record<TranslationKey, string> = {
   'dateRange.last7d': 'Последние 7 дней',
   'dateRange.last30d': 'Последние 30 дней',
   'dateRange.last90d': 'Последние 90 дней',
+  'dateRange.today': 'Сегодня',
+  'dateRange.thisWeek': 'Эта неделя',
   'dateRange.thisMonth': 'Этот месяц',
+  'dateRange.last12m': 'Последние 12 месяцев',
+  'dateRange.last365d': 'Последние 365 дней',
   'dateRange.custom': 'Произвольный',
 
   'analytics.eyebrow': 'Аналитика',
@@ -1120,6 +1124,11 @@ export const ru: Record<TranslationKey, string> = {
   'analytics.ticker.clientsTotal': 'клиентов',
 
   'analytics.dailyRevenue': 'Выручка по дням',
+  'analytics.hourlyRevenue': 'Выручка по часам',
+  'analytics.monthlyRevenue': 'Выручка по месяцам',
+  'analytics.print': 'Печать',
+  'analytics.printReport': 'Отчёт по показателям',
+  'analytics.generated': 'Сформирован',
   'analytics.completedOnly': 'Только выполненные записи',
   'analytics.statusMix': 'Статусы',
   'analytics.allAppointments': 'Все записи',

@@ -8,13 +8,15 @@ interface DateRangeSelectorProps {
   onChange: (preset: RangePreset) => void;
 }
 
-const PRESETS: RangePreset[] = ['7d', '30d', '90d', 'this-month'];
+const PRESETS: RangePreset[] = ['today', 'this-week', 'this-month', '90d', '12m', '365d'];
 
 const PRESET_KEY: Record<RangePreset, TranslationKey> = {
-  '7d': 'dateRange.last7d',
-  '30d': 'dateRange.last30d',
-  '90d': 'dateRange.last90d',
+  'today': 'dateRange.today',
+  'this-week': 'dateRange.thisWeek',
   'this-month': 'dateRange.thisMonth',
+  '90d': 'dateRange.last90d',
+  '12m': 'dateRange.last12m',
+  '365d': 'dateRange.last365d',
 };
 
 export function DateRangeSelector({ value, onChange }: DateRangeSelectorProps) {

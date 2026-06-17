@@ -16,9 +16,8 @@
   --canvas: #FAFAFA;                /* zinc-50 */
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  /* Primary = near-black for CTAs and active nav (Vercel/Linear aesthetic).
-     Logo uses explicit bg-blue-600 — decoupled from this token. */
-  --primary: oklch(0.145 0 0);              /* zinc-900 near-black */
+  /* Primary = dashboard blue for CTAs, selected pills, and focus states. */
+  --primary: #2563EB;
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0.0058 264.53);
   --secondary-foreground: oklch(0.145 0 0);
@@ -52,7 +51,7 @@
   --warning-foreground: #ffffff;
   --danger: var(--destructive);
   --caution: #ca8a04;
-  --ring: oklch(0.145 0 0);
+  --ring: #2563EB;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -79,8 +78,8 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: #3B82F6;
+  --primary-foreground: #ffffff;
   --secondary: oklch(0.259 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.235 0 0);
@@ -102,7 +101,7 @@
   --warning: oklch(0.78 0.16 75);
   --warning-foreground: #1a1006;
   --caution: oklch(0.78 0.16 90);
-  --ring: oklch(0.55 0 0);
+  --ring: #3B82F6;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --chart-1: oklch(0.488 0.243 264.376);
@@ -596,3 +595,37 @@
 .density-comfortable .text-xs                { font-size: 13px !important; }
 .density-comfortable .text-sm                { font-size: 15px !important; }
 .density-comfortable .text-base              { font-size: 17px !important; }
+
+/* ─── Print — analytics report ───────────────────────────────────────────
+   window.print() from the Analytics page yields a clean, single-purpose
+   report. Hide the whole app, then reveal only #analytics-print and pin it
+   to the top-left of the page. Interactive controls inside the region (range
+   selector, view toggle, Print button) carry Tailwind's `print:hidden`.
+   The token overrides force the light palette so a dark-theme screen still
+   prints black-on-white. */
+@media print {
+  body * { visibility: hidden; }
+
+  #analytics-print,
+  #analytics-print * { visibility: visible; }
+
+  #analytics-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    color-scheme: light;
+    /* Light tokens mirrored from :root so charts and text read on paper. */
+    --background: #ffffff;
+    --foreground: oklch(0.145 0 0);
+    --card: #ffffff;
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --muted-foreground: #717182;
+    --border: #E4E4E7;
+    background: #ffffff;
+  }
+
+  @page { margin: 1.5cm; }
+}

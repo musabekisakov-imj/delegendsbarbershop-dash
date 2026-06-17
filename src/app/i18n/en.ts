@@ -1084,7 +1084,11 @@ export const en = {
   'dateRange.last7d': 'Last 7 days',
   'dateRange.last30d': 'Last 30 days',
   'dateRange.last90d': 'Last 90 days',
+  'dateRange.today': 'Today',
+  'dateRange.thisWeek': 'This week',
   'dateRange.thisMonth': 'This month',
+  'dateRange.last12m': 'Last 12 months',
+  'dateRange.last365d': 'Last 365 days',
   'dateRange.custom': 'Custom',
 
   // ─── Analytics page ───────────────────────────────────────
@@ -1122,6 +1126,11 @@ export const en = {
   'analytics.ticker.clientsTotal': 'clients',
 
   'analytics.dailyRevenue': 'Daily revenue',
+  'analytics.hourlyRevenue': 'Hourly revenue',
+  'analytics.monthlyRevenue': 'Monthly revenue',
+  'analytics.print': 'Print',
+  'analytics.printReport': 'Performance report',
+  'analytics.generated': 'Generated',
   'analytics.completedOnly': 'Completed appointments only',
   'analytics.statusMix': 'Status mix',
   'analytics.allAppointments': 'All appointments',

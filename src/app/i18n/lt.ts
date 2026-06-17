@@ -1078,7 +1078,11 @@ export const lt: Record<TranslationKey, string> = {
   'dateRange.last7d': 'Paskutinės 7 dienos',
   'dateRange.last30d': 'Paskutinės 30 dienų',
   'dateRange.last90d': 'Paskutinės 90 dienų',
+  'dateRange.today': 'Šiandien',
+  'dateRange.thisWeek': 'Ši savaitė',
   'dateRange.thisMonth': 'Šis mėnuo',
+  'dateRange.last12m': 'Paskutiniai 12 mėn.',
+  'dateRange.last365d': 'Paskutinės 365 d.',
   'dateRange.custom': 'Pasirinktas',
 
   'analytics.eyebrow': 'Analizė',
@@ -1115,6 +1119,11 @@ export const lt: Record<TranslationKey, string> = {
   'analytics.ticker.clientsTotal': 'klientų',
 
   'analytics.dailyRevenue': 'Dienos pajamos',
+  'analytics.hourlyRevenue': 'Valandinės pajamos',
+  'analytics.monthlyRevenue': 'Mėnesio pajamos',
+  'analytics.print': 'Spausdinti',
+  'analytics.printReport': 'Veiklos ataskaita',
+  'analytics.generated': 'Sugeneruota',
   'analytics.completedOnly': 'Tik atliktos rezervacijos',
   'analytics.statusMix': 'Statusų pasiskirstymas',
   'analytics.allAppointments': 'Visos rezervacijos',

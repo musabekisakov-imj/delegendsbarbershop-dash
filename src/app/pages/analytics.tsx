@@ -3,14 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { appointmentsApi, clientsApi, staffApi, servicesApi, productsApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
 import { SectionHeading } from '../components/shared/section-heading';
-import { ArrowTrendingUpIcon, MapPinIcon } from '@heroicons/react/24/outline';
+import { ArrowTrendingUpIcon, MapPinIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, ReferenceLine,
 } from 'recharts';
 import {
-  format, parseISO, startOfMonth, subMonths, eachDayOfInterval, startOfDay, endOfDay,
-  differenceInDays,
+  format, parseISO, startOfMonth, subMonths, eachDayOfInterval, eachHourOfInterval,
+  eachMonthOfInterval, startOfDay, endOfDay, differenceInDays,
 } from 'date-fns';
 import { cn } from '../components/ui/utils';
 import { useT, useLanguage } from '../hooks/use-t';
@@ -18,7 +18,7 @@ import { formatPrice } from '../lib/format';
 import { aptTotal } from '../lib/overview';
 import { DateRangeSelector } from '../components/analytics/date-range-selector';
 import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
-import { getPresetRange, getPreviousRange } from '../lib/date-range';
+import { getPresetRange, getPreviousRange, getGranularity } from '../lib/date-range';
 import type { RangePreset } from '../lib/date-range';
 import type { TranslationKey } from '../i18n';
 
@@ -42,10 +42,12 @@ const STATUS_LABEL_KEY: Record<string, TranslationKey> = {
 };
 
 const PRESET_KEY: Record<RangePreset, TranslationKey> = {
-  '7d':         'dateRange.last7d',
-  '30d':        'dateRange.last30d',
-  '90d':        'dateRange.last90d',
+  'today':      'dateRange.today',
+  'this-week':  'dateRange.thisWeek',
   'this-month': 'dateRange.thisMonth',
+  '90d':        'dateRange.last90d',
+  '12m':        'dateRange.last12m',
+  '365d':       'dateRange.last365d',
 };
 
 const LOCALE_MAP: Record<string, string> = { en: 'en-US', ru: 'ru-RU', lt: 'lt-LT' };
@@ -56,7 +58,7 @@ export function AnalyticsPage() {
   const intlLocale = LOCALE_MAP[language] ?? 'en-US';
   const officeId = useOfficeStore(s => s.currentOfficeId);
 
-  const [preset, setPreset] = useState<RangePreset>('30d');
+  const [preset, setPreset] = useState<RangePreset>('this-month');
   const [tab, setTab] = useState<'performance' | 'products'>('performance');
 
   const { data: appointments = [] } = useQuery({
@@ -130,21 +132,49 @@ export function AnalyticsPage() {
     };
   }, [appointments, rangeStart, rangeEnd, compStart]);
 
-  // ── Daily revenue — every day in the selected range ──
-  const dailyRevenue = useMemo(() => {
-    const days = eachDayOfInterval({ start: rangeStart, end: rangeEnd });
-    return days.map(day => {
-      const key = format(day, 'yyyy-MM-dd');
-      const revenue = appointments
-        .filter(a => a.status === 'completed' && format(parseISO(a.startTime), 'yyyy-MM-dd') === key)
-        .reduce((sum, a) => sum + aptTotal(a), 0);
-      return {
-        date: new Intl.DateTimeFormat(intlLocale, { month: 'short', day: 'numeric' }).format(day),
-        dateKey: key,
-        revenue,
-      };
+  // ── Revenue series — bucketed by range span ──
+  // ≤2 days → hourly, ≤120 days → daily, else monthly. One aggregation
+  // pass into a Map keyed by the bucket's format string, then we walk the
+  // interval so empty buckets still render as zero-height bars.
+  const granularity = useMemo(
+    () => getGranularity({ start: rangeStart, end: rangeEnd, preset }),
+    [rangeStart, rangeEnd, preset],
+  );
+
+  const bucketFmt = granularity === 'hour' ? 'yyyy-MM-dd-HH'
+    : granularity === 'day' ? 'yyyy-MM-dd' : 'yyyy-MM';
+
+  const chartData = useMemo(() => {
+    const rs = rangeStart.getTime();
+    const re = rangeEnd.getTime();
+    const revByKey = new Map<string, number>();
+    appointments.forEach(a => {
+      if (a.status !== 'completed') return;
+      const d = parseISO(a.startTime);
+      const ts = d.getTime();
+      if (ts < rs || ts > re) return;
+      const k = format(d, bucketFmt);
+      revByKey.set(k, (revByKey.get(k) ?? 0) + aptTotal(a));
     });
-  }, [appointments, rangeStart, rangeEnd, intlLocale]);
+
+    const interval = { start: rangeStart, end: rangeEnd };
+    const points = granularity === 'hour' ? eachHourOfInterval(interval)
+      : granularity === 'day' ? eachDayOfInterval(interval)
+      : eachMonthOfInterval(interval);
+
+    return points.map(p => {
+      const dateKey = format(p, bucketFmt);
+      const date = granularity === 'hour'
+        ? format(p, 'HH:00')
+        : granularity === 'month'
+        ? new Intl.DateTimeFormat(intlLocale, { month: 'short', year: '2-digit' }).format(p)
+        : new Intl.DateTimeFormat(intlLocale, { month: 'short', day: 'numeric' }).format(p);
+      return { date, dateKey, revenue: revByKey.get(dateKey) ?? 0 };
+    });
+  }, [appointments, rangeStart, rangeEnd, granularity, bucketFmt, intlLocale]);
+
+  // The bucket that contains "now" — marked on the bar chart with a reference line.
+  const nowKey = useMemo(() => format(new Date(), bucketFmt), [bucketFmt]);
 
   // ── Monthly revenue — always last 6 months (trend, not range-scoped) ──
   const monthlyRevenue = useMemo(() => {
@@ -312,10 +342,28 @@ export function AnalyticsPage() {
   const currentOffice = offices.find(o => o.id === officeId);
 
   const rangeLabel = t(PRESET_KEY[preset]);
-  const todayKey = format(new Date(), 'yyyy-MM-dd');
+  const chartTitleKey: TranslationKey = granularity === 'hour'
+    ? 'analytics.hourlyRevenue'
+    : granularity === 'month'
+    ? 'analytics.monthlyRevenue'
+    : 'analytics.dailyRevenue';
+  const generatedAt = new Intl.DateTimeFormat(intlLocale, { dateStyle: 'long', timeStyle: 'short' }).format(new Date());
+  const handlePrint = () => window.print();
 
   return (
-    <div className="space-y-6">
+    <div id="analytics-print" className="space-y-6">
+
+      {/* ─── Print-only report header ──
+          Screen-hidden; surfaces on paper so the printout is self-describing:
+          shop name, which view, the date range, and when it was generated. */}
+      <div className="hidden print:block">
+        <h1 className="text-2xl font-bold text-foreground">{t('analytics.printReport')}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {currentOffice ? `${currentOffice.name} · ` : ''}
+          {t(`analytics.tab.${tab}` as Parameters<typeof t>[0])} · {rangeLabel}
+        </p>
+        <p className="text-xs text-muted-foreground">{t('analytics.generated')}: {generatedAt}</p>
+      </div>
 
       {/* ─── Eyebrow + h1 + range selector ── */}
       <PageHeader
@@ -334,11 +382,24 @@ export function AnalyticsPage() {
           </>
         )}
         title={t('analytics.heroTitle')}
-        action={<DateRangeSelector value={preset} onChange={setPreset} />}
+        action={(
+          <div className="flex items-center gap-2 print:hidden">
+            <DateRangeSelector value={preset} onChange={setPreset} />
+            <button
+              type="button"
+              onClick={handlePrint}
+              aria-label={t('analytics.print')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+            >
+              <PrinterIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('analytics.print')}</span>
+            </button>
+          </div>
+        )}
       />
 
       {/* ─── View toggle: performance vs product inventory ── */}
-      <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-card p-1">
+      <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-card p-1 print:hidden">
         {(['performance', 'products'] as const).map(k => (
           <button
             key={k}
@@ -394,7 +455,7 @@ export function AnalyticsPage() {
           {/* Sparkline — 30-day shape. --chart-1 avoids the near-black --primary. */}
           <div className="lg:col-span-3">
             <ResponsiveContainer width="100%" height={80}>
-              <LineChart data={dailyRevenue} margin={{ top: 6, right: 0, left: 0, bottom: 0 }}>
+              <LineChart data={chartData} margin={{ top: 6, right: 0, left: 0, bottom: 0 }}>
                 <Line
                   type="monotone"
                   dataKey="revenue"
@@ -460,15 +521,15 @@ export function AnalyticsPage() {
         {/* Daily revenue bars — today is marked with a reference line so the
             user sees at a glance where the current period ends. */}
         <div className="lg:col-span-2 rounded-xl border border-border bg-card p-5">
-          <SectionHeading size="sm" title={`${t('analytics.dailyRevenue')} · ${rangeLabel}`} subtitle={t('analytics.completedOnly')} />
+          <SectionHeading size="sm" title={`${t(chartTitleKey)} · ${rangeLabel}`} subtitle={t('analytics.completedOnly')} />
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={dailyRevenue} margin={{ top: 4, right: 0, left: -8, bottom: 0 }}>
+            <BarChart data={chartData} margin={{ top: 4, right: 0, left: -8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis
                 dataKey="date"
                 stroke="var(--muted-foreground)"
                 fontSize={10}
-                interval={Math.max(0, Math.ceil(dailyRevenue.length / 8) - 1)}
+                interval={Math.max(0, Math.ceil(chartData.length / 8) - 1)}
                 tickLine={false}
                 axisLine={false}
               />
@@ -479,9 +540,9 @@ export function AnalyticsPage() {
                 cursor={{ fill: 'var(--accent)', opacity: 0.4 }}
               />
               <Bar dataKey="revenue" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
-              {dailyRevenue.some(d => d.dateKey === todayKey) && (
+              {chartData.some(d => d.dateKey === nowKey) && (
                 <ReferenceLine
-                  x={dailyRevenue.find(d => d.dateKey === todayKey)!.date}
+                  x={chartData.find(d => d.dateKey === nowKey)!.date}
                   stroke="var(--primary)"
                   strokeWidth={1}
                   strokeDasharray="3 3"
