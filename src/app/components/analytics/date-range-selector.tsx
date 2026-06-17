@@ -87,7 +87,12 @@ export function PeriodNavigator({
           </PopoverTrigger>
           <PopoverContent align="end" sideOffset={6} className="w-auto p-3">
             {(granularity === 'day' || granularity === 'week') && (
-              <DatePickerPopover value={anchor} onChange={pick} locale={locale} />
+              <DatePickerPopover
+                value={anchor}
+                onChange={pick}
+                locale={locale}
+                selectionMode={granularity === 'week' ? 'week' : 'day'}
+              />
             )}
             {granularity === 'month' && (
               <MonthPicker anchor={anchor} onPick={pick} locale={locale} prevLabel={t('common.previousMonth')} nextLabel={t('common.nextMonth')} />

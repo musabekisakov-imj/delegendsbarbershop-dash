@@ -1,12 +1,19 @@
 import { useState } from 'react';
+import { startOfWeek, endOfWeek } from 'date-fns';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { cn } from '../ui/utils';
+import { useT } from '../../hooks/use-t';
 
 interface DatePickerPopoverProps {
   value: Date;
   onChange: (date: Date) => void;
   locale: string;
+  // 'week' highlights the whole Mon–Sun week containing `value` as one bar;
+  // clicking any day still reports that day (the caller snaps it to a week).
+  selectionMode?: 'day' | 'week';
 }
+
+const WEEK_OPTS = { weekStartsOn: 1 } as const;
 
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -18,9 +25,14 @@ function isSameCalDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-export function DatePickerPopover({ value, onChange, locale }: DatePickerPopoverProps) {
+export function DatePickerPopover({ value, onChange, locale, selectionMode = 'day' }: DatePickerPopoverProps) {
+  const t = useT();
   const [cursor, setCursor] = useState(() => new Date(value.getFullYear(), value.getMonth(), 1));
   const today = new Date();
+
+  // Mon–Sun bounds of the selected week (only used in 'week' mode).
+  const weekStart = startOfWeek(value, WEEK_OPTS);
+  const weekEnd = endOfWeek(value, WEEK_OPTS);
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -58,8 +70,8 @@ export function DatePickerPopover({ value, onChange, locale }: DatePickerPopover
         <button
           type="button"
           onClick={prevMonth}
-          className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-          aria-label="Previous month"
+          className="h-9 w-9 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          aria-label={t('common.previousMonth')}
         >
           <ChevronLeftIcon className="h-4 w-4" />
         </button>
@@ -67,8 +79,8 @@ export function DatePickerPopover({ value, onChange, locale }: DatePickerPopover
         <button
           type="button"
           onClick={nextMonth}
-          className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-          aria-label="Next month"
+          className="h-9 w-9 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          aria-label={t('common.nextMonth')}
         >
           <ChevronRightIcon className="h-4 w-4" />
         </button>
@@ -89,8 +101,16 @@ export function DatePickerPopover({ value, onChange, locale }: DatePickerPopover
           if (day === null) return <div key={`e-${idx}`} />;
 
           const cellDate = new Date(year, month, day);
-          const isSelected = isSameCalDay(cellDate, value);
           const isTodayCell = isSameCalDay(cellDate, today);
+
+          // In week mode every day of the selected week lights up as one
+          // contiguous bar — rounded only at the Mon and Sun ends.
+          const inWeek = selectionMode === 'week' && cellDate >= weekStart && cellDate <= weekEnd;
+          const isSelected = selectionMode === 'week'
+            ? inWeek
+            : isSameCalDay(cellDate, value);
+          const isWeekStart = inWeek && isSameCalDay(cellDate, weekStart);
+          const isWeekEnd = inWeek && isSameCalDay(cellDate, weekEnd);
 
           return (
             <button
@@ -98,10 +118,18 @@ export function DatePickerPopover({ value, onChange, locale }: DatePickerPopover
               type="button"
               onClick={() => onChange(cellDate)}
               className={cn(
-                'relative h-8 w-full rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
-                isSelected
-                  ? 'bg-foreground text-background'
-                  : 'text-foreground hover:bg-accent',
+                'relative h-8 w-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+                selectionMode === 'week'
+                  ? cn(
+                      'rounded-none',
+                      isWeekStart && 'rounded-l-md',
+                      isWeekEnd && 'rounded-r-md',
+                      inWeek ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent rounded-md',
+                    )
+                  : cn(
+                      'rounded-md',
+                      isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent',
+                    ),
               )}
               aria-pressed={isSelected}
               aria-label={cellDate.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' })}
