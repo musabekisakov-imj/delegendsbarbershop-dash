@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { startOfWeek, endOfWeek } from 'date-fns';
+import { startOfWeek, endOfWeek, startOfDay, isAfter } from 'date-fns';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { cn } from '../ui/utils';
 import { useT } from '../../hooks/use-t';
@@ -11,6 +11,10 @@ interface DatePickerPopoverProps {
   // 'week' highlights the whole Mon–Sun week containing `value` as one bar;
   // clicking any day still reports that day (the caller snaps it to a week).
   selectionMode?: 'day' | 'week';
+  // Block dates past today — keeps the picker in sync with the stepper's
+  // no-future rule so you can't land on an empty forward period. In week
+  // mode the current week stays selectable (its future days included).
+  disableFuture?: boolean;
 }
 
 const WEEK_OPTS = { weekStartsOn: 1 } as const;
@@ -25,7 +29,7 @@ function isSameCalDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-export function DatePickerPopover({ value, onChange, locale, selectionMode = 'day' }: DatePickerPopoverProps) {
+export function DatePickerPopover({ value, onChange, locale, selectionMode = 'day', disableFuture = false }: DatePickerPopoverProps) {
   const t = useT();
   const [cursor, setCursor] = useState(() => new Date(value.getFullYear(), value.getMonth(), 1));
   const today = new Date();
@@ -112,13 +116,24 @@ export function DatePickerPopover({ value, onChange, locale, selectionMode = 'da
           const isWeekStart = inWeek && isSameCalDay(cellDate, weekStart);
           const isWeekEnd = inWeek && isSameCalDay(cellDate, weekEnd);
 
+          // Future cutoff: in week mode block whole future weeks (the current
+          // week's own future days stay pickable); in day mode block any day
+          // past today. Matches the stepper's canGoNext rule.
+          const isFuture = disableFuture && (
+            selectionMode === 'week'
+              ? isAfter(startOfWeek(cellDate, WEEK_OPTS), startOfWeek(today, WEEK_OPTS))
+              : isAfter(startOfDay(cellDate), startOfDay(today))
+          );
+
           return (
             <button
               key={day}
               type="button"
+              disabled={isFuture}
               onClick={() => onChange(cellDate)}
               className={cn(
                 'relative h-8 w-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+                'disabled:pointer-events-none disabled:opacity-30',
                 selectionMode === 'week'
                   ? cn(
                       'rounded-none',

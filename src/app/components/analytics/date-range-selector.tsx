@@ -92,6 +92,7 @@ export function PeriodNavigator({
                 onChange={pick}
                 locale={locale}
                 selectionMode={granularity === 'week' ? 'week' : 'day'}
+                disableFuture
               />
             )}
             {granularity === 'month' && (
