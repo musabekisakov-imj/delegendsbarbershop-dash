@@ -3,7 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { appointmentsApi, clientsApi, staffApi, productsApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
 import { SectionHeading } from '../components/shared/section-heading';
-import { ArrowTrendingUpIcon, MapPinIcon, PrinterIcon, CalendarDaysIcon, CubeIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowTrendingUpIcon,
+  MapPinIcon,
+  PrinterIcon,
+  CalendarDaysIcon,
+  CubeIcon,
+} from '@heroicons/react/24/outline';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, ReferenceLine,
@@ -375,6 +381,23 @@ export function AnalyticsPage() {
   const generatedAt = new Intl.DateTimeFormat(intlLocale, { dateStyle: 'long', timeStyle: 'short' }).format(new Date());
   const asOf = new Intl.DateTimeFormat(intlLocale, { hour: '2-digit', minute: '2-digit' }).format(new Date());
   const handlePrint = () => window.print();
+  const serviceAvgTicket = serviceStats.totalCount > 0
+    ? serviceStats.totalRevenue / serviceStats.totalCount
+    : 0;
+  const serviceLeader = serviceStats.rows[0] ?? null;
+  const activeServiceCount = serviceStats.rows.filter(s => s.count > 0).length;
+  const staffAvgTicket = staffStats.totalBookings > 0
+    ? staffStats.totalRevenue / staffStats.totalBookings
+    : 0;
+  const staffLeader = staffStats.rows[0] ?? null;
+  const activeStaffCount = staffStats.rows.filter(s => s.bookings > 0).length;
+  const stockRiskPct = productStats.totalProducts > 0
+    ? ((productStats.lowStock + productStats.outOfStock) / productStats.totalProducts) * 100
+    : 0;
+  const topInventoryProducts = products
+    .map(p => ({ ...p, inventoryValue: p.price * Math.max(p.stock, 0) }))
+    .sort((a, b) => b.inventoryValue - a.inventoryValue)
+    .slice(0, 5);
 
   return (
     <div id="analytics-print" className="space-y-6">
@@ -698,49 +721,88 @@ export function AnalyticsPage() {
               {t('analytics.noCompleted')}
             </div>
           ) : (
-            <ul className="divide-y divide-border">
-              {serviceStats.rows.map((s, i) => {
-                const isLead = i === 0 && s.revenue > 0;
-                return (
-                  <li
-                    key={s.name}
-                    className={cn('px-5 py-3.5 transition-colors hover:bg-accent/30', isLead && 'bg-emerald-500/[0.04]')}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={cn(
-                        'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold tabular-nums',
-                        isLead ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground',
-                      )}>
-                        {i + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-semibold text-foreground">{s.name}</span>
-                          {isLead && (
-                            <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-500/10 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                              {t('analytics.lead')}
-                            </span>
-                          )}
+            <>
+              <div className="grid grid-cols-3 divide-x divide-border border-b border-border">
+                <TickerStat
+                  label={t('analytics.revenueLabel')}
+                  value={formatPrice(Math.round(serviceStats.totalRevenue), language)}
+                  sub={rangeLabel}
+                />
+                <TickerStat
+                  label={t('analytics.visits')}
+                  value={serviceStats.totalCount.toString()}
+                  sub={`${serviceStats.rows.length} ${t('analytics.servicesAvailable')}`}
+                />
+                <TickerStat
+                  label={t('analytics.avgTicket')}
+                  value={formatPrice(Math.round(serviceAvgTicket), language)}
+                  sub={t('analytics.ticker.perVisit')}
+                />
+              </div>
+              {serviceLeader && (
+                <div className="grid gap-4 border-b border-border px-5 py-4 lg:grid-cols-3">
+                  <InsightCell
+                    label={t('analytics.services.leader')}
+                    value={serviceLeader.name}
+                    sub={`${formatPrice(serviceLeader.revenue, language)} · ${serviceLeader.count} ${serviceLeader.count === 1 ? t('analytics.visit') : t('analytics.visits')}`}
+                  />
+                  <InsightCell
+                    label={t('analytics.services.mix')}
+                    value={`${activeServiceCount}/${serviceStats.rows.length}`}
+                    sub={t('analytics.servicesAvailable')}
+                  />
+                  <InsightCell
+                    label={t('analytics.services.concentration')}
+                    value={`${serviceLeader.share.toFixed(1)}%`}
+                    sub={t('analytics.col.share')}
+                    tone={serviceLeader.share > 55 ? 'warn' : undefined}
+                  />
+                </div>
+              )}
+              <ul className="divide-y divide-border">
+                {serviceStats.rows.map((s, i) => {
+                  const isLead = i === 0 && s.revenue > 0;
+                  return (
+                    <li
+                      key={s.name}
+                      className={cn('px-5 py-3.5 transition-colors hover:bg-accent/30', isLead && 'bg-emerald-500/[0.04]')}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={cn(
+                          'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold tabular-nums',
+                          isLead ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground',
+                        )}>
+                          {i + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-semibold text-foreground">{s.name}</span>
+                            {isLead && (
+                              <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-500/10 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                                {t('analytics.lead')}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+                            {s.count} {s.count === 1 ? t('analytics.visit') : t('analytics.visits')} · {t('analytics.avgTicket')} {formatPrice(Math.round(s.avgTicket), language)}
+                          </p>
                         </div>
-                        <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
-                          {s.count} {s.count === 1 ? t('analytics.visit') : t('analytics.visits')} · {t('analytics.avgTicket')} {formatPrice(Math.round(s.avgTicket), language)}
-                        </p>
+                        <div className="text-right">
+                          <p className="text-sm font-bold tabular-nums text-foreground">{formatPrice(s.revenue, language)}</p>
+                          <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">{s.share.toFixed(1)}%</p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold tabular-nums text-foreground">{formatPrice(s.revenue, language)}</p>
-                        <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">{s.share.toFixed(1)}%</p>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={cn('h-full rounded-full', isLead ? 'bg-emerald-500' : 'bg-emerald-500/40')}
+                          style={{ width: `${s.share}%` }}
+                        />
                       </div>
-                    </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className={cn('h-full rounded-full', isLead ? 'bg-emerald-500' : 'bg-emerald-500/40')}
-                        style={{ width: `${s.share}%` }}
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </div>
       )}
@@ -769,57 +831,100 @@ export function AnalyticsPage() {
             {t('analytics.noStaffData')}
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {staffStats.rows.map((s, i) => {
-              const isLead = i === 0 && s.revenue > 0;
-              return (
-                <div
-                  key={s.id}
-                  className={cn(
-                    'rounded-xl border bg-card p-4 transition-colors',
-                    isLead ? 'border-emerald-500/40' : 'border-border hover:border-muted-foreground/30',
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <StaffAvatar name={s.name} avatarUrl={s.avatarUrl} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-sm font-semibold text-foreground">{s.name || '—'}</span>
-                        {isLead && (
-                          <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-500/10 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                            {t('analytics.lead')}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] tabular-nums text-muted-foreground">
-                        #{i + 1} · {s.share.toFixed(0)}% {t('analytics.col.share').toLowerCase()}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
-                    <div>
-                      <p className="text-sm font-bold tabular-nums text-foreground">{formatPrice(s.revenue, language)}</p>
-                      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('analytics.col.revenue')}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold tabular-nums text-foreground">{s.bookings}</p>
-                      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('analytics.col.bookings')}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold tabular-nums text-foreground">{formatPrice(Math.round(s.avgTicket), language)}</p>
-                      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('analytics.avgTicket')}</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn('h-full rounded-full', isLead ? 'bg-emerald-500' : 'bg-blue-500/40')}
-                      style={{ width: `${s.share}%` }}
-                    />
-                  </div>
+          <>
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
+              <div className="grid grid-cols-3 divide-x divide-border">
+                <TickerStat
+                  label={t('analytics.col.revenue')}
+                  value={formatPrice(Math.round(staffStats.totalRevenue), language)}
+                  sub={rangeLabel}
+                />
+                <TickerStat
+                  label={t('analytics.col.bookings')}
+                  value={staffStats.totalBookings.toString()}
+                  sub={`${staffStats.rows.length} ${t('analytics.col.staff').toLowerCase()}`}
+                />
+                <TickerStat
+                  label={t('analytics.avgTicket')}
+                  value={formatPrice(Math.round(staffAvgTicket), language)}
+                  sub={t('analytics.ticker.perVisit')}
+                />
+              </div>
+            </div>
+            {staffLeader && (
+              <div className="overflow-hidden rounded-xl border border-border bg-card">
+                <div className="grid gap-4 px-5 py-4 lg:grid-cols-3">
+                  <InsightCell
+                    label={t('analytics.staff.leader')}
+                    value={staffLeader.name || '—'}
+                    sub={`${formatPrice(staffLeader.revenue, language)} · ${staffLeader.bookings} ${t('analytics.col.bookings').toLowerCase()}`}
+                  />
+                  <InsightCell
+                    label={t('analytics.staff.active')}
+                    value={`${activeStaffCount}/${staffStats.rows.length}`}
+                    sub={t('staff.onDuty')}
+                  />
+                  <InsightCell
+                    label={t('analytics.staff.contribution')}
+                    value={`${staffLeader.share.toFixed(1)}%`}
+                    sub={t('analytics.col.share')}
+                    tone={staffLeader.share > 60 ? 'warn' : undefined}
+                  />
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {staffStats.rows.map((s, i) => {
+                const isLead = i === 0 && s.revenue > 0;
+                return (
+                  <div
+                    key={s.id}
+                    className={cn(
+                      'rounded-xl border bg-card p-4 transition-colors',
+                      isLead ? 'border-emerald-500/40' : 'border-border hover:border-muted-foreground/30',
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <StaffAvatar name={s.name} avatarUrl={s.avatarUrl} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-semibold text-foreground">{s.name || '—'}</span>
+                          {isLead && (
+                            <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-500/10 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                              {t('analytics.lead')}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] tabular-nums text-muted-foreground">
+                          #{i + 1} · {s.share.toFixed(0)}% {t('analytics.col.share').toLowerCase()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
+                      <div>
+                        <p className="text-sm font-bold tabular-nums text-foreground">{formatPrice(s.revenue, language)}</p>
+                        <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('analytics.col.revenue')}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold tabular-nums text-foreground">{s.bookings}</p>
+                        <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('analytics.col.bookings')}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold tabular-nums text-foreground">{formatPrice(Math.round(s.avgTicket), language)}</p>
+                        <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('analytics.avgTicket')}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn('h-full rounded-full', isLead ? 'bg-emerald-500' : 'bg-blue-500/40')}
+                        style={{ width: `${s.share}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
       )}
@@ -854,34 +959,66 @@ export function AnalyticsPage() {
                 tone={productStats.outOfStock > 0 ? 'warn' : undefined}
               />
             </div>
-            <div className="p-5">
-              <SectionHeading size="sm" title={t('analytics.products.byCategory')} />
-              <ul className="mt-1 space-y-2.5">
-                {productsByCategory.map(c => {
-                  const max = productsByCategory[0].value || 1;
-                  const pct = (c.value / max) * 100;
-                  return (
-                    <li key={c.key}>
-                      <div className="mb-1 flex items-center justify-between">
-                        <span className="text-sm font-medium text-foreground">
-                          {t(`products.category.${c.key}` as Parameters<typeof t>[0])}
-                        </span>
-                        <span className="text-sm font-semibold tabular-nums text-foreground">
-                          {formatPrice(c.value, language)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                          <div className="h-full bg-sky-500/80" style={{ width: `${pct}%` }} />
+            <div className="grid gap-5 p-5 lg:grid-cols-2">
+              <div>
+                <SectionHeading size="sm" title={t('analytics.products.byCategory')} />
+                <ul className="mt-1 space-y-2.5">
+                  {productsByCategory.map(c => {
+                    const max = productsByCategory[0].value || 1;
+                    const pct = (c.value / max) * 100;
+                    return (
+                      <li key={c.key}>
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-sm font-medium text-foreground">
+                            {t(`products.category.${c.key}` as Parameters<typeof t>[0])}
+                          </span>
+                          <span className="text-sm font-semibold tabular-nums text-foreground">
+                            {formatPrice(c.value, language)}
+                          </span>
                         </div>
-                        <span className="w-16 text-right text-[11px] tabular-nums text-muted-foreground">
-                          {c.count} {c.count === 1 ? t('products.hero.itemOne') : t('products.hero.itemMany')}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full bg-sky-500/80" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="w-16 text-right text-[11px] tabular-nums text-muted-foreground">
+                            {c.count} {c.count === 1 ? t('products.hero.itemOne') : t('products.hero.itemMany')}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+
+              <div>
+                <SectionHeading
+                  size="sm"
+                  title={t('analytics.products.healthTitle')}
+                  subtitle={`${stockRiskPct.toFixed(0)}% ${t('analytics.products.stockRisk')}`}
+                />
+                <ul className="mt-1 divide-y divide-border">
+                  {topInventoryProducts.map(p => (
+                    <li key={p.id} className="flex items-center gap-3 py-2.5">
+                      {p.imageUrl ? (
+                        <img src={p.imageUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+                      ) : (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <CubeIcon className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{p.name}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {p.stock} {t('analytics.products.units')} · {formatPrice(p.price, language)}
+                        </p>
                       </div>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                        {formatPrice(Math.round(p.inventoryValue), language)}
+                      </span>
                     </li>
-                  );
-                })}
-              </ul>
+                  ))}
+                </ul>
+              </div>
             </div>
 
             {lowStockProducts.length > 0 && (
@@ -954,6 +1091,31 @@ function TickerStat({
         {value}
       </p>
       {sub && <p className="mt-1 text-[11px] text-muted-foreground truncate">{sub}</p>}
+    </div>
+  );
+}
+
+function InsightCell({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: 'warn';
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className={cn(
+        'mt-1 truncate text-lg font-bold tabular-nums leading-none',
+        tone === 'warn' ? 'text-amber-600 dark:text-amber-400' : 'text-foreground',
+      )}>
+        {value}
+      </p>
+      {sub && <p className="mt-1 truncate text-[11px] text-muted-foreground">{sub}</p>}
     </div>
   );
 }
