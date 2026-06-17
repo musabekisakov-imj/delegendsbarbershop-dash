@@ -1099,6 +1099,8 @@ export const ru: Record<TranslationKey, string> = {
 
   'analytics.eyebrow': 'Аналитика',
   'analytics.tab.performance': 'Показатели',
+  'analytics.tab.services': 'Услуги',
+  'analytics.tab.staff': 'Сотрудники',
   'analytics.tab.products': 'Товары',
   'analytics.products.title': 'Товары и склад',
   'analytics.products.subtitle': 'Срез розничного каталога',

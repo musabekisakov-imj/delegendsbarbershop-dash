@@ -1101,6 +1101,8 @@ export const en = {
   // ─── Analytics page ───────────────────────────────────────
   'analytics.eyebrow': 'Analytics',
   'analytics.tab.performance': 'Performance',
+  'analytics.tab.services': 'Services',
+  'analytics.tab.staff': 'Staff',
   'analytics.tab.products': 'Products',
   'analytics.products.title': 'Products & inventory',
   'analytics.products.subtitle': 'Retail catalog snapshot',

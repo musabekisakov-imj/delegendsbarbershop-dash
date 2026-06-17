@@ -1094,6 +1094,8 @@ export const lt: Record<TranslationKey, string> = {
 
   'analytics.eyebrow': 'Analizė',
   'analytics.tab.performance': 'Rodikliai',
+  'analytics.tab.services': 'Paslaugos',
+  'analytics.tab.staff': 'Darbuotojai',
   'analytics.tab.products': 'Produktai',
   'analytics.products.title': 'Produktai ir atsargos',
   'analytics.products.subtitle': 'Mažmeninio katalogo apžvalga',

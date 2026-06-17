@@ -51,7 +51,7 @@ export function AnalyticsPage() {
 
   const [granularity, setGranularity] = useState<Granularity>('month');
   const [anchor, setAnchor] = useState<Date>(() => new Date());
-  const [tab, setTab] = useState<'performance' | 'products'>('performance');
+  const [tab, setTab] = useState<'performance' | 'services' | 'staff' | 'products'>('performance');
 
   const { data: appointments = [] } = useQuery({
     queryKey: ['appointments', officeId],
@@ -394,7 +394,7 @@ export function AnalyticsPage() {
 
       {/* ─── View toggle: performance vs product inventory ── */}
       <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-card p-1 print:hidden">
-        {(['performance', 'products'] as const).map(k => (
+        {(['performance', 'services', 'staff', 'products'] as const).map(k => (
           <button
             key={k}
             onClick={() => setTab(k)}
@@ -599,9 +599,8 @@ export function AnalyticsPage() {
         </div>
       </div>
 
-      {/* ─── Monthly trend + top services ─── */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-5">
+      {/* ─── Monthly revenue trend ─── */}
+      <div className="rounded-xl border border-border bg-card p-5">
           <SectionHeading size="sm" title={t('analytics.revenueTrend')} subtitle={t('analytics.monthlyTotal')} />
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={monthlyRevenue} margin={{ top: 4, right: 0, left: -8, bottom: 0 }}>
@@ -623,8 +622,12 @@ export function AnalyticsPage() {
               />
             </LineChart>
           </ResponsiveContainer>
-        </div>
+      </div>
+      </>
+      )}
 
+      {/* ─── Services ─── */}
+      {tab === 'services' && (
         <div className="rounded-xl border border-border bg-card p-5">
           <SectionHeading size="sm" title={t('analytics.topServices')} subtitle={`${services.length} ${t('analytics.servicesAvailable')}`} />
           {topServices.length === 0 ? (
@@ -661,9 +664,10 @@ export function AnalyticsPage() {
             </ul>
           )}
         </div>
-      </div>
+      )}
 
-      {/* ─── Staff performance ─── */}
+      {/* ─── Staff ─── */}
+      {tab === 'staff' && (
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
           <div>
@@ -727,7 +731,6 @@ export function AnalyticsPage() {
           </table>
         )}
       </div>
-      </>
       )}
 
       {/* ─── Products & inventory ─── */}
