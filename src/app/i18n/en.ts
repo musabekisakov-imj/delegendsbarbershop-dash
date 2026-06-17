@@ -1091,6 +1091,7 @@ export const en = {
   'dateRange.last365d': 'Last 365 days',
   'dateRange.custom': 'Custom',
   'period.day': 'Day',
+  'period.week': 'Week',
   'period.month': 'Month',
   'period.year': 'Year',
   'period.granularity': 'Period type',

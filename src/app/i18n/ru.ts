@@ -1090,6 +1090,7 @@ export const ru: Record<TranslationKey, string> = {
   'dateRange.last365d': 'Последние 365 дней',
   'dateRange.custom': 'Произвольный',
   'period.day': 'День',
+  'period.week': 'Неделя',
   'period.month': 'Месяц',
   'period.year': 'Год',
   'period.granularity': 'Тип периода',

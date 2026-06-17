@@ -1085,6 +1085,7 @@ export const lt: Record<TranslationKey, string> = {
   'dateRange.last365d': 'Paskutinės 365 d.',
   'dateRange.custom': 'Pasirinktas',
   'period.day': 'Diena',
+  'period.week': 'Savaitė',
   'period.month': 'Mėnuo',
   'period.year': 'Metai',
   'period.granularity': 'Periodo tipas',

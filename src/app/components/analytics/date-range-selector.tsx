@@ -20,11 +20,12 @@ interface PeriodNavigatorProps {
 
 const GRAN_KEY: Record<Granularity, TranslationKey> = {
   day: 'period.day',
+  week: 'period.week',
   month: 'period.month',
   year: 'period.year',
 };
 
-const GRANULARITIES: Granularity[] = ['day', 'month', 'year'];
+const GRANULARITIES: Granularity[] = ['day', 'week', 'month', 'year'];
 
 export function PeriodNavigator({
   granularity, anchor, onGranularityChange, onAnchorChange, locale,
@@ -85,7 +86,7 @@ export function PeriodNavigator({
             </button>
           </PopoverTrigger>
           <PopoverContent align="end" sideOffset={6} className="w-auto p-3">
-            {granularity === 'day' && (
+            {(granularity === 'day' || granularity === 'week') && (
               <DatePickerPopover value={anchor} onChange={pick} locale={locale} />
             )}
             {granularity === 'month' && (
