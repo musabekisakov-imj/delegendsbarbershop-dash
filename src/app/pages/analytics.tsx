@@ -16,10 +16,10 @@ import { cn } from '../components/ui/utils';
 import { useT, useLanguage } from '../hooks/use-t';
 import { formatPrice } from '../lib/format';
 import { aptTotal } from '../lib/overview';
-import { DateRangeSelector } from '../components/analytics/date-range-selector';
+import { PeriodNavigator } from '../components/analytics/date-range-selector';
 import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
-import { getPresetRange, getPreviousRange, getGranularity } from '../lib/date-range';
-import type { RangePreset } from '../lib/date-range';
+import { getPeriodRange, getPreviousPeriod, bucketUnit, formatPeriodLabel } from '../lib/date-range';
+import type { Granularity } from '../lib/date-range';
 import type { TranslationKey } from '../i18n';
 
 // Resolved CSS colours aligned with the STATUS_DOT semantic palette in tokens.ts.
@@ -41,15 +41,6 @@ const STATUS_LABEL_KEY: Record<string, TranslationKey> = {
   cancelled:  'analytics.status.cancelled',
 };
 
-const PRESET_KEY: Record<RangePreset, TranslationKey> = {
-  'today':      'dateRange.today',
-  'this-week':  'dateRange.thisWeek',
-  'this-month': 'dateRange.thisMonth',
-  '90d':        'dateRange.last90d',
-  '12m':        'dateRange.last12m',
-  '365d':       'dateRange.last365d',
-};
-
 const LOCALE_MAP: Record<string, string> = { en: 'en-US', ru: 'ru-RU', lt: 'lt-LT' };
 
 export function AnalyticsPage() {
@@ -58,7 +49,8 @@ export function AnalyticsPage() {
   const intlLocale = LOCALE_MAP[language] ?? 'en-US';
   const officeId = useOfficeStore(s => s.currentOfficeId);
 
-  const [preset, setPreset] = useState<RangePreset>('this-month');
+  const [granularity, setGranularity] = useState<Granularity>('month');
+  const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [tab, setTab] = useState<'performance' | 'products'>('performance');
 
   const { data: appointments = [] } = useQuery({
@@ -84,10 +76,10 @@ export function AnalyticsPage() {
 
   // ── Date range derivation ──
   const { rangeStart, rangeEnd, compStart } = useMemo(() => {
-    const range = getPresetRange(preset);
-    const prev = getPreviousRange(range);
+    const range = getPeriodRange(granularity, anchor);
+    const prev = getPreviousPeriod(granularity, anchor);
     return { rangeStart: range.start, rangeEnd: range.end, compStart: prev.start };
-  }, [preset]);
+  }, [granularity, anchor]);
 
   // ── Revenue & core metrics — scoped to selected range ──
   const metrics = useMemo(() => {
@@ -136,13 +128,9 @@ export function AnalyticsPage() {
   // ≤2 days → hourly, ≤120 days → daily, else monthly. One aggregation
   // pass into a Map keyed by the bucket's format string, then we walk the
   // interval so empty buckets still render as zero-height bars.
-  const granularity = useMemo(
-    () => getGranularity({ start: rangeStart, end: rangeEnd, preset }),
-    [rangeStart, rangeEnd, preset],
-  );
-
-  const bucketFmt = granularity === 'hour' ? 'yyyy-MM-dd-HH'
-    : granularity === 'day' ? 'yyyy-MM-dd' : 'yyyy-MM';
+  const unit = bucketUnit(granularity);
+  const bucketFmt = unit === 'hour' ? 'yyyy-MM-dd-HH'
+    : unit === 'day' ? 'yyyy-MM-dd' : 'yyyy-MM';
 
   const chartData = useMemo(() => {
     const rs = rangeStart.getTime();
@@ -158,20 +146,20 @@ export function AnalyticsPage() {
     });
 
     const interval = { start: rangeStart, end: rangeEnd };
-    const points = granularity === 'hour' ? eachHourOfInterval(interval)
-      : granularity === 'day' ? eachDayOfInterval(interval)
+    const points = unit === 'hour' ? eachHourOfInterval(interval)
+      : unit === 'day' ? eachDayOfInterval(interval)
       : eachMonthOfInterval(interval);
 
     return points.map(p => {
       const dateKey = format(p, bucketFmt);
-      const date = granularity === 'hour'
+      const date = unit === 'hour'
         ? format(p, 'HH:00')
-        : granularity === 'month'
+        : unit === 'month'
         ? new Intl.DateTimeFormat(intlLocale, { month: 'short', year: '2-digit' }).format(p)
         : new Intl.DateTimeFormat(intlLocale, { month: 'short', day: 'numeric' }).format(p);
       return { date, dateKey, revenue: revByKey.get(dateKey) ?? 0 };
     });
-  }, [appointments, rangeStart, rangeEnd, granularity, bucketFmt, intlLocale]);
+  }, [appointments, rangeStart, rangeEnd, unit, bucketFmt, intlLocale]);
 
   // The bucket that contains "now" — marked on the bar chart with a reference line.
   const nowKey = useMemo(() => format(new Date(), bucketFmt), [bucketFmt]);
@@ -341,10 +329,10 @@ export function AnalyticsPage() {
   const offices = useOfficeStore(s => s.offices);
   const currentOffice = offices.find(o => o.id === officeId);
 
-  const rangeLabel = t(PRESET_KEY[preset]);
-  const chartTitleKey: TranslationKey = granularity === 'hour'
+  const rangeLabel = formatPeriodLabel(granularity, anchor, intlLocale);
+  const chartTitleKey: TranslationKey = unit === 'hour'
     ? 'analytics.hourlyRevenue'
-    : granularity === 'month'
+    : unit === 'month'
     ? 'analytics.monthlyRevenue'
     : 'analytics.dailyRevenue';
   const generatedAt = new Intl.DateTimeFormat(intlLocale, { dateStyle: 'long', timeStyle: 'short' }).format(new Date());
@@ -384,7 +372,13 @@ export function AnalyticsPage() {
         title={t('analytics.heroTitle')}
         action={(
           <div className="flex items-center gap-2 print:hidden">
-            <DateRangeSelector value={preset} onChange={setPreset} />
+            <PeriodNavigator
+              granularity={granularity}
+              anchor={anchor}
+              onGranularityChange={setGranularity}
+              onAnchorChange={setAnchor}
+              locale={intlLocale}
+            />
             <button
               type="button"
               onClick={handlePrint}

@@ -1084,6 +1084,13 @@ export const lt: Record<TranslationKey, string> = {
   'dateRange.last12m': 'Paskutiniai 12 mėn.',
   'dateRange.last365d': 'Paskutinės 365 d.',
   'dateRange.custom': 'Pasirinktas',
+  'period.day': 'Diena',
+  'period.month': 'Mėnuo',
+  'period.year': 'Metai',
+  'period.granularity': 'Periodo tipas',
+  'period.prev': 'Ankstesnis periodas',
+  'period.next': 'Kitas periodas',
+  'period.pick': 'Pasirinkti periodą',
 
   'analytics.eyebrow': 'Analizė',
   'analytics.tab.performance': 'Rodikliai',

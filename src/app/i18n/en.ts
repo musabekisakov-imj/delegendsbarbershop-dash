@@ -1090,6 +1090,13 @@ export const en = {
   'dateRange.last12m': 'Last 12 months',
   'dateRange.last365d': 'Last 365 days',
   'dateRange.custom': 'Custom',
+  'period.day': 'Day',
+  'period.month': 'Month',
+  'period.year': 'Year',
+  'period.granularity': 'Period type',
+  'period.prev': 'Previous period',
+  'period.next': 'Next period',
+  'period.pick': 'Pick a period',
 
   // ─── Analytics page ───────────────────────────────────────
   'analytics.eyebrow': 'Analytics',

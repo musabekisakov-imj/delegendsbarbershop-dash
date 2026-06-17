@@ -1089,6 +1089,13 @@ export const ru: Record<TranslationKey, string> = {
   'dateRange.last12m': 'Последние 12 месяцев',
   'dateRange.last365d': 'Последние 365 дней',
   'dateRange.custom': 'Произвольный',
+  'period.day': 'День',
+  'period.month': 'Месяц',
+  'period.year': 'Год',
+  'period.granularity': 'Тип периода',
+  'period.prev': 'Предыдущий период',
+  'period.next': 'Следующий период',
+  'period.pick': 'Выбрать период',
 
   'analytics.eyebrow': 'Аналитика',
   'analytics.tab.performance': 'Показатели',
