@@ -1098,6 +1098,7 @@ export const ru: Record<TranslationKey, string> = {
   'period.pick': 'Выбрать период',
 
   'analytics.eyebrow': 'Аналитика',
+  'analytics.asOf': 'Обновлено',
   'analytics.tab.performance': 'Показатели',
   'analytics.tab.services': 'Услуги',
   'analytics.tab.staff': 'Сотрудники',

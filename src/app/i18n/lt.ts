@@ -1093,6 +1093,7 @@ export const lt: Record<TranslationKey, string> = {
   'period.pick': 'Pasirinkti periodą',
 
   'analytics.eyebrow': 'Analizė',
+  'analytics.asOf': 'Atnaujinta',
   'analytics.tab.performance': 'Rodikliai',
   'analytics.tab.services': 'Paslaugos',
   'analytics.tab.staff': 'Darbuotojai',

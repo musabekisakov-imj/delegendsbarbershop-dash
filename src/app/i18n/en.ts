@@ -1100,6 +1100,7 @@ export const en = {
 
   // ─── Analytics page ───────────────────────────────────────
   'analytics.eyebrow': 'Analytics',
+  'analytics.asOf': 'Updated',
   'analytics.tab.performance': 'Performance',
   'analytics.tab.services': 'Services',
   'analytics.tab.staff': 'Staff',

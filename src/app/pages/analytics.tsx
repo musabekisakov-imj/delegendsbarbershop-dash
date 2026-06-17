@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { appointmentsApi, clientsApi, staffApi, servicesApi, productsApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
 import { SectionHeading } from '../components/shared/section-heading';
-import { ArrowTrendingUpIcon, MapPinIcon, PrinterIcon } from '@heroicons/react/24/outline';
+import { ArrowTrendingUpIcon, MapPinIcon, PrinterIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, ReferenceLine,
@@ -17,7 +17,7 @@ import { useT, useLanguage } from '../hooks/use-t';
 import { formatPrice } from '../lib/format';
 import { aptTotal } from '../lib/overview';
 import { PeriodNavigator } from '../components/analytics/date-range-selector';
-import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
+import { PageHeader } from '../components/shared/page-header';
 import { getPeriodRange, getPreviousPeriod, bucketUnit, formatPeriodLabel } from '../lib/date-range';
 import type { Granularity } from '../lib/date-range';
 import type { TranslationKey } from '../i18n';
@@ -336,6 +336,7 @@ export function AnalyticsPage() {
     ? 'analytics.monthlyRevenue'
     : 'analytics.dailyRevenue';
   const generatedAt = new Intl.DateTimeFormat(intlLocale, { dateStyle: 'long', timeStyle: 'short' }).format(new Date());
+  const asOf = new Intl.DateTimeFormat(intlLocale, { hour: '2-digit', minute: '2-digit' }).format(new Date());
   const handlePrint = () => window.print();
 
   return (
@@ -359,14 +360,24 @@ export function AnalyticsPage() {
           <>
             <span>{t('analytics.eyebrow')}</span>
             {currentOffice && (
-              <>
-                <PageHeaderDivider />
-                <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
-                  <MapPinIcon className="h-3 w-3" />
-                  {currentOffice.name}
-                </span>
-              </>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] font-medium normal-case tracking-normal text-foreground shadow-sm">
+                <MapPinIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                {currentOffice.name}
+              </span>
             )}
+            {tab !== 'products' && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium normal-case tracking-normal text-muted-foreground capitalize">
+                <CalendarDaysIcon className="h-3.5 w-3.5" />
+                {rangeLabel}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5 normal-case tracking-normal font-medium text-muted-foreground">
+              <span className="relative flex h-1.5 w-1.5" aria-hidden>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500/70" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              </span>
+              {t('analytics.asOf')} {asOf}
+            </span>
           </>
         )}
         title={t('analytics.heroTitle')}
