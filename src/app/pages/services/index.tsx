@@ -11,6 +11,7 @@ import {
   TagIcon,
   Squares2X2Icon,
   MapPinIcon,
+  CurrencyEuroIcon,
   Cog6ToothIcon,
   ArrowDownTrayIcon,
   ScissorsIcon,
@@ -27,7 +28,7 @@ import { usePriceFormatter } from '../../hooks/use-price-formatter';
 import { CardSkeleton } from '../../components/shared/page-skeleton';
 import { EmptyState } from '../../components/shared/empty-state';
 import { BulkActionBar } from '../../components/shared/bulk-action-bar';
-import { PageHeader, PageHeaderDivider } from '../../components/shared/page-header';
+import { PageHeader } from '../../components/shared/page-header';
 import { FilterPill } from '../../components/shared/filter-pill';
 import { ViewToggle, type ViewMode } from '../../components/shared/view-toggle';
 import { exportCsv } from '../../lib/csv';
@@ -191,6 +192,10 @@ export function ServicesPage() {
     return { min: Math.min(...prices), max: Math.max(...prices) };
   }, [services]);
 
+  const categoryCountLabel = categories.length === 1
+    ? t('services.hero.categoryOne')
+    : t('services.hero.categoryMany');
+
   const isFiltering = debouncedSearch.trim() !== '' || categoryFilter !== 'all';
 
   // ─── Editor helpers ───────────────────────────────────────
@@ -324,34 +329,40 @@ export function ServicesPage() {
       {/* ─── Editorial hero ──────────────────────────────── */}
       <PageHeader
         eyebrow={(
-          <>
-            <span>{t('services.title')}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex h-8 items-center rounded-full border border-primary/20 bg-primary/10 px-3 text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+              {t('services.title')}
+            </span>
             {currentOffice && (
-              <>
-                <PageHeaderDivider />
-                <span className="inline-flex items-center gap-1 normal-case tracking-normal font-medium">
-                  <MapPinIcon className="h-3 w-3" />
+              <span className="inline-flex h-8 items-center gap-2 rounded-full border border-border bg-card px-3 text-[12px] font-semibold normal-case tracking-normal text-foreground/75 shadow-sm shadow-black/[0.02]">
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-muted text-muted-foreground">
+                  <MapPinIcon className="h-3.5 w-3.5" />
+                </span>
+                <span className="max-w-[11rem] truncate">
                   {currentOffice.name}
                 </span>
-              </>
+              </span>
             )}
             {categories.length > 0 && (
-              <>
-                <PageHeaderDivider />
-                <span className="normal-case tracking-normal tabular-nums">
-                  {categories.length} {categories.length === 1 ? t('services.hero.categoryOne') : t('services.hero.categoryMany')}
+              <span className="inline-flex h-8 items-center gap-2 rounded-full border border-border bg-card px-3 text-[12px] font-semibold normal-case tracking-normal text-foreground/75 shadow-sm shadow-black/[0.02]">
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-muted text-muted-foreground">
+                  <TagIcon className="h-3.5 w-3.5" />
                 </span>
-              </>
+                <span className="tabular-nums">{categories.length}</span>
+                <span>{categoryCountLabel}</span>
+              </span>
             )}
             {priceRange && (
-              <>
-                <PageHeaderDivider />
-                <span className="normal-case tracking-normal tabular-nums">
+              <span className="inline-flex h-8 items-center gap-2 rounded-full border border-border bg-card px-3 text-[12px] font-semibold normal-case tracking-normal text-foreground/75 shadow-sm shadow-black/[0.02]">
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-muted text-muted-foreground">
+                  <CurrencyEuroIcon className="h-3.5 w-3.5" />
+                </span>
+                <span className="tabular-nums">
                   {fmt(priceRange.min)}–{fmt(priceRange.max)}
                 </span>
-              </>
+              </span>
             )}
-          </>
+          </div>
         )}
         title={(
           <span className="tabular-nums">
@@ -570,6 +581,7 @@ export function ServicesPage() {
                   onEdit={() => openEdit(svc)}
                   onDelete={() => handleDelete(svc)}
                   onDuplicate={() => handleDuplicate(svc)}
+                  onBook={() => navigate(`/bookings/new?serviceId=${svc.id}`)}
                 />
               ))}
             </div>

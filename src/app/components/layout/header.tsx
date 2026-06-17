@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
 import {
   HomeIcon, CalendarIcon, ClipboardDocumentListIcon, UserGroupIcon, UsersIcon,
-  ScissorsIcon, Cog6ToothIcon, QuestionMarkCircleIcon, ChartBarIcon, ShieldCheckIcon,
+  ScissorsIcon, ShoppingBagIcon, Cog6ToothIcon, QuestionMarkCircleIcon, ChartBarIcon, ShieldCheckIcon,
   Bars3Icon, XMarkIcon, SunIcon, MoonIcon, CheckIcon,
-  ArrowRightStartOnRectangleIcon, UserCircleIcon, ChevronDownIcon,
+  ArrowRightStartOnRectangleIcon, UserCircleIcon, ChevronDownIcon, EllipsisHorizontalIcon,
 } from '@heroicons/react/24/outline';
 import { useTheme } from 'next-themes';
 import { cn } from '../ui/utils';
@@ -15,15 +16,17 @@ import { OfficeSwitcher } from '../office-switcher';
 import { GlobalSearch } from '../global-search';
 import { NotificationsBell } from '../notifications-bell';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { accountsApi, staffApi } from '../../lib/api';
 import type { Language, Permission, StaffRole } from '../../types';
 import type { TranslationKey } from '../../i18n';
 
 // Shared shell for the three container-style controls (location, search, language).
 // Single source of truth — edit here to resize the whole cluster at once.
 export const CONTAINER_SHELL =
-  'inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card/60 px-2.5 ' +
-  'text-[13px] text-foreground transition-colors ' +
-  'hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50';
+  'inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200/85 bg-white px-3.5 ' +
+  'text-[14px] font-bold text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_24px_-22px_rgba(15,23,42,0.65)] transition-all duration-200 ' +
+  'hover:-translate-y-px hover:border-[#2563EB]/30 hover:bg-[#FBFCFF] hover:text-slate-950 hover:shadow-[0_14px_30px_-24px_rgba(37,99,235,0.65)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/28 ' +
+  'dark:border-white/10 dark:bg-white/[0.045] dark:text-slate-100 dark:hover:bg-white/[0.08] dark:hover:text-white';
 
 // Map each role to its translation key so the user-menu badge localizes correctly.
 const ROLE_TRANSLATION_KEY: Record<StaffRole, TranslationKey> = {
@@ -42,10 +45,19 @@ const NAV: { key: TranslationKey; href: string; icon: typeof HomeIcon; requires?
   { key: 'nav.clients',   href: '/clients',   icon: UserGroupIcon, requires: 'clients.view' },
   { key: 'nav.staff',     href: '/staff',     icon: UsersIcon,    requires: 'staff.view' },
   { key: 'nav.services',  href: '/services',  icon: ScissorsIcon, requires: 'services.view' },
+  { key: 'nav.products',  href: '/products',  icon: ShoppingBagIcon, requires: 'services.view' },
   { key: 'nav.accounts',  href: '/accounts',  icon: ShieldCheckIcon, requires: 'accounts.view' },
   { key: 'nav.settings',  href: '/settings',  icon: Cog6ToothIcon, requires: 'settings.view' },
   { key: 'nav.help',      href: '/help',      icon: QuestionMarkCircleIcon },
 ];
+
+const PRIMARY_NAV_KEYS = new Set<TranslationKey>([
+  'nav.overview',
+  'nav.calendar',
+  'nav.bookings',
+  'nav.clients',
+  'nav.services',
+]);
 
 const LANGUAGES: { code: Language; flag: string; label: string; short: string }[] = [
   { code: 'en', flag: '🇺🇸', label: 'English',  short: 'EN' },
@@ -68,8 +80,26 @@ export function Header() {
   const logout = useAuthStore(s => s.logout);
   const { can } = usePermission();
   const visibleNav = NAV.filter(item => !item.requires || can(item.requires));
+  const primaryNav = visibleNav.filter(item => PRIMARY_NAV_KEYS.has(item.key));
+  const moreNav = visibleNav.filter(item => !PRIMARY_NAV_KEYS.has(item.key));
   const [mobileOpen, setMobileOpen] = useState(false);
   const currentLang = LANGUAGES.find(l => l.code === language) ?? LANGUAGES[0];
+  const { data: account } = useQuery({
+    queryKey: ['account', user?.id],
+    queryFn: () => accountsApi.getById(user!.id),
+    enabled: !!user?.id,
+    staleTime: 60_000,
+  });
+  const { data: staff = [] } = useQuery({
+    queryKey: ['staff-all'],
+    queryFn: () => staffApi.getAll(),
+    enabled: !!user?.id,
+    staleTime: 60_000,
+  });
+  const linkedStaff = account?.staffId
+    ? staff.find(member => member.id === account.staffId)
+    : undefined;
+  const avatarUrl = user?.avatarUrl || account?.avatarUrl || linkedStaff?.avatarUrl;
 
   // Close mobile menu on route change
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
@@ -82,10 +112,13 @@ export function Header() {
     logout();
     navigate('/login');
   };
+  const isRouteActive = (href: string) =>
+    location.pathname === href || location.pathname.startsWith(`${href}/`);
+  const activeMoreItem = moreNav.find(item => isRouteActive(item.href));
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-card">
-      <div className="flex h-14 items-center gap-2 px-4 md:px-6">
+    <header className="sticky top-0 z-40 border-b border-border/75 bg-card/92 shadow-[0_1px_0_rgba(255,255,255,0.72),0_12px_30px_-28px_rgba(15,23,42,0.5)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/86 dark:shadow-[0_1px_0_rgba(255,255,255,0.04),0_14px_36px_-30px_rgba(0,0,0,0.85)]">
+      <div className="flex h-[66px] items-center gap-2 px-3 md:px-5">
         {/* Brand — emblem mark + two-line logotype. Same asset as the favicon
             and route loader, so the brand reads consistently everywhere. */}
         <NavLink to="/overview" className="group flex items-center gap-2.5 shrink-0">
@@ -105,37 +138,120 @@ export function Header() {
           </div>
         </NavLink>
 
-        {/* Desktop nav (inline) — overflow-hidden + min-w-0 prevents
-            children with whitespace-nowrap from bleeding into the
-            right-side utilities. Labels appear ONLY at 2xl (≥1536px)
-            because below that, 10 labels + utilities don't fit cleanly. */}
+        {/* Desktop nav: segmented rail with open gaps between page pills.
+            Active route gets the filled inner pill; inactive routes stay light,
+            scan-friendly, and keep their icon in a small global circle. */}
         <nav
-          className="hidden md:flex items-center gap-0.5 flex-1 min-w-0 ml-2 overflow-hidden"
+          className="hidden md:flex flex-1 min-w-0 ml-2 overflow-hidden"
           aria-label="Primary navigation"
         >
-          {visibleNav.map(item => (
-            <NavLink
-              key={item.key}
-              to={item.href}
-              className={({ isActive }) =>
-                cn(
-                  'group relative inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
-                  isActive
-                    ? 'bg-primary/10 text-primary font-semibold'
-                    : 'font-medium text-muted-foreground hover:bg-accent hover:text-foreground',
-                )
-              }
-              title={t(item.key)}
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                  {/* Label only at 2xl+ — at smaller widths, icon + tooltip */}
-                  <span className="hidden 2xl:inline">{t(item.key)}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
+          <div className="flex max-w-full items-center gap-1.5 overflow-hidden rounded-full border border-slate-200/80 bg-slate-100/72 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/[0.045] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+            {primaryNav.map(item => (
+              <NavLink
+                key={item.key}
+                to={item.href}
+                className={({ isActive }) =>
+                  cn(
+                    'group relative inline-flex h-11 shrink-0 items-center gap-2 rounded-full px-2.5 text-[14px] transition-all duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/30',
+                    isActive
+                      ? 'bg-[#2563EB] text-white font-black shadow-[0_10px_22px_-14px_rgba(37,99,235,0.9),inset_0_1px_0_rgba(255,255,255,0.22)]'
+                      : 'font-bold text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-[0_1px_2px_rgba(15,23,42,0.06)] dark:text-slate-300 dark:hover:bg-white/[0.08] dark:hover:text-white',
+                  )
+                }
+                title={t(item.key)}
+              >
+                {({ isActive }) => (
+                  <>
+                    <span
+                      className={cn(
+                        'grid h-7 w-7 place-items-center rounded-full transition-colors',
+                        isActive
+                          ? 'bg-white/18 text-white'
+                          : 'bg-white text-slate-500 ring-1 ring-slate-200/80 group-hover:text-[#2563EB] dark:bg-white/[0.07] dark:text-slate-300 dark:ring-white/10',
+                      )}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                    </span>
+                    <span className={cn('hidden 2xl:inline', isActive && 'lg:inline')}>
+                      {t(item.key)}
+                    </span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+            {moreNav.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    className={cn(
+                      'group relative inline-flex h-11 shrink-0 items-center gap-2 rounded-full px-2.5 text-[14px] transition-all duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/30',
+                      activeMoreItem
+                        ? 'bg-[#2563EB] text-white font-black shadow-[0_10px_22px_-14px_rgba(37,99,235,0.9),inset_0_1px_0_rgba(255,255,255,0.22)]'
+                        : 'font-bold text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-[0_1px_2px_rgba(15,23,42,0.06)] dark:text-slate-300 dark:hover:bg-white/[0.08] dark:hover:text-white',
+                    )}
+                    aria-label={activeMoreItem ? t(activeMoreItem.key) : t('nav.more')}
+                    title={activeMoreItem ? t(activeMoreItem.key) : t('nav.more')}
+                    type="button"
+                  >
+                    <span
+                      className={cn(
+                        'grid h-7 w-7 place-items-center rounded-full transition-colors',
+                        activeMoreItem
+                          ? 'bg-white/18 text-white'
+                          : 'bg-white text-slate-500 ring-1 ring-slate-200/80 group-hover:text-[#2563EB] dark:bg-white/[0.07] dark:text-slate-300 dark:ring-white/10',
+                      )}
+                    >
+                      {activeMoreItem ? (
+                        <activeMoreItem.icon className="h-4 w-4 shrink-0" />
+                      ) : (
+                        <EllipsisHorizontalIcon className="h-4 w-4 shrink-0" />
+                      )}
+                    </span>
+                    <span className={cn('hidden xl:inline', activeMoreItem && 'lg:inline')}>
+                      {activeMoreItem ? t(activeMoreItem.key) : t('nav.more')}
+                    </span>
+                    <ChevronDownIcon
+                      className={cn(
+                        'h-3.5 w-3.5 shrink-0',
+                        activeMoreItem ? 'text-white/80' : 'text-slate-400 dark:text-slate-500',
+                      )}
+                    />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-60 p-1.5">
+                  {moreNav.map(item => {
+                    const isActive = isRouteActive(item.href);
+                    return (
+                      <button
+                        key={item.key}
+                        onClick={() => navigate(item.href)}
+                        className={cn(
+                          'flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/30',
+                          isActive
+                            ? 'bg-[#2563EB] font-bold text-white shadow-[0_10px_18px_-14px_rgba(37,99,235,0.9)]'
+                            : 'font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-white/[0.08]',
+                        )}
+                        type="button"
+                      >
+                        <span
+                          className={cn(
+                            'grid h-8 w-8 place-items-center rounded-full',
+                            isActive
+                              ? 'bg-white/18 text-white'
+                              : 'bg-slate-100 text-slate-500 dark:bg-white/[0.07] dark:text-slate-300',
+                          )}
+                        >
+                          <item.icon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1 text-left">{t(item.key)}</span>
+                        {isActive && <CheckIcon className="h-4 w-4 shrink-0 text-white" />}
+                      </button>
+                    );
+                  })}
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
         </nav>
 
         {/* Push utilities right on mobile where nav is hidden */}
@@ -151,8 +267,8 @@ export function Header() {
           <Popover>
             <PopoverTrigger asChild>
               <button className={CONTAINER_SHELL} aria-label={t('lang.change')}>
-                <span className="font-medium">{currentLang.label}</span>
-                <ChevronDownIcon className="h-3.5 w-3.5 text-muted-foreground/70" />
+                <span className="font-black">{currentLang.label}</span>
+                <ChevronDownIcon className="h-4 w-4 text-slate-400 dark:text-slate-400" />
               </button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-48 p-1">
@@ -161,7 +277,7 @@ export function Header() {
           </Popover>
 
           {/* Vertical divider */}
-          <span aria-hidden className="h-5 w-px bg-border/80" />
+          <span aria-hidden className="mx-1 h-7 w-px bg-slate-200 dark:bg-white/10" />
 
           {/* Group B — icon buttons */}
           <ThemeToggle />
@@ -171,10 +287,19 @@ export function Header() {
           <Popover>
             <PopoverTrigger asChild>
               <button
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/85 bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_24px_-22px_rgba(15,23,42,0.65)] transition-all duration-200 hover:-translate-y-px hover:border-[#2563EB]/30 hover:bg-[#FBFCFF] hover:shadow-[0_14px_30px_-24px_rgba(37,99,235,0.65)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/28 dark:border-white/10 dark:bg-white/[0.045] dark:text-white dark:hover:bg-white/[0.08]"
                 aria-label={t('user.menu')}
               >
-                <span className="text-[12px] font-semibold tracking-tight">{initials}</span>
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={user ? `${user.firstName} ${user.lastName}` : ''}
+                    className="h-8 w-8 rounded-full object-cover ring-2 ring-white dark:ring-[#0B1220]"
+                    draggable={false}
+                  />
+                ) : (
+                  <span className="text-[12px] font-black tracking-tight">{initials}</span>
+                )}
               </button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-60 p-1">
@@ -210,7 +335,7 @@ export function Header() {
         {/* Mobile hamburger */}
         <button
           onClick={() => setMobileOpen(v => !v)}
-          className="md:hidden rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          className="md:hidden rounded-lg border border-border/70 bg-background/45 p-2 text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/45"
           aria-label="Toggle menu"
           aria-expanded={mobileOpen}
         >
@@ -220,7 +345,7 @@ export function Header() {
 
       {/* Mobile nav panel */}
       {mobileOpen && (
-        <nav className="md:hidden border-t border-border/70" aria-label="Primary navigation">
+        <nav className="md:hidden border-t border-border/70 bg-card/96 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.45)]" aria-label="Primary navigation">
           <ul className="flex flex-col px-2 py-2 gap-0.5">
             {visibleNav.map(item => (
               <li key={item.key}>
@@ -230,13 +355,17 @@ export function Header() {
                     cn(
                       'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors',
                       isActive
-                        ? 'bg-primary/10 text-primary font-semibold'
-                        : 'font-medium text-muted-foreground hover:bg-accent hover:text-foreground',
+                        ? 'bg-[#2563EB] text-white font-semibold shadow-[0_10px_24px_-14px_rgba(37,99,235,0.95),inset_0_1px_0_rgba(255,255,255,0.22)] dark:bg-[#2563EB] dark:text-white'
+                        : 'font-medium text-muted-foreground hover:bg-background/70 hover:text-foreground',
                     )
                   }
                 >
-                  <item.icon className="h-5 w-5" />
-                  <span>{t(item.key)}</span>
+                  {({ isActive }) => (
+                    <>
+                      <item.icon className={cn('h-5 w-5', isActive ? 'text-white' : '')} />
+                      <span>{t(item.key)}</span>
+                    </>
+                  )}
                 </NavLink>
               </li>
             ))}
@@ -263,7 +392,7 @@ function ThemeToggle() {
   return (
     <button
       onClick={() => setTheme(next)}
-      className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+      className="relative inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200/85 bg-white text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_24px_-22px_rgba(15,23,42,0.65)] transition-all duration-200 hover:-translate-y-px hover:border-[#2563EB]/30 hover:bg-[#FBFCFF] hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/28 dark:border-white/10 dark:bg-white/[0.045] dark:text-slate-300 dark:hover:bg-white/[0.08] dark:hover:text-white"
       aria-label={label}
       title={label}
     >

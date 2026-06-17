@@ -17,6 +17,7 @@ const NewBookingPage = lazy(() => import('./pages/new-booking').then(m => ({ def
 const ClientsPage = lazy(() => import('./pages/clients').then(m => ({ default: m.ClientsPage })));
 const StaffPage = lazy(() => import('./pages/staff').then(m => ({ default: m.StaffPage })));
 const ServicesPage = lazy(() => import('./pages/services').then(m => ({ default: m.ServicesPage })));
+const ProductsPage = lazy(() => import('./pages/products').then(m => ({ default: m.ProductsPage })));
 const SettingsPage = lazy(() => import('./pages/settings').then(m => ({ default: m.SettingsPage })));
 const HelpPage = lazy(() => import('./pages/help').then(m => ({ default: m.HelpPage })));
 const AnalyticsPage = lazy(() => import('./pages/analytics').then(m => ({ default: m.AnalyticsPage })));
@@ -58,6 +59,7 @@ export const router = createBrowserRouter([
       { path: 'clients', element: page(ClientsPage) },
       { path: 'staff', element: page(StaffPage) },
       { path: 'services', element: page(ServicesPage) },
+      { path: 'products', element: page(ProductsPage) },
       { path: 'accounts', element: page(AccountsPage) },
       { path: 'profile', element: page(ProfilePage) },
       { path: 'settings', element: page(SettingsPage) },

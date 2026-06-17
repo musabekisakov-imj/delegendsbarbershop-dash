@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { appointmentsApi, clientsApi, staffApi, servicesApi } from '../lib/api';
+import { appointmentsApi, clientsApi, staffApi, servicesApi, productsApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
 import { SectionHeading } from '../components/shared/section-heading';
 import { ArrowTrendingUpIcon, MapPinIcon } from '@heroicons/react/24/outline';
@@ -10,11 +10,12 @@ import {
 } from 'recharts';
 import {
   format, parseISO, startOfMonth, subMonths, eachDayOfInterval, startOfDay, endOfDay,
-  subDays, differenceInDays,
+  differenceInDays,
 } from 'date-fns';
 import { cn } from '../components/ui/utils';
 import { useT, useLanguage } from '../hooks/use-t';
 import { formatPrice } from '../lib/format';
+import { aptTotal } from '../lib/overview';
 import { DateRangeSelector } from '../components/analytics/date-range-selector';
 import { PageHeader, PageHeaderDivider } from '../components/shared/page-header';
 import { getPresetRange, getPreviousRange } from '../lib/date-range';
@@ -47,12 +48,16 @@ const PRESET_KEY: Record<RangePreset, TranslationKey> = {
   'this-month': 'dateRange.thisMonth',
 };
 
+const LOCALE_MAP: Record<string, string> = { en: 'en-US', ru: 'ru-RU', lt: 'lt-LT' };
+
 export function AnalyticsPage() {
   const t = useT();
   const [language] = useLanguage();
+  const intlLocale = LOCALE_MAP[language] ?? 'en-US';
   const officeId = useOfficeStore(s => s.currentOfficeId);
 
   const [preset, setPreset] = useState<RangePreset>('30d');
+  const [tab, setTab] = useState<'performance' | 'products'>('performance');
 
   const { data: appointments = [] } = useQuery({
     queryKey: ['appointments', officeId],
@@ -69,6 +74,10 @@ export function AnalyticsPage() {
   const { data: services = [] } = useQuery({
     queryKey: ['services', officeId],
     queryFn: () => servicesApi.getAll(officeId),
+  });
+  const { data: products = [] } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => productsApi.getAll(),
   });
 
   // ── Date range derivation ──
@@ -96,8 +105,8 @@ export function AnalyticsPage() {
     const completed = rangeApts.filter(a => a.status === 'completed');
     const prevCompleted = prevApts.filter(a => a.status === 'completed');
 
-    const revenueCurrent = completed.reduce((s, a) => s + (a.service?.price ?? 0), 0);
-    const revenuePrev = prevCompleted.reduce((s, a) => s + (a.service?.price ?? 0), 0);
+    const revenueCurrent = completed.reduce((s, a) => s + aptTotal(a), 0);
+    const revenuePrev = prevCompleted.reduce((s, a) => s + aptTotal(a), 0);
     const deltaPct = revenuePrev > 0
       ? ((revenueCurrent - revenuePrev) / revenuePrev) * 100
       : revenueCurrent > 0 ? 100 : 0;
@@ -128,10 +137,14 @@ export function AnalyticsPage() {
       const key = format(day, 'yyyy-MM-dd');
       const revenue = appointments
         .filter(a => a.status === 'completed' && format(parseISO(a.startTime), 'yyyy-MM-dd') === key)
-        .reduce((sum, a) => sum + (a.service?.price ?? 0), 0);
-      return { date: format(day, 'MMM d'), revenue };
+        .reduce((sum, a) => sum + aptTotal(a), 0);
+      return {
+        date: new Intl.DateTimeFormat(intlLocale, { month: 'short', day: 'numeric' }).format(day),
+        dateKey: key,
+        revenue,
+      };
     });
-  }, [appointments, rangeStart, rangeEnd]);
+  }, [appointments, rangeStart, rangeEnd, intlLocale]);
 
   // ── Monthly revenue — always last 6 months (trend, not range-scoped) ──
   const monthlyRevenue = useMemo(() => {
@@ -140,10 +153,13 @@ export function AnalyticsPage() {
       const ym = format(m, 'yyyy-MM');
       const sum = appointments
         .filter(a => a.status === 'completed' && format(parseISO(a.startTime), 'yyyy-MM') === ym)
-        .reduce((s, a) => s + (a.service?.price ?? 0), 0);
-      return { month: format(m, 'MMM'), revenue: sum };
+        .reduce((s, a) => s + aptTotal(a), 0);
+      return {
+        month: new Intl.DateTimeFormat(intlLocale, { month: 'short' }).format(m),
+        revenue: sum,
+      };
     });
-  }, [appointments]);
+  }, [appointments, intlLocale]);
 
   // ── Top services by revenue — range-scoped ──
   const topServices = useMemo(() => {
@@ -154,7 +170,7 @@ export function AnalyticsPage() {
       .filter(a => a.status === 'completed' && parseISO(a.startTime).getTime() >= rs && parseISO(a.startTime).getTime() <= re)
       .forEach(a => {
         const existing = byService.get(a.serviceId) ?? { name: a.service?.name ?? 'Unknown', revenue: 0, count: 0 };
-        existing.revenue += a.service?.price ?? 0;
+        existing.revenue += aptTotal(a);
         existing.count += 1;
         byService.set(a.serviceId, existing);
       });
@@ -172,7 +188,7 @@ export function AnalyticsPage() {
       .forEach(a => {
         const entry = m.get(a.staffId);
         if (!entry) return;
-        entry.revenue += a.service?.price ?? 0;
+        entry.revenue += aptTotal(a);
         entry.bookings += 1;
       });
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue);
@@ -221,7 +237,7 @@ export function AnalyticsPage() {
       (a.status === 'scheduled' || a.status === 'confirmed') &&
       parseISO(a.startTime).getTime() > Date.now(),
     );
-    const potential = upcoming.reduce((s, a) => s + (a.service?.price ?? 0), 0);
+    const potential = upcoming.reduce((s, a) => s + aptTotal(a), 0);
     return { count: upcoming.length, potential };
   }, [appointments]);
 
@@ -249,7 +265,7 @@ export function AnalyticsPage() {
       const key = a.staffId;
       const name = `${a.staff?.firstName ?? ''} ${a.staff?.lastName ?? ''}`.trim() || '—';
       const prev = byStaffMap.get(key) ?? { name, revenue: 0 };
-      prev.revenue += a.service?.price ?? 0;
+      prev.revenue += aptTotal(a);
       byStaffMap.set(key, prev);
     });
     const topBarber = [...byStaffMap.values()].sort((a, b) => b.revenue - a.revenue)[0] ?? null;
@@ -262,14 +278,44 @@ export function AnalyticsPage() {
     };
   }, [appointments, rangeStart, rangeEnd]);
 
+  // ── Product inventory snapshot (catalog-wide, not range-scoped) ──
+  // Products are sold through the website, not booked — so analytics here is
+  // inventory health (value on hand, low/out-of-stock) rather than sales.
+  const productStats = useMemo(() => {
+    const units = products.reduce((s, p) => s + Math.max(p.stock, 0), 0);
+    const inventoryValue = products.reduce((s, p) => s + p.price * Math.max(p.stock, 0), 0);
+    return {
+      totalProducts: products.length,
+      units,
+      inventoryValue,
+      outOfStock: products.filter(p => p.stock <= 0).length,
+      lowStock: products.filter(p => p.stock > 0 && p.stock <= 5).length,
+    };
+  }, [products]);
+
+  const productsByCategory = useMemo(() => {
+    const cats = ['hair-care', 'face-body', 'beards', 'hairdressing-supplies'] as const;
+    return cats
+      .map(key => {
+        const inCat = products.filter(p => p.category === key);
+        return {
+          key,
+          count: inCat.length,
+          value: inCat.reduce((s, p) => s + p.price * Math.max(p.stock, 0), 0),
+        };
+      })
+      .filter(c => c.count > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [products]);
+
   const offices = useOfficeStore(s => s.offices);
   const currentOffice = offices.find(o => o.id === officeId);
 
   const rangeLabel = t(PRESET_KEY[preset]);
-  const todayLabel = format(new Date(), 'MMM d');
+  const todayKey = format(new Date(), 'yyyy-MM-dd');
 
   return (
-    <div className="space-y-6 max-w-[1600px]">
+    <div className="space-y-6">
 
       {/* ─── Eyebrow + h1 + range selector ── */}
       <PageHeader
@@ -291,6 +337,24 @@ export function AnalyticsPage() {
         action={<DateRangeSelector value={preset} onChange={setPreset} />}
       />
 
+      {/* ─── View toggle: performance vs product inventory ── */}
+      <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-card p-1">
+        {(['performance', 'products'] as const).map(k => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className={cn(
+              'rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors',
+              tab === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {t(`analytics.tab.${k}` as Parameters<typeof t>[0])}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'performance' && (
+      <>
       {/* ─── Hero financial figure + sparkline ──
           One display number anchors the page: revenue for the chosen
           period. Sparkline shows the daily shape. Delta badge compares
@@ -415,9 +479,9 @@ export function AnalyticsPage() {
                 cursor={{ fill: 'var(--accent)', opacity: 0.4 }}
               />
               <Bar dataKey="revenue" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
-              {dailyRevenue.some(d => d.date === todayLabel) && (
+              {dailyRevenue.some(d => d.dateKey === todayKey) && (
                 <ReferenceLine
-                  x={todayLabel}
+                  x={dailyRevenue.find(d => d.dateKey === todayKey)!.date}
                   stroke="var(--primary)"
                   strokeWidth={1}
                   strokeDasharray="3 3"
@@ -608,6 +672,72 @@ export function AnalyticsPage() {
           </table>
         )}
       </div>
+      </>
+      )}
+
+      {/* ─── Products & inventory ─── */}
+      {tab === 'products' && (
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="border-b border-border px-5 py-3.5">
+          <h2 className="text-sm font-bold text-foreground">{t('analytics.products.title')}</h2>
+          <p className="text-xs text-muted-foreground">{t('analytics.products.subtitle')}</p>
+        </div>
+        {products.length === 0 ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">{t('analytics.products.empty')}</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0 lg:grid-cols-5">
+              <TickerStat
+                label={t('analytics.products.inventoryValue')}
+                value={formatPrice(Math.round(productStats.inventoryValue), language)}
+                sub={`${productStats.units} ${t('analytics.products.units')}`}
+              />
+              <TickerStat label={t('analytics.products.totalProducts')} value={productStats.totalProducts.toString()} />
+              <TickerStat label={t('analytics.products.unitsInStock')} value={productStats.units.toString()} />
+              <TickerStat
+                label={t('analytics.products.lowStock')}
+                value={productStats.lowStock.toString()}
+                tone={productStats.lowStock > 0 ? 'warn' : undefined}
+              />
+              <TickerStat
+                label={t('analytics.products.outOfStock')}
+                value={productStats.outOfStock.toString()}
+                tone={productStats.outOfStock > 0 ? 'warn' : undefined}
+              />
+            </div>
+            <div className="p-5">
+              <SectionHeading size="sm" title={t('analytics.products.byCategory')} />
+              <ul className="mt-1 space-y-2.5">
+                {productsByCategory.map(c => {
+                  const max = productsByCategory[0].value || 1;
+                  const pct = (c.value / max) * 100;
+                  return (
+                    <li key={c.key}>
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground">
+                          {t(`products.category.${c.key}` as Parameters<typeof t>[0])}
+                        </span>
+                        <span className="text-sm font-semibold tabular-nums text-foreground">
+                          {formatPrice(c.value, language)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full bg-sky-500/80" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="w-16 text-right text-[11px] tabular-nums text-muted-foreground">
+                          {c.count} {c.count === 1 ? t('products.hero.itemOne') : t('products.hero.itemMany')}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </>
+        )}
+      </div>
+      )}
     </div>
   );
 }

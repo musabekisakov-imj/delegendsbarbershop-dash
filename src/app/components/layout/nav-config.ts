@@ -1,7 +1,7 @@
 import {
   HomeIcon, CalendarIcon, ClipboardDocumentListIcon, UserGroupIcon,
   UsersIcon, ScissorsIcon, Cog6ToothIcon, ChartBarIcon, ShieldCheckIcon,
-  QuestionMarkCircleIcon,
+  QuestionMarkCircleIcon, ShoppingBagIcon,
 } from '@heroicons/react/24/outline';
 import type { Permission } from '../../types';
 import type { TranslationKey } from '../../i18n';
@@ -21,6 +21,7 @@ export const NAV: NavItem[] = [
   { key: 'nav.clients',   href: '/clients',   icon: UserGroupIcon,            requires: 'clients.view' },
   { key: 'nav.staff',     href: '/staff',     icon: UsersIcon,                requires: 'staff.view' },
   { key: 'nav.services',  href: '/services',  icon: ScissorsIcon,             requires: 'services.view' },
+  { key: 'nav.products',  href: '/products',  icon: ShoppingBagIcon,          requires: 'services.view' },
   { key: 'nav.accounts',  href: '/accounts',  icon: ShieldCheckIcon,          requires: 'accounts.view' },
   { key: 'nav.settings',  href: '/settings',  icon: Cog6ToothIcon,            requires: 'settings.view' },
   { key: 'nav.help',      href: '/help',      icon: QuestionMarkCircleIcon },

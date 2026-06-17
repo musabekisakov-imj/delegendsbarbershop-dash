@@ -13,6 +13,7 @@ import type {
   Staff,
   Service,
   Category,
+  Product,
   Appointment,
   Shift,
   ShiftOverride,
@@ -129,6 +130,8 @@ export const authApi = {
     // Demo mode: any password is accepted, and an unknown email logs in as a default owner.
     const accounts = getFromStorage<Account>('barberpro_accounts');
     const match = accounts.find(a => a.email.toLowerCase() === email.toLowerCase() && a.status !== 'disabled');
+    const staff = getFromStorage<Staff>('barberpro_staff');
+    const linkedStaff = match?.staffId ? staff.find(s => s.id === match.staffId) : undefined;
 
     const user: User = match
       ? {
@@ -136,6 +139,7 @@ export const authApi = {
           email: match.email,
           firstName: match.firstName,
           lastName: match.lastName,
+          avatarUrl: match.avatarUrl || linkedStaff?.avatarUrl,
           tenantId: 'tenant-1',
           role: match.role,
         }
@@ -167,23 +171,52 @@ export const authApi = {
 
 // ─── Tenant API ─────────────────────────────────────────────────────
 
+// Fresh tenants on the live backend have null jsonb columns (workingHours,
+// holidays) until the owner saves them once, and the type marks them as
+// always-present because the mock seeded everything. Normalize so pages can
+// index into them without null checks.
+function coerceTenant(t: Tenant): Tenant {
+  return {
+    ...t,
+    workingHours: t.workingHours ?? {},
+    holidays: t.holidays ?? [],
+    bookingRules: t.bookingRules ?? {},
+    offices: t.offices ?? [],
+  };
+}
+
 export const tenantApi = {
   get: async (): Promise<Tenant> => {
-    if (REMOTE) return httpGet<Tenant>('/tenants/me');
+    if (REMOTE) return coerceTenant(await httpGet<Tenant>('/tenants/me'));
     await delay();
     const tenant = getSingleFromStorage<Tenant>('barberpro_tenant');
     if (!tenant) throw new Error('Tenant not found');
-    return tenant;
+    return coerceTenant(tenant);
   },
 
   update: async (data: Partial<Tenant>): Promise<Tenant> => {
-    if (REMOTE) return httpPatch<Tenant>('/tenants/me', data);
+    if (REMOTE) return coerceTenant(await httpPatch<Tenant>('/tenants/me', data));
     await delay();
     const tenant = getSingleFromStorage<Tenant>('barberpro_tenant');
     if (!tenant) throw new Error('Tenant not found');
     const updated = { ...tenant, ...data };
     setSingleToStorage('barberpro_tenant', updated);
-    return updated;
+    return coerceTenant(updated);
+  },
+};
+
+export const mediaApi = {
+  /**
+   * Upload an image (logo / location photo) and get back the URL to store on
+   * the tenant or office. Remote mode persists it in the backend's media
+   * table; demo mode just keeps the data URL as-is in localStorage.
+   */
+  upload: async (dataUrl: string): Promise<string> => {
+    if (REMOTE) {
+      const res = await httpPost<{ url: string }>('/tenants/me/media', { dataUrl });
+      return res.url;
+    }
+    return dataUrl;
   },
 };
 
@@ -450,6 +483,76 @@ export const servicesApi = {
     const services = getFromStorage<Service>('barberpro_services');
     const filtered = services.filter(s => s.id !== id);
     setToStorage('barberpro_services', filtered);
+  },
+};
+
+// ─── Products API ────────────────────────────────────────────────────
+//
+// Retail catalog the website sells (pomades, beard care, tools). No backend
+// `products` module exists yet, so demo mode seeds a starter catalog into
+// localStorage on first read. When the NestJS `/products` endpoint lands,
+// flip REMOTE like the other resources and delete the seed.
+
+const PRODUCTS_KEY = 'barberpro_products';
+
+const PRODUCT_SEED: Omit<Product, 'id' | 'createdAt'>[] = [
+  { name: 'Pink Pomade', brand: 'Reuzel', size: '113g', price: 18, category: 'hair-care', description: 'Medium hold, high shine, water-based pomade.', stock: 24, isPublic: true },
+  { name: 'Original Hold Pomade', brand: 'Layrite', size: '120g', price: 17, category: 'hair-care', description: 'Medium hold, medium shine, washes out clean.', stock: 12, isPublic: true },
+  { name: 'Pre-Shave Cream', brand: 'Proraso', size: '100ml', price: 12, category: 'face-body', description: 'Eucalyptus and menthol pre-shave for a closer cut.', stock: 8, isPublic: true },
+  { name: 'Beard Oil', brand: 'Dapper Dan', size: '50ml', price: 21, category: 'beards', description: 'Conditions the beard and softens coarse hair.', stock: 5, isPublic: true },
+  { name: 'Fade Brush', brand: 'Wahl', size: 'One size', price: 9, category: 'hairdressing-supplies', description: 'Soft-bristle neck and fade duster.', stock: 30, isPublic: true },
+  { name: 'Matte Clay', brand: 'American Crew', size: '85g', price: 19, category: 'hair-care', description: 'Strong hold, matte finish for textured styles.', stock: 0, isPublic: false },
+];
+
+function seedProductsIfEmpty(): Product[] {
+  const existing = getFromStorage<Product>(PRODUCTS_KEY);
+  if (existing.length > 0) return existing;
+  const seeded: Product[] = PRODUCT_SEED.map((p, i) => ({
+    ...p,
+    id: 'prd-seed-' + i,
+    createdAt: new Date().toISOString(),
+  }));
+  setToStorage(PRODUCTS_KEY, seeded);
+  return seeded;
+}
+
+// NOTE: mock-only for now. The NestJS backend has no `/products` module yet,
+// so unlike servicesApi this never branches on REMOTE — it always reads/writes
+// localStorage. When the backend lands, add the `if (REMOTE) { httpGet... }`
+// branches here (mirror servicesApi) and the page works unchanged.
+export const productsApi = {
+  getAll: async (): Promise<Product[]> => {
+    await delay();
+    return seedProductsIfEmpty();
+  },
+
+  create: async (data: Omit<Product, 'id' | 'createdAt'>): Promise<Product> => {
+    await delay();
+    const products = seedProductsIfEmpty();
+    const newProduct: Product = {
+      ...data,
+      id: 'prd-' + Math.random().toString(36).substring(2, 9),
+      createdAt: new Date().toISOString(),
+    };
+    products.push(newProduct);
+    setToStorage(PRODUCTS_KEY, products);
+    return newProduct;
+  },
+
+  update: async (id: string, data: Partial<Product>): Promise<Product> => {
+    await delay();
+    const products = seedProductsIfEmpty();
+    const index = products.findIndex(p => p.id === id);
+    if (index === -1) throw new Error('Product not found');
+    products[index] = { ...products[index], ...data };
+    setToStorage(PRODUCTS_KEY, products);
+    return products[index];
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await delay();
+    const products = seedProductsIfEmpty();
+    setToStorage(PRODUCTS_KEY, products.filter(p => p.id !== id));
   },
 };
 
@@ -938,17 +1041,24 @@ export const shiftOverridesApi = {
 
 // ─── Accounts API ───────────────────────────────────────────────────
 
+// The live backend's users table has no office assignments yet, so remote
+// accounts arrive without `officeIds`. The accounts page maps over it
+// unconditionally — normalize to [] so one missing field can't crash the page.
+function coerceAccount(a: Account): Account {
+  return { ...a, officeIds: a.officeIds ?? [] };
+}
+
 export const accountsApi = {
   getAll: async (): Promise<Account[]> => {
-    if (REMOTE) return httpGet<Account[]>('/accounts');
+    if (REMOTE) return (await httpGet<Account[]>('/accounts')).map(coerceAccount);
     await delay();
-    return getFromStorage<Account>('barberpro_accounts');
+    return getFromStorage<Account>('barberpro_accounts').map(coerceAccount);
   },
 
   getById: async (id: string): Promise<Account | null> => {
     if (REMOTE) {
       try {
-        return await httpGet<Account>(`/accounts/${id}`);
+        return coerceAccount(await httpGet<Account>(`/accounts/${id}`));
       } catch (err) {
         if (err instanceof HttpError && err.status === 404) return null;
         throw err;
@@ -956,7 +1066,8 @@ export const accountsApi = {
     }
     await delay();
     const accounts = getFromStorage<Account>('barberpro_accounts');
-    return accounts.find(a => a.id === id) ?? null;
+    const found = accounts.find(a => a.id === id);
+    return found ? coerceAccount(found) : null;
   },
 
   invite: async (data: {
@@ -968,7 +1079,7 @@ export const accountsApi = {
     staffId?: string;
     avatarUrl?: string;
   }): Promise<Account> => {
-    if (REMOTE) return httpPost<Account>('/accounts', data);
+    if (REMOTE) return coerceAccount(await httpPost<Account>('/accounts', data));
     await delay();
     const accounts = getFromStorage<Account>('barberpro_accounts');
 
@@ -995,7 +1106,7 @@ export const accountsApi = {
   },
 
   update: async (id: string, data: Partial<Account>): Promise<Account> => {
-    if (REMOTE) return httpPatch<Account>(`/accounts/${id}`, data);
+    if (REMOTE) return coerceAccount(await httpPatch<Account>(`/accounts/${id}`, data));
     await delay();
     const accounts = getFromStorage<Account>('barberpro_accounts');
     const target = accounts.find(a => a.id === id);

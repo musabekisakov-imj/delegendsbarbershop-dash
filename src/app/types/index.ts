@@ -67,6 +67,22 @@ export interface Service {
   isPublic?: boolean;
 }
 
+export type ProductCategory = 'hair-care' | 'face-body' | 'beards' | 'hairdressing-supplies';
+
+export interface Product {
+  id: string;
+  name: string;
+  brand: string;
+  size: string;
+  price: number;
+  category: ProductCategory;
+  description: string;
+  imageUrl?: string;
+  stock: number;
+  isPublic?: boolean;
+  createdAt: string;
+}
+
 export interface Appointment {
   id: string;
   clientId: string;
@@ -205,6 +221,9 @@ export interface Office {
   address: string;
   phone?: string;
   timezone?: string;
+  /** Location photo shown on the public website. Uploaded via Settings →
+   *  Business; stored as a backend media URL. */
+  photoUrl?: string;
 }
 
 /** Shop-level holiday or one-off closure. Separate from staff Absence
@@ -220,6 +239,8 @@ export interface BookingRules {
   leadTimeMinutes?: number;          // min advance notice for a new booking
   cancellationCutoffHours?: number;  // free-cancel window before start
   bufferMinutes?: number;            // auto-gap between adjacent bookings
+  timeGranularity?: 1 | 5 | 10 | 15 | 30 | 60; // minute picker interval
+  breakCutMode?: 'vertical' | 'horizontal';    // break overlay rendering
 }
 
 export interface Tenant {
@@ -230,14 +251,16 @@ export interface Tenant {
   displayName?: string;
   email: string;
   phone: string;
-  /** Optional contact + brand fields. All Schema v14. */
+  /** Optional contact + brand fields. All Schema v14 (facebook later). */
   website?: string;
   instagram?: string;
+  facebook?: string;
   /** Currency for prices throughout the app. Default 'EUR'. Schema v14. */
   currency?: 'EUR' | 'USD' | 'GBP' | 'UZS';
   vatRate?: number;                  // VAT % e.g. 20 for 20%
   timezone?: string;                 // IANA, e.g. 'Europe/Vilnius'
-  /** Reserved for future logo upload UI. Schema v14 (field only, no UI yet). */
+  /** Shop logo (uploaded in Settings → Business; backend media URL, or a
+   *  data URL in localStorage demo mode). Schema v14. */
   logoUrl?: string;
   /** Shop-wide closure dates. Schema v14. */
   holidays?: Holiday[];
@@ -256,6 +279,7 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
+  avatarUrl?: string;
   tenantId: string;
   role: StaffRole;
 }
