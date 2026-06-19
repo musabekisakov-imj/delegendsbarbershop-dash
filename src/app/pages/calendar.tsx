@@ -118,6 +118,15 @@ function endLabelFromWall(time: string, durationMin: number, fmt: TimeFormat): s
 }
 const SLOT_MINUTES = 15;
 const SUB_SLOTS_PER_HOUR = 60 / SLOT_MINUTES; // 4
+
+type DateUpdater = Date | ((current: Date) => Date);
+
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName.toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select';
+}
 // Two presets driven by user preference. Standard = roomy booking-card grammar;
 // Compact lets ~9 columns fit on iPad-portrait without horizontal scroll.
 const STAFF_COL_MIN_W_STANDARD = 200;
@@ -4037,6 +4046,7 @@ export function CalendarPage() {
     language === 'ru' ? ruLocale : language === 'lt' ? ltLocale : enLocale;
 
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [dayStripDirection, setDayStripDirection] = useState<1 | -1>(1);
   // Initial view-mode: grid on desktop, day on mobile (grid becomes unreadable
   // with 4+ staff columns on a 375px screen). Checks viewport once at mount —
   // no rAF loop, user can still manually switch if they want.
@@ -4185,6 +4195,63 @@ export function CalendarPage() {
   const isOwner = userRole === 'owner';
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
+  const updateSelectedDate = useCallback((nextDate: DateUpdater) => {
+    setSelectedDate(current => {
+      const next = typeof nextDate === 'function' ? nextDate(current) : nextDate;
+      const currentDay = startOfDay(current).getTime();
+      const nextDay = startOfDay(next).getTime();
+      if (nextDay !== currentDay) {
+        setDayStripDirection(nextDay > currentDay ? 1 : -1);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (isTextEditingTarget(event.target)) return;
+
+      const modalOpen =
+        isCreateOpen ||
+        !!detailApt ||
+        !!dragConfirm ||
+        !!breakDragConfirm ||
+        !!conflictState ||
+        walkInOpen ||
+        !!blockState ||
+        !!editDayModal ||
+        addServiceOpen ||
+        !!profileSheetClientId ||
+        !!editClientId ||
+        isCreatingClient ||
+        !!document.querySelector('[role="dialog"]');
+
+      if (modalOpen) return;
+
+      event.preventDefault();
+      updateSelectedDate(d => event.key === 'ArrowLeft' ? subDays(d, 1) : addDays(d, 1));
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    addServiceOpen,
+    blockState,
+    breakDragConfirm,
+    conflictState,
+    detailApt,
+    dragConfirm,
+    editClientId,
+    editDayModal,
+    isCreateOpen,
+    isCreatingClient,
+    profileSheetClientId,
+    updateSelectedDate,
+    walkInOpen,
+  ]);
   // When set, the next fullUpdateMutation success skips its built-in "updated" toast
   // so the drag-confirm flow can show its own toast with an Undo action instead.
   const suppressNextUpdateToast = useRef(false);
@@ -6188,7 +6255,7 @@ export function CalendarPage() {
             <PopoverContent align="start" className="w-[260px]">
               <MiniCalendar
                 selectedDate={selectedDate}
-                onSelectDate={d => { setSelectedDate(d); setMiniOpen(false); }}
+                onSelectDate={d => { updateSelectedDate(d); setMiniOpen(false); }}
                 appointments={appointments}
               />
             </PopoverContent>
@@ -6248,7 +6315,7 @@ export function CalendarPage() {
                 accent dot on today's value. Reads as a glance — no axes, no
                 tooltip — matches the editorial "score sheet" vocabulary. */}
             {(() => {
-              const days = Array.from({ length: 7 }, (_, i) => addDays(startOfDay(selectedDate), i - 6));
+              const days = Array.from({ length: 7 }, (_, i) => addDays(startOfDay(selectedDate), i - 3));
               const series = days.map(d => {
                 const key = format(d, 'yyyy-MM-dd');
                 return appointments
@@ -6377,7 +6444,7 @@ export function CalendarPage() {
                 own month nav, which the date-title chip opens in one tap. */}
             <button
               type="button"
-              onClick={() => setSelectedDate(d => subDays(d, 1))}
+              onClick={() => updateSelectedDate(d => subDays(d, 1))}
               title="Previous day"
               aria-label="Previous day"
               className="inline-flex h-8 w-8 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-sm hover:bg-accent active:scale-[0.97] transition-all duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer"
@@ -6386,7 +6453,7 @@ export function CalendarPage() {
             </button>
             <button
               type="button"
-              onClick={() => setSelectedDate(d => addDays(d, 1))}
+              onClick={() => updateSelectedDate(d => addDays(d, 1))}
               title="Next day"
               aria-label="Next day"
               className="inline-flex h-8 w-8 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-sm hover:bg-accent active:scale-[0.97] transition-all duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer"
@@ -6397,7 +6464,7 @@ export function CalendarPage() {
             {!isToday(selectedDate) && (
               <button
                 type="button"
-                onClick={() => setSelectedDate(new Date())}
+                onClick={() => updateSelectedDate(new Date())}
                 className="inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-foreground shadow-sm hover:bg-accent active:scale-[0.97] transition-all duration-120 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer"
               >
                 {t('common.today')}
@@ -6407,28 +6474,36 @@ export function CalendarPage() {
             <div className="flex-1" />
 
             <div className="hidden sm:flex items-center gap-px">
-              {/* Fixed-week strip — Mon-Sun for RU/LT (ISO), Sun-Sat for EN.
-                  Anchor to startOfWeek instead of "centered ±3 from selected"
-                  so the strip stays put when the user picks any day in the
-                  current week — operator can scan "where am I in the week"
-                  without the strip shifting under them. */}
-              {Array.from({ length: 7 }, (_, i) => {
-                const weekStartsOn: 0 | 1 = language === 'en' ? 0 : 1;
-                const d = addDays(startOfWeek(selectedDate, { weekStartsOn }), i);
-                const sel = format(d, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
-                const td = isToday(d);
-                return (
-                  <button key={format(d, 'yyyy-MM-dd')} onClick={() => setSelectedDate(d)}
-                    className={cn(
-                      'flex flex-col items-center rounded-lg w-10 py-1 transition-colors',
-                      sel ? 'bg-blue-600 text-white shadow-sm' : 'text-muted-foreground hover:bg-accent',
-                    )}>
-                    <span className="text-[10px] font-medium uppercase tracking-wider">{format(d, 'EEE', { locale: dateLocale })}</span>
-                    <span className={cn('text-sm font-semibold', td && !sel && 'text-blue-600 dark:text-blue-400')}>{format(d, 'd', { locale: dateLocale })}</span>
-                    {td && !sel && <span className="mt-0.5 h-1 w-1 rounded-full bg-blue-500" />}
-                  </button>
-                );
-              })}
+              <div className="w-[284px] overflow-hidden">
+                <AnimatePresence initial={false} custom={dayStripDirection} mode="popLayout">
+                  <motion.div
+                    key={format(startOfDay(selectedDate), 'yyyy-MM-dd')}
+                    custom={dayStripDirection}
+                    initial={(direction: 1 | -1) => ({ x: reduceMotion ? 0 : direction * 34 })}
+                    animate={{ x: 0 }}
+                    exit={(direction: 1 | -1) => ({ x: reduceMotion ? 0 : direction * -34 })}
+                    transition={{ duration: reduceMotion ? 0 : MOTION_DUR.base, ease: MOTION_EASE }}
+                    className="flex items-center gap-px"
+                  >
+                    {Array.from({ length: 7 }, (_, i) => {
+                      const d = addDays(startOfDay(selectedDate), i - 3);
+                      const sel = format(d, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
+                      const td = isToday(d);
+                      return (
+                        <button key={format(d, 'yyyy-MM-dd')} onClick={() => updateSelectedDate(d)}
+                          className={cn(
+                            'flex flex-col items-center rounded-lg w-10 py-1 transition-colors',
+                            sel ? 'bg-blue-600 text-white shadow-sm' : 'text-muted-foreground hover:bg-accent',
+                          )}>
+                          <span className="text-[10px] font-medium uppercase tracking-wider">{format(d, 'EEE', { locale: dateLocale })}</span>
+                          <span className={cn('text-sm font-semibold', td && !sel && 'text-blue-600 dark:text-blue-400')}>{format(d, 'd', { locale: dateLocale })}</span>
+                          {td && !sel && <span className="mt-0.5 h-1 w-1 rounded-full bg-blue-500" />}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
             </div>
 
             <div className="flex-1" />
@@ -6691,8 +6766,8 @@ export function CalendarPage() {
           ) : viewMode === 'week' ? (
             <WeekView
               selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-              onJumpToDay={(d) => { setSelectedDate(d); setViewMode('grid'); }}
+              onSelectDate={updateSelectedDate}
+              onJumpToDay={(d) => { updateSelectedDate(d); setViewMode('grid'); }}
               appointments={weekViewStaffId ? appointments.filter(a => a.staffId === weekViewStaffId) : []}
               breaks={weekViewStaffId ? allBreaks.filter(b => b.staffId === weekViewStaffId) : []}
               staffColorMap={staffColorMap}
