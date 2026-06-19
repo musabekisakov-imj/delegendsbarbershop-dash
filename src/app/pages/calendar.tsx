@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from 'motion/react';
+import { motion, AnimatePresence, LayoutGroup, useAnimationControls, useReducedMotion } from 'motion/react';
 import { useNavigate } from 'react-router';
 import { appointmentsApi, clientsApi, staffApi, servicesApi, shiftsApi, breaksApi, absencesApi, shiftOverridesApi, categoriesApi, accountsApi, tenantApi } from '../lib/api';
 import { useOfficeStore } from '../store/office-store';
@@ -4195,6 +4195,8 @@ export function CalendarPage() {
   const isOwner = userRole === 'owner';
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
+  const dayStripControls = useAnimationControls();
+  const dayStripHasMountedRef = useRef(false);
   const updateSelectedDate = useCallback((nextDate: DateUpdater) => {
     setSelectedDate(current => {
       const next = typeof nextDate === 'function' ? nextDate(current) : nextDate;
@@ -4206,6 +4208,25 @@ export function CalendarPage() {
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    if (!dayStripHasMountedRef.current) {
+      dayStripHasMountedRef.current = true;
+      dayStripControls.set({ x: 0 });
+      return;
+    }
+
+    if (reduceMotion) {
+      dayStripControls.set({ x: 0 });
+      return;
+    }
+
+    dayStripControls.set({ x: dayStripDirection * 22 });
+    void dayStripControls.start({
+      x: 0,
+      transition: { duration: MOTION_DUR.base, ease: MOTION_EASE },
+    });
+  }, [dayStripControls, dayStripDirection, reduceMotion, selectedDate]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -6475,34 +6496,24 @@ export function CalendarPage() {
 
             <div className="hidden sm:flex items-center gap-px">
               <div className="w-[284px] overflow-hidden">
-                <AnimatePresence initial={false} custom={dayStripDirection} mode="popLayout">
-                  <motion.div
-                    key={format(startOfDay(selectedDate), 'yyyy-MM-dd')}
-                    custom={dayStripDirection}
-                    initial={(direction: 1 | -1) => ({ x: reduceMotion ? 0 : direction * 34 })}
-                    animate={{ x: 0 }}
-                    exit={(direction: 1 | -1) => ({ x: reduceMotion ? 0 : direction * -34 })}
-                    transition={{ duration: reduceMotion ? 0 : MOTION_DUR.base, ease: MOTION_EASE }}
-                    className="flex items-center gap-px"
-                  >
-                    {Array.from({ length: 7 }, (_, i) => {
-                      const d = addDays(startOfDay(selectedDate), i - 3);
-                      const sel = format(d, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
-                      const td = isToday(d);
-                      return (
-                        <button key={format(d, 'yyyy-MM-dd')} onClick={() => updateSelectedDate(d)}
-                          className={cn(
-                            'flex flex-col items-center rounded-lg w-10 py-1 transition-colors',
-                            sel ? 'bg-blue-600 text-white shadow-sm' : 'text-muted-foreground hover:bg-accent',
-                          )}>
-                          <span className="text-[10px] font-medium uppercase tracking-wider">{format(d, 'EEE', { locale: dateLocale })}</span>
-                          <span className={cn('text-sm font-semibold', td && !sel && 'text-blue-600 dark:text-blue-400')}>{format(d, 'd', { locale: dateLocale })}</span>
-                          {td && !sel && <span className="mt-0.5 h-1 w-1 rounded-full bg-blue-500" />}
-                        </button>
-                      );
-                    })}
-                  </motion.div>
-                </AnimatePresence>
+                <motion.div animate={dayStripControls} className="flex items-center gap-px">
+                  {Array.from({ length: 7 }, (_, i) => {
+                    const d = addDays(startOfDay(selectedDate), i - 3);
+                    const sel = format(d, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
+                    const td = isToday(d);
+                    return (
+                      <button key={format(d, 'yyyy-MM-dd')} onClick={() => updateSelectedDate(d)}
+                        className={cn(
+                          'flex flex-col items-center rounded-lg w-10 py-1 transition-colors',
+                          sel ? 'bg-blue-600 text-white shadow-sm' : 'text-muted-foreground hover:bg-accent',
+                        )}>
+                        <span className="text-[10px] font-medium uppercase tracking-wider">{format(d, 'EEE', { locale: dateLocale })}</span>
+                        <span className={cn('text-sm font-semibold', td && !sel && 'text-blue-600 dark:text-blue-400')}>{format(d, 'd', { locale: dateLocale })}</span>
+                        {td && !sel && <span className="mt-0.5 h-1 w-1 rounded-full bg-blue-500" />}
+                      </button>
+                    );
+                  })}
+                </motion.div>
               </div>
             </div>
 
